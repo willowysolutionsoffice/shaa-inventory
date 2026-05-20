@@ -1,130 +1,219 @@
 import {
-  IconAddressBook,
-  IconBox,
-  IconBrandShopee,
-  IconBuilding,
-  IconCategory,
-  IconCoin,
-  IconCurrency,
-  IconDashboard,
-  IconFileText,
-  IconPercentage,
-  IconShoppingBag,
-  IconUserPlus,
-} from "@tabler/icons-react";
+  LayoutDashboard,
+  Settings,
+  Package,
+  Warehouse,
+  ShoppingBag,
+  Receipt,
+  Users,
+  Tag,
+  BookOpen,
+  BarChart3,
+  Building2,
+  Mail,
+  ShieldAlert,
+  Settings2,
+  HelpCircle,
+  FolderTree,
+  UserCheck,
+  Percent,
+  PlusCircle,
+  List,
+  Undo2,
+  CreditCard,
+  History,
+  FileSpreadsheet,
+  Boxes,
+  BellRing
+} from "lucide-react";
 import type { SidebarData } from "@/types/navigation";
 import { APP_CONFIG } from "@/config/app";
 
-export const SIDEBAR_DATA: SidebarData = {
+export const SIDEBAR_DATA: any = {
   // main navigation for all users
   navMain: [
     {
       title: "Dashboard",
       url: "/dashboard",
-      icon: IconDashboard,
+      icon: LayoutDashboard,
     },
     {
-      title: "Purchase",
-      url: "/purchase",
-      icon: IconShoppingBag,
+      title: "Master Management",
+      url: "/admin/brands",
+      icon: Settings,
       children: [
         {
-          title: "List Purchases",
-          url: "/purchase",
+          title: "Brands",
+          url: "/admin/brands",
+          icon: FolderTree,
         },
         {
-          title: "Add Purchase",
-          url: "/purchase/new",
-        },
-        {
-          title: "Purchase Return",
-          url: "/purchase-return",
+          title: "Users & Staff",
+          url: "/admin/users",
+          icon: UserCheck,
         },
       ],
     },
-    {
-      title: "Sales",
-      url: "/sales",
-      icon: IconCoin,
-      children: [
-        {
-          title: "List Sales",
-          url: "/sales",
-        },
-        {
-          title: "Add Sale",
-          url: "/sales/new",
-        },
-        {
-          title: "Sales Return",
-          url: "/sales-return",
-        },
-      ],
-    },
-    {
-      title: "Expenses",
-      url: "/expenses",
-      icon: IconCurrency,
-      children: [
-        {
-          title: "Expenses",
-          url: "/expenses",
-        },
-        {
-          title: "Expenses Category",
-          url: "/expensescategory",
-        },
-      ],
-    },
-  ],
-
-  // only admin can see this navigation
-  admin: [
-    // {
-    //   title: 'Data Management',
-    //   url: '/admin/data-management',
-    //   icon: IconDatabase,
-    // },
     {
       title: "Products",
       url: "/admin/products",
-      icon: IconBox,
+      icon: Package,
       children: [
         {
           title: "All Products",
           url: "/admin/products",
+          icon: List,
         },
         {
-          title: "Stock Adjustment",
+          title: "Brands",
+          url: "/admin/brands",
+          icon: FolderTree,
+        },
+        {
+          title: "Categories",
+          url: "/expensescategory",
+          icon: FolderTree,
+        }
+      ],
+    },
+    {
+      title: "Inventory",
+      url: "/admin/stock-adjustment",
+      icon: Warehouse,
+      children: [
+        {
+          title: "Stock Adjustments",
           url: "/admin/stock-adjustment",
+          icon: PlusCircle,
+        },
+        {
+          title: "Stock Reports",
+          url: "/reports/stock-reports",
+          icon: FileSpreadsheet,
         },
       ],
     },
     {
-      title: "Brands",
-      url: "/admin/brands",
-      icon: IconBrandShopee,
+      title: "Purchases",
+      url: "/purchase",
+      icon: ShoppingBag,
+      children: [
+        {
+          title: "List Purchases",
+          url: "/purchase",
+          icon: List,
+        },
+        {
+          title: "Add Purchase",
+          url: "/purchase/new",
+          icon: PlusCircle,
+        },
+        {
+          title: "Purchase Returns",
+          url: "/purchase-return",
+          icon: Undo2,
+        },
+      ],
     },
-
     {
-      title: "Contacts",
-      url: "/admin/contacts",
-      icon: IconAddressBook,
+      title: "Sales & Billing",
+      url: "/sales",
+      icon: Receipt,
+      children: [
+        {
+          title: "POS Billing Terminal",
+          url: "/sales/pos",
+          icon: CreditCard,
+        },
+        {
+          title: "List Sales",
+          url: "/sales",
+          icon: List,
+        },
+        {
+          title: "Add Sale Order",
+          url: "/sales/new",
+          icon: PlusCircle,
+        },
+        {
+          title: "Sales Returns",
+          url: "/sales-return",
+          icon: Undo2,
+        },
+      ],
+    },
+    {
+      title: "Customers & Contacts",
+      url: "/admin/customers",
+      icon: Users,
       children: [
         {
           title: "Customers",
           url: "/admin/customers",
+          icon: UserCheck,
         },
         {
           title: "Suppliers",
           url: "/admin/supplier",
+          icon: UserCheck,
         },
       ],
     },
     {
-      title: "Reports",
-      url: "/admin/reports",
-      icon: IconFileText,
+      title: "Coupons & Offers",
+      url: "/admin/coupons",
+      icon: Tag,
+    },
+  ],
+
+  // Admin and ERP operations side
+  admin: [
+    {
+      title: "Accounting",
+      url: "/expenses",
+      icon: BookOpen,
+      children: [
+        {
+          title: "Profit & Loss",
+          url: "/reports/pnl-reports",
+          icon: FileSpreadsheet,
+        },
+        {
+          title: "Ledger",
+          url: "/admin/accounting/ledger",
+          icon: History,
+        },
+        {
+          title: "Expenses Management",
+          url: "/expenses",
+          icon: Boxes,
+        },
+        {
+          title: "Journal Entries",
+          url: "/admin/accounting/journal",
+          icon: FileSpreadsheet,
+        },
+        {
+          title: "Trial Balance",
+          url: "/admin/accounting/trial-balance",
+          icon: FileSpreadsheet,
+        },
+        {
+          title: "Balance Sheet",
+          url: "/admin/accounting/balance-sheet",
+          icon: FileSpreadsheet,
+        },
+        {
+          title: "GST / VAT Reports",
+          url: "/admin/accounting/gst",
+          icon: FileSpreadsheet,
+        },
+      ],
+    },
+    {
+      title: "Reports Engine",
+      url: "/reports/sales-purchase-reports",
+      icon: BarChart3,
       children: [
         {
           title: "Contact Report",
@@ -147,25 +236,39 @@ export const SIDEBAR_DATA: SidebarData = {
           url: "/reports/stock-reports",
         },
         {
-          title: "Daily Listing",
+          title: "Daily Listing Summary",
           url: "/reports/daily-listing",
         },
       ],
     },
     {
-      title: "Users",
-      url: "/admin/users",
-      icon: IconUserPlus,
-    },
-
-    {
-      title: "Branches",
+      title: "Branch Management",
       url: "/admin/branches",
-      icon: IconBuilding,
+      icon: Building2,
+    },
+    {
+      title: "Communication",
+      url: "/admin/settings/communication",
+      icon: Mail,
+    },
+    {
+      title: "Security settings",
+      url: "/admin/settings/security",
+      icon: ShieldAlert,
+    },
+    {
+      title: "System Settings",
+      url: "/admin/settings/system",
+      icon: Settings2,
+    },
+    {
+      title: "Support Desk",
+      url: "/support",
+      icon: HelpCircle,
     },
   ],
 
-  // secondary navigation for all users
+  // secondary navigation for footer
   navSecondary: [],
 };
 
