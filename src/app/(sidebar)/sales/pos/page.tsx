@@ -16,7 +16,8 @@ import {
   PauseCircle, 
   CheckCircle,
   Sparkles,
-  ShoppingBag
+  ShoppingBag,
+  Tag
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";

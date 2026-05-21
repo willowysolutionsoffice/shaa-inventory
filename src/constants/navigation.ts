@@ -39,13 +39,13 @@ export const SIDEBAR_DATA: any = {
     },
     {
       title: "Master Management",
-      url: "/admin/brands",
+      url: "/admin/branches",
       icon: Settings,
       children: [
         {
-          title: "Brands",
-          url: "/admin/brands",
-          icon: FolderTree,
+          title: "Branches",
+          url: "/admin/branches",
+          icon: Building2,
         },
         {
           title: "Users & Staff",
@@ -71,7 +71,7 @@ export const SIDEBAR_DATA: any = {
         },
         {
           title: "Categories",
-          url: "/expensescategory",
+          url: "/admin/categories",
           icon: FolderTree,
         }
       ],
@@ -170,7 +170,7 @@ export const SIDEBAR_DATA: any = {
   admin: [
     {
       title: "Accounting",
-      url: "/expenses",
+      url: "/admin/accounting/ledger",
       icon: BookOpen,
       children: [
         {
@@ -182,11 +182,6 @@ export const SIDEBAR_DATA: any = {
           title: "Ledger",
           url: "/admin/accounting/ledger",
           icon: History,
-        },
-        {
-          title: "Expenses Management",
-          url: "/expenses",
-          icon: Boxes,
         },
         {
           title: "Journal Entries",
@@ -207,6 +202,23 @@ export const SIDEBAR_DATA: any = {
           title: "GST / VAT Reports",
           url: "/admin/accounting/gst",
           icon: FileSpreadsheet,
+        },
+      ],
+    },
+    {
+      title: "Expense Management",
+      url: "/expenses",
+      icon: Boxes,
+      children: [
+        {
+          title: "All Expenses",
+          url: "/expenses",
+          icon: List,
+        },
+        {
+          title: "Expense Categories",
+          url: "/expensescategory",
+          icon: FolderTree,
         },
       ],
     },
@@ -241,11 +253,7 @@ export const SIDEBAR_DATA: any = {
         },
       ],
     },
-    {
-      title: "Branch Management",
-      url: "/admin/branches",
-      icon: Building2,
-    },
+
     {
       title: "Communication",
       url: "/admin/settings/communication",

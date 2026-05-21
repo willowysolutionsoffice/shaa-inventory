@@ -60,8 +60,6 @@ export const createSupplier = actionClient.inputSchema(supplierSchema).action(
 
 export const getSupplierList = actionClient.action(async () => {
   try {
-    revalidatePath("/suppliers");
-
     const balancePaidMap = new Map();
     db.balancePayments.forEach((b) => {
       if (b.supplierId) {
