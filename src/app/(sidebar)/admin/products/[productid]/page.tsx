@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency } from '@/lib/utils';
+import { ProductQrPrint } from '@/components/products/product-qr-print';
 
 export interface PageParamsProps {
   params: Promise<{ productid: string }>;
@@ -152,8 +153,8 @@ const Page = async ({ params }: PageParamsProps) => {
           </Card>
         </div>
 
-        {/* Right Column - Product Image Placeholder */}
-        <div className="lg:col-span-1">
+        {/* Right Column - Product Image & QR Code */}
+        <div className="lg:col-span-1 space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Product Image</CardTitle>
@@ -167,6 +168,11 @@ const Page = async ({ params }: PageParamsProps) => {
               </div>
             </CardContent>
           </Card>
+
+          <ProductQrPrint
+            sku={product?.sku || ''}
+            productName={product?.product_name || ''}
+          />
         </div>
       </div>
     </div>

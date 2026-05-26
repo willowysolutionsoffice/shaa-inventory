@@ -48,6 +48,7 @@ export interface Product {
   stock: number;
   purchasePrice: number;
   sellingPrice: number;
+  unit: string;
   description?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -334,6 +335,7 @@ if (!globalStore.db) {
         stock: 45,
         purchasePrice: 65.00,
         sellingPrice: 99.00,
+        unit: "pcs",
         description: "Premium ergonomic wireless mouse with silent clicks",
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -347,6 +349,7 @@ if (!globalStore.db) {
         stock: 12,
         purchasePrice: 150.00,
         sellingPrice: 229.00,
+        unit: "pcs",
         description: "Lightspeed wireless mechanical gaming keyboard without numpad",
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -360,6 +363,7 @@ if (!globalStore.db) {
         stock: 8,
         purchasePrice: 350.00,
         sellingPrice: 499.00,
+        unit: "pcs",
         description: "High color-accuracy IPS monitor with USB-C Hub support",
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -373,6 +377,7 @@ if (!globalStore.db) {
         stock: 5,
         purchasePrice: 110.00,
         sellingPrice: 149.00,
+        unit: "pcs",
         description: "Rechargeable wireless keyboard with secure Touch ID biometric sensor",
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -386,6 +391,7 @@ if (!globalStore.db) {
         stock: 48,
         purchasePrice: 25.00,
         sellingPrice: 45.00,
+        unit: "pcs",
         description: "7-in-1 multi-port hub featuring HDMI, USB-A, and SD slots",
         createdAt: new Date(),
         updatedAt: new Date(),

@@ -192,14 +192,16 @@ export const ProductFormSheet = ({ product, open, openChange, brands, branches }
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
               {/* Product Info Card (Left) */}
-              <Card className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:col-span-3">
-                <FormField control={form.control} name="product_name" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Product Name</FormLabel>
-                    <FormControl><Input placeholder="Product Name" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
+              <Card className="p-5 grid grid-cols-1 md:grid-cols-3 gap-5 lg:col-span-3">
+                <div className="md:col-span-2">
+                  <FormField control={form.control} name="product_name" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Product Name</FormLabel>
+                      <FormControl><Input placeholder="Product Name" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                </div>
 
                 <FormField control={form.control} name="brandId" render={({ field }) => (
                   <FormItem className="flex flex-col">
