@@ -23,7 +23,6 @@ export function SiteHeader({ title = defaultTitle }: SiteHeaderProps = {}) {
         />
         <h1 className="text-base font-medium">{title}</h1>
         <div className="ml-auto flex items-center gap-2">
-          <ModeToggle />
           {showGitHubLink && (
             <Button
               variant="ghost"

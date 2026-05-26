@@ -27,8 +27,8 @@ export default function RootLayout({
       <body className={`${fontSans.variable} font-sans antialiased`}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
-          enableSystem
+          defaultTheme="light"
+          forcedTheme="light"
           disableTransitionOnChange
         >
           <NextTopLoader color="#ea580c" showSpinner={false} />

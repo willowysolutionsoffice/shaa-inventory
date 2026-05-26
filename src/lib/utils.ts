@@ -23,7 +23,7 @@ export function getInitials(name: string): string {
 /**
  * Format currency values
  */
-export const CURRENCY_SYMBOL = "⃁";
+export const CURRENCY_SYMBOL = "₹";
 
 /**
  * Format currency values
@@ -31,7 +31,7 @@ export const CURRENCY_SYMBOL = "⃁";
 export function formatCurrency(
   amount: number,
   currency: string = CURRENCY_SYMBOL,
-  locale: string = 'en-SA'
+  locale: string = 'en-IN'
 ): string {
   return `${currency} ${new Intl.NumberFormat(locale, {
     minimumFractionDigits: 2,

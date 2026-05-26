@@ -3,7 +3,7 @@ import type { MetricCard } from '@/types/navigation';
 export const DASHBOARD_METRICS: MetricCard[] = [
   {
     title: 'Total Revenue',
-    value: '$1,250.00',
+    value: '₹1,250.00',
     description: 'Monthly revenue',
     trend: {
       type: 'up',

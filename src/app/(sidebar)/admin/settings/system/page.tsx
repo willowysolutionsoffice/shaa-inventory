@@ -10,7 +10,7 @@ import { toast } from "sonner";
 export default function SystemSettingsPage() {
   const [companyName, setCompanyName] = useState("Willowy ERP SaaS Corp");
   const [timezone, setTimezone] = useState("GMT +5:30 (India Standard Time)");
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState("INR");
 
   const saveSettings = () => {
     toast.success("Global system variables successfully updated.");
