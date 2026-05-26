@@ -96,6 +96,7 @@ export const ProductFormSheet = ({ product, open, openChange, brands, branches }
   });
 
   const isOpen = isControlled ? open : internalOpen;
+  const skuValue = form.watch("sku");
 
   useEffect(() => {
     if (isOpen) {
@@ -162,6 +163,11 @@ export const ProductFormSheet = ({ product, open, openChange, brands, branches }
     }
   };
 
+  const regenerateSku = () => {
+    form.setValue("sku", `SKU-${nanoid(6).toUpperCase()}`);
+    toast.info("Generated new unique SKU");
+  };
+
   return (
     <Sheet
       open={isControlled ? open : internalOpen}
@@ -184,129 +190,208 @@ export const ProductFormSheet = ({ product, open, openChange, brands, branches }
               <SheetDescription>Fill out the product details. Click save when done.</SheetDescription>
             </SheetHeader>
 
-            <Card className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-              <FormField control={form.control} name="product_name" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Product Name</FormLabel>
-                  <FormControl><Input placeholder="Product Name" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+              {/* Product Info Card (Left) */}
+              <Card className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:col-span-3">
+                <FormField control={form.control} name="product_name" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Product Name</FormLabel>
+                    <FormControl><Input placeholder="Product Name" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
 
-              <FormField control={form.control} name="brandId" render={({ field }) => (
-                <FormItem className="flex flex-col">
-                  <FormLabel>Brand</FormLabel>
-                  <Popover open={openBrand} onOpenChange={setOpenBrand}>
-                    <PopoverTrigger asChild>
+                <FormField control={form.control} name="brandId" render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Brand</FormLabel>
+                    <Popover open={openBrand} onOpenChange={setOpenBrand}>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={openBrand}
+                            className={cn(
+                              "w-full justify-between",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            {field.value
+                              ? brandList.find(
+                                 (brand) => brand.id === field.value
+                                )?.name
+                              : "Select Brand"}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[200px] p-0">
+                        <Command>
+                          <CommandInput placeholder="Search brand..." />
+                          <CommandList>
+                            <CommandEmpty>No brand found.</CommandEmpty>
+                            <CommandGroup>
+                              {brandList.map((brand) => (
+                                <CommandItem
+                                  value={brand.name}
+                                  key={brand.id}
+                                  onSelect={() => {
+                                    form.setValue("brandId", brand.id)
+                                    setOpenBrand(false)
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      brand.id === field.value
+                                        ? "opacity-100"
+                                        : "opacity-0"
+                                    )}
+                                  />
+                                  {brand.name}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+
+                <FormField control={form.control} name="branchId" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Business Location</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          aria-expanded={openBrand}
-                          className={cn(
-                            "w-full justify-between",
-                            !field.value && "text-muted-foreground"
-                          )}
-                        >
-                          {field.value
-                            ? brandList.find(
-                              (brand) => brand.id === field.value
-                            )?.name
-                            : "Select Brand"}
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
+                        <SelectTrigger className="w-full"><SelectValue placeholder="Select Branch" /></SelectTrigger>
                       </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[200px] p-0">
-                      <Command>
-                        <CommandInput placeholder="Search brand..." />
-                        <CommandList>
-                          <CommandEmpty>No brand found.</CommandEmpty>
-                          <CommandGroup>
-                            {brandList.map((brand) => (
-                              <CommandItem
-                                value={brand.name}
-                                key={brand.id}
-                                onSelect={() => {
-                                  form.setValue("brandId", brand.id)
-                                  setOpenBrand(false)
-                                }}
-                              >
-                                <Check
-                                  className={cn(
-                                    "mr-2 h-4 w-4",
-                                    brand.id === field.value
-                                      ? "opacity-100"
-                                      : "opacity-0"
-                                  )}
-                                />
-                                {brand.name}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                  <FormMessage />
-                </FormItem>
-              )} />
+                      <SelectContent>
+                        {baranchList.map(branch => (
+                          <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
 
+                <FormField control={form.control} name="unit" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Unit</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="w-full"><SelectValue placeholder="Select Unit" /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="pcs">Pieces (pcs)</SelectItem>
+                        <SelectItem value="pkt">Packets (pkts)</SelectItem>
+                        <SelectItem value="box">Boxes</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
 
-
-              <FormField control={form.control} name="branchId" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Business Location</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
+                <FormField control={form.control} name="sku" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center justify-between">
+                      <span>Product SKU</span>
+                      <button
+                        type="button"
+                        onClick={regenerateSku}
+                        className="text-[10px] text-purple-600 hover:text-purple-700 underline font-medium flex items-center gap-0.5"
+                      >
+                        Regenerate
+                      </button>
+                    </FormLabel>
                     <FormControl>
-                      <SelectTrigger className="w-full"><SelectValue placeholder="Select Branch" /></SelectTrigger>
+                      <Input placeholder="Enter SKU" {...field} />
                     </FormControl>
-                    <SelectContent>
-                      {baranchList.map(branch => (
-                        <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
+                    <FormMessage />
+                  </FormItem>
+                )} />
 
-              <FormField control={form.control} name="unit" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Unit</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
+                <FormField control={form.control} name="stock" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Initial Stock Qty</FormLabel>
                     <FormControl>
-                      <SelectTrigger className="w-full"><SelectValue placeholder="Select Unit" /></SelectTrigger>
+                      <Input
+                        type="number"
+                        placeholder="0"
+                        {...field}
+                        value={field.value ?? ""}
+                      />
                     </FormControl>
-                    <SelectContent>
-                      <SelectItem value="pcs">Pieces (pcs)</SelectItem>
-                      <SelectItem value="pkt">Packets (pkts)</SelectItem>
-                      <SelectItem value="box">Boxes</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
+                    <FormMessage />
+                  </FormItem>
+                )} />
 
-              <FormField control={form.control} name="purchasePrice" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Purchase Price</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      placeholder="Purchase Price"
-                      {...field}
-                      value={field.value ?? ""}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-            </Card>
+                <FormField control={form.control} name="purchasePrice" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Purchase Price (₹)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        placeholder="Purchase Price"
+                        {...field}
+                        value={field.value ?? ""}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+
+                <FormField control={form.control} name="sellingPrice" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Selling Price (₹)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        placeholder="Selling Price"
+                        {...field}
+                        value={field.value ?? ""}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </Card>
+
+              {/* QR Code Card (Right) */}
+              <Card className="p-4 flex flex-col items-center justify-center border border-dashed border-border/80 bg-muted/10">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                  Product QR Code
+                </span>
+                {skuValue ? (
+                  <div className="flex flex-col items-center gap-2.5">
+                    <div className="bg-white p-2.5 rounded-xl border border-border shadow-sm">
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(skuValue)}`}
+                        alt="SKU QR Code"
+                        className="w-[140px] h-[140px] select-none"
+                      />
+                    </div>
+                    <span className="font-mono text-xs font-bold text-purple-700 bg-purple-50 dark:bg-purple-950/30 px-2 py-0.5 rounded border border-purple-100 dark:border-purple-900/50">
+                      {skuValue}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <span className="text-sm">Enter SKU to generate QR Code</span>
+                  </div>
+                )}
+                <p className="text-[10px] text-muted-foreground mt-3 text-center leading-relaxed">
+                  Scannable by cameras or barcode hardware in POS billing.
+                </p>
+              </Card>
+            </div>
+
             <SheetFooter>
               <div className="mt-4 flex justify-end gap-2">
                 <Button type="submit" disabled={isCreating || isUpdating}>
-                  {isCreating || isUpdating ? "Saving..." : "Save"}
+                  {isCreating || isUpdating ? "Saving..." : "Save Product"}
                 </Button>
               </div>
             </SheetFooter>
