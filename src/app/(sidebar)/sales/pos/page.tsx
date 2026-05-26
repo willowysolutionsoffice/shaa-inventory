@@ -278,24 +278,23 @@ export default function PosBillingPage() {
             {filteredProducts.map((prod) => (
               <Card 
                 key={prod.id} 
-                className="cursor-pointer hover:border-purple-500 transition-all hover:shadow-md bg-card overflow-hidden group border border-border"
+                className="cursor-pointer hover:border-purple-500 transition-all hover:shadow-md bg-card group border border-border flex flex-col justify-between h-36"
                 onClick={() => addToCart(prod)}
               >
-                <div className="bg-muted h-28 flex items-center justify-center relative">
-                  <span className="text-4xl group-hover:scale-110 transition-transform">
-                    {prod.category === "Electronics" ? "🔌" : prod.category === "Furniture" ? "🪑" : prod.category === "Home & Kitchen" ? "🥤" : "☕"}
-                  </span>
-                  <Badge className="absolute right-2 top-2 bg-black/60 hover:bg-black/60 border-none text-[10px] text-white">
-                    Stock: {prod.stock}
-                  </Badge>
-                </div>
-                <CardContent className="p-3 flex flex-col justify-between h-28">
-                  <div>
-                    <h3 className="font-semibold text-sm line-clamp-1 group-hover:text-purple-600 transition-colors">{prod.name}</h3>
-                    <p className="text-[10px] text-muted-foreground">{prod.sku}</p>
+                <CardContent className="p-3.5 flex flex-col justify-between h-full w-full">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-medium text-muted-foreground">{prod.sku}</span>
+                      <Badge className="bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-950/30 dark:text-purple-300 border border-purple-100 dark:border-purple-900/50 text-[10px] px-1.5 py-0">
+                        Stock: {prod.stock}
+                      </Badge>
+                    </div>
+                    <h3 className="font-semibold text-sm line-clamp-2 group-hover:text-purple-600 transition-colors leading-tight">
+                      {prod.name}
+                    </h3>
                   </div>
-                  <div className="flex items-center justify-between mt-2">
-                    <span className="font-bold text-base text-purple-600">{formatCurrency(prod.price)}</span>
+                  <div className="flex items-center justify-between mt-auto pt-2 border-t border-dashed border-border/80">
+                    <span className="font-extrabold text-base text-purple-600">{formatCurrency(prod.price)}</span>
                     <Badge variant="outline" className="text-[9px] bg-slate-50 dark:bg-slate-900 border-slate-200">
                       {prod.category}
                     </Badge>
