@@ -30,21 +30,30 @@ import { formatCurrency } from "@/lib/utils";
 
 // Mock products database for POS terminal
 const POS_PRODUCTS = [
-  { id: "p1", name: "Premium Wireless Headphones", sku: "SKU-HPH-01", price: 149.99, stock: 45, category: "Electronics" },
-  { id: "p2", name: "Ergonomic Office Chair", sku: "SKU-CHR-02", price: 299.00, stock: 12, category: "Furniture" },
-  { id: "p3", name: "Mechanical Gaming Keyboard", sku: "SKU-KBD-03", price: 89.50, stock: 30, category: "Electronics" },
-  { id: "p4", name: "Stainless Steel Water Bottle", sku: "SKU-BTL-04", price: 24.99, stock: 120, category: "Home & Kitchen" },
-  { id: "p5", name: "Activewear Smart Watch", sku: "SKU-WCH-05", price: 199.99, stock: 22, category: "Electronics" },
-  { id: "p6", name: "Organic Arabica Coffee Beans (1kg)", sku: "SKU-CFB-06", price: 18.50, stock: 85, category: "Food & Beverage" },
-  { id: "p7", name: "Bamboo Desk Organizer", sku: "SKU-ORG-07", price: 34.99, stock: 50, category: "Office Supplies" },
-  { id: "p8", name: "USB-C Multi-port Adapter", sku: "SKU-ADP-08", price: 45.00, stock: 65, category: "Electronics" },
+  { id: "prod-1", name: "Gulaal Delia Lawn – Unstitched 3-Piece", sku: "GUL-DELIA-LP-01", price: 4999, stock: 24, category: "Unstitched" },
+  { id: "prod-2", name: "Gul Ahmed Summer Lawn – Unstitched 3-Piece", sku: "GA-SML-UP-02", price: 3799, stock: 30, category: "Unstitched" },
+  { id: "prod-3", name: "Sapphire Eid Festive Unstitched – Embroidered", sku: "SAP-EID-EU-03", price: 6999, stock: 15, category: "Unstitched" },
+  { id: "prod-4", name: "Gulaal Mahi Collection – Unstitched Khaddar", sku: "GUL-MAHI-KH-04", price: 4299, stock: 18, category: "Unstitched" },
+  { id: "prod-5", name: "Banarasi Pure Silk Saree – Zari Border", sku: "BAN-SILK-ZB-05", price: 8999, stock: 10, category: "Sarees" },
+  { id: "prod-6", name: "Kota Doria Cotton-Silk Saree – Block Print", sku: "KOTA-CS-BP-06", price: 1999, stock: 20, category: "Sarees" },
+  { id: "prod-7", name: "Georgette Embroidered Saree – Party Wear", sku: "GEO-EMB-PW-07", price: 3499, stock: 12, category: "Sarees" },
+  { id: "prod-8", name: "Kerala Kasavu Saree – Pure Cotton", sku: "KER-KAS-CM-08", price: 1399, stock: 35, category: "Sarees" },
+  { id: "prod-9", name: "Anarkali Rayon Kurti – Printed Long", sku: "ANK-RAY-PL-XL-09", price: 799, stock: 40, category: "Kurtis" },
+  { id: "prod-10", name: "Palazzo Kurti Set – Muslin with Dupatta", sku: "PAL-MUS-DP-10", price: 1099, stock: 25, category: "Kurtis" },
+  { id: "prod-11", name: "Pure Linen Fabric – Solid – Per Metre", sku: "LIN-SOL-PM-11", price: 299, stock: 200, category: "Fabrics" },
+  { id: "prod-12", name: "Chiffon Printed Fabric – Per Metre", sku: "CHF-PRT-PM-12", price: 199, stock: 150, category: "Fabrics" },
+  { id: "prod-13", name: "Embroidered Organza Dupatta – Bridal", sku: "ORG-EMB-BD-13", price: 1499, stock: 22, category: "Dupattas" },
+  { id: "prod-14", name: "Gul Ahmed Silk Dupatta – Digital Print", sku: "GA-SILK-DP-14", price: 999, stock: 30, category: "Dupattas" },
+  { id: "prod-15", name: "Sapphire Ready-to-Wear Embroidered Suit", sku: "SAP-RTW-ES-15", price: 7999, stock: 8, category: "Readymade" },
 ];
 
 const CUSTOMERS = [
-  { id: "c1", name: "Walk-in Customer", email: "walkin@erp.com", type: "Retail" },
-  { id: "c2", name: "Sarah Jenkins", email: "sarah@gmail.com", type: "VIP" },
-  { id: "c3", name: "Michael Vance", email: "mvance@corporate.com", type: "Wholesale" },
-  { id: "c4", name: "Elena Rostova", email: "elena@design.org", type: "Retail" },
+  { id: "cust-walk", name: "Walk-in Customer", phone: "", type: "Retail" },
+  { id: "cust-1", name: "Fathima Beevi K", phone: "9447112345", type: "Retail" },
+  { id: "cust-2", name: "Zainab Hussain", phone: "9895234567", type: "VIP" },
+  { id: "cust-3", name: "Mariyam Siddique", phone: "9745345678", type: "Retail" },
+  { id: "cust-4", name: "Anitha Krishnan", phone: "9387456789", type: "Wholesale" },
+  { id: "cust-5", name: "Reshma Abdul Razak", phone: "9656567890", type: "Retail" },
 ];
 
 interface CartItem {
@@ -56,7 +65,7 @@ export default function PosBillingPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [barcodeInput, setBarcodeInput] = useState("");
-  const [selectedCustomer, setSelectedCustomer] = useState("c1");
+const [selectedCustomer, setSelectedCustomer] = useState("cust-walk");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discountPercent, setDiscountPercent] = useState<number>(0);
   const [couponCode, setCouponCode] = useState("");
