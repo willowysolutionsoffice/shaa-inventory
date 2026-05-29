@@ -39,18 +39,67 @@ export const SIDEBAR_DATA: any = {
       icon: LayoutDashboard,
     },
     {
-      title: "Master Management",
-      url: "/admin/branches",
-      icon: Settings,
+      title: "Sales & Billing",
+      url: "/sales",
+      icon: Receipt,
       children: [
         {
-          title: "Branches",
-          url: "/admin/branches",
-          icon: Building2,
+          title: "POS Billing Terminal",
+          url: "/sales/pos",
+          icon: CreditCard,
         },
         {
-          title: "Users & Staff",
-          url: "/admin/users",
+          title: "List Sales",
+          url: "/sales",
+          icon: List,
+        },
+        {
+          title: "Add Sale Order",
+          url: "/sales/new",
+          icon: PlusCircle,
+        },
+        {
+          title: "Sales Returns",
+          url: "/sales-return",
+          icon: Undo2,
+        },
+      ],
+    },
+    {
+      title: "Purchases",
+      url: "/purchase",
+      icon: ShoppingBag,
+      children: [
+        {
+          title: "List Purchases",
+          url: "/purchase",
+          icon: List,
+        },
+        {
+          title: "Add Purchase",
+          url: "/purchase/new",
+          icon: PlusCircle,
+        },
+        {
+          title: "Purchase Returns",
+          url: "/purchase-return",
+          icon: Undo2,
+        },
+      ],
+    },
+    {
+      title: "Customers & Contacts",
+      url: "/admin/customers",
+      icon: Users,
+      children: [
+        {
+          title: "Customers",
+          url: "/admin/customers",
+          icon: UserCheck,
+        },
+        {
+          title: "Suppliers",
+          url: "/admin/supplier",
           icon: UserCheck,
         },
       ],
@@ -96,67 +145,18 @@ export const SIDEBAR_DATA: any = {
       ],
     },
     {
-      title: "Purchases",
-      url: "/purchase",
-      icon: ShoppingBag,
+      title: "Master Management",
+      url: "/admin/branches",
+      icon: Settings,
       children: [
         {
-          title: "List Purchases",
-          url: "/purchase",
-          icon: List,
+          title: "Branches",
+          url: "/admin/branches",
+          icon: Building2,
         },
         {
-          title: "Add Purchase",
-          url: "/purchase/new",
-          icon: PlusCircle,
-        },
-        {
-          title: "Purchase Returns",
-          url: "/purchase-return",
-          icon: Undo2,
-        },
-      ],
-    },
-    {
-      title: "Sales & Billing",
-      url: "/sales",
-      icon: Receipt,
-      children: [
-        {
-          title: "POS Billing Terminal",
-          url: "/sales/pos",
-          icon: CreditCard,
-        },
-        {
-          title: "List Sales",
-          url: "/sales",
-          icon: List,
-        },
-        {
-          title: "Add Sale Order",
-          url: "/sales/new",
-          icon: PlusCircle,
-        },
-        {
-          title: "Sales Returns",
-          url: "/sales-return",
-          icon: Undo2,
-        },
-      ],
-    },
-    {
-      title: "Customers & Contacts",
-      url: "/admin/customers",
-      icon: Users,
-      children: [
-        {
-          title: "Customers",
-          url: "/admin/customers",
-          icon: UserCheck,
-        },
-        {
-          title: "Suppliers",
-          url: "/admin/supplier",
+          title: "Users & Staff",
+          url: "/admin/users",
           icon: UserCheck,
         },
       ],
@@ -256,26 +256,6 @@ export const SIDEBAR_DATA: any = {
       ],
     },
 
-    {
-      title: "Communication",
-      url: "/admin/settings/communication",
-      icon: Mail,
-    },
-    {
-      title: "Security settings",
-      url: "/admin/settings/security",
-      icon: ShieldAlert,
-    },
-    {
-      title: "System Settings",
-      url: "/admin/settings/system",
-      icon: Settings2,
-    },
-    {
-      title: "Support Desk",
-      url: "/support",
-      icon: HelpCircle,
-    },
   ],
 
   // secondary navigation for footer
