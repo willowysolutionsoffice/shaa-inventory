@@ -1,18 +1,7 @@
-// nav-user.tsx
-
 "use client";
 
-import {
-  IconDotsVertical,
-  IconLogout,
-} from "@tabler/icons-react";
-
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar";
-
+import { IconDotsVertical, IconLogout } from "@tabler/icons-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,17 +10,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-
 import type { UserProfile } from "@/types/navigation";
 import { getInitials } from "@/lib/utils";
-
 import { useState } from "react";
 import { LogoutDialog } from "../auth/logout-modal";
 
@@ -40,10 +26,9 @@ interface NavUserProps {
 }
 
 export function NavUser({ user }: NavUserProps) {
-  const { isMobile } = useSidebar();
-
+  const { isMobile, state } = useSidebar();
+  const isCollapsed = state === "collapsed";
   const initials = getInitials(user.name);
-
   const [openDelete, setOpenDelete] = useState(false);
 
   return (
@@ -54,41 +39,34 @@ export function NavUser({ user }: NavUserProps) {
             <SidebarMenuButton
               size="lg"
               className="
-                h-14
-                rounded-2xl
-                border
-                border-white/10
-                bg-white/10
-                px-3
-                text-white
-                backdrop-blur-md
-                transition-all
-                duration-200
+                rounded-2xl border border-white/10
+                bg-white/10 text-white
+                backdrop-blur-md transition-all duration-200
                 hover:bg-white/15
+                /* collapsed: center the avatar, match icon row height */
+                group-data-[collapsible=icon]:h-11
+                group-data-[collapsible=icon]:w-full
+                group-data-[collapsible=icon]:justify-center
+                group-data-[collapsible=icon]:px-0
+                /* expanded */
+                group-data-[state=expanded]:h-14
+                group-data-[state=expanded]:px-3
               "
             >
-              <Avatar className="h-10 w-10 rounded-xl border border-white/10">
-                <AvatarImage
-                  src={user.name.charAt(0)}
-                  alt={user.name}
-                />
-
-                <AvatarFallback className="rounded-xl bg-white/15 text-white">
+              <Avatar className="h-8 w-8 rounded-xl border border-white/10 shrink-0">
+                <AvatarImage src={user.avatar ?? ""} alt={user.name} />
+                <AvatarFallback className="rounded-xl bg-white/15 text-white text-xs font-semibold">
                   {initials}
                 </AvatarFallback>
               </Avatar>
 
-              <div className="grid flex-1 text-left leading-tight">
-                <span className="truncate text-sm font-semibold">
-                  {user.name}
-                </span>
-
-                <span className="truncate text-xs text-white/60">
-                  {user.email}
-                </span>
+              {/* Hidden when collapsed */}
+              <div className="grid flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
+                <span className="truncate text-sm font-semibold">{user.name}</span>
+                <span className="truncate text-xs text-white/60">{user.email}</span>
               </div>
 
-              <IconDotsVertical className="size-4 text-white/60" />
+              <IconDotsVertical className="size-4 text-white/60 group-data-[collapsible=icon]:hidden" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
 
@@ -103,15 +81,9 @@ export function NavUser({ user }: NavUserProps) {
                 <Avatar className="h-10 w-10 rounded-xl">
                   <AvatarFallback>{initials}</AvatarFallback>
                 </Avatar>
-
                 <div>
-                  <p className="text-sm font-semibold">
-                    {user.name}
-                  </p>
-
-                  <p className="text-xs text-muted-foreground">
-                    {user.email}
-                  </p>
+                  <p className="text-sm font-semibold">{user.name}</p>
+                  <p className="text-xs text-muted-foreground">{user.email}</p>
                 </div>
               </div>
             </DropdownMenuLabel>
@@ -120,7 +92,7 @@ export function NavUser({ user }: NavUserProps) {
 
             <DropdownMenuItem
               className="text-red-500 cursor-pointer"
-              onSelect={() => setOpenDelete(!openDelete)}
+              onSelect={() => setOpenDelete(true)}
             >
               <IconLogout className="mr-2 h-4 w-4" />
               Log out
@@ -128,10 +100,7 @@ export function NavUser({ user }: NavUserProps) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <LogoutDialog
-          open={openDelete}
-          setOpen={setOpenDelete}
-        />
+        <LogoutDialog open={openDelete} setOpen={setOpenDelete} />
       </SidebarMenuItem>
     </SidebarMenu>
   );

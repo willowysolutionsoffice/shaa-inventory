@@ -7,12 +7,16 @@ import { getProductByList, productSchema, productUpdateSchema } from "@/schemas/
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
+/** Safe accessor — handles the case where the global store was seeded
+ *  before the `variations` array was added (hot-reload / persistent globals). */
+const getVariations = () => (db as any).variations ?? [];
+
 export const createProduct = actionClient
   .inputSchema(productSchema)
   .action(async (values) => {
     try {
       const data = values.parsedInput;
-      
+
       const purchasePrice = data.purchasePrice ? Math.round(data.purchasePrice) : 0;
       const sellingPrice = data.sellingPrice ? Math.round(data.sellingPrice) : 0;
 
@@ -22,10 +26,12 @@ export const createProduct = actionClient
         sku: data.sku,
         brandId: data.brandId,
         branchId: data.branchId || "main-branch",
+        unit: data.unit || undefined,
         stock: data.stock || 0,
         purchasePrice,
         sellingPrice,
         description: data.description || undefined,
+        variationIds: data.variationIds ?? [],
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -49,17 +55,22 @@ export const getProductList = actionClient
   .action(async (values) => {
     try {
       const { page, limit } = values.parsedInput;
-      
-      const products = db.products.map((p) => ({
-        ...p,
-        brand: db.brands.find((b) => b.id === p.brandId) || { name: "Unknown" },
-      }));
+      const allVariations = getVariations();
+
+      const products = db.products.map((p) => {
+        const ids: string[] = (p as any).variationIds ?? [];
+        return {
+          ...p,
+          variationIds: ids,
+          brand: db.brands.find((b) => b.id === p.brandId) || { name: "Unknown" },
+          variations: allVariations.filter((v: any) => ids.includes(v.id)),
+        };
+      });
 
       const totalCount = products.length;
       const totalPages = Math.ceil(totalCount / limit);
       const totalStock = products.reduce((sum, p) => sum + p.stock, 0);
 
-      // Sort by createdAt desc
       products.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
       return {
@@ -81,27 +92,29 @@ export const getProductList = actionClient
     }
   });
 
-export const getProductListForDropdown = actionClient.inputSchema(
-  z.object({ query: z.string().optional() })
-).action(async ({ parsedInput }) => {
-  const query = parsedInput.query?.trim().toLowerCase() || "";
-  
-  let products = [...db.products];
-  if (query) {
-    products = products.filter((p) => p.product_name.toLowerCase().includes(query));
-  }
+export const getProductListForDropdown = actionClient
+  .inputSchema(z.object({ query: z.string().optional() }))
+  .action(async ({ parsedInput }) => {
+    const query = parsedInput.query?.trim().toLowerCase() || "";
 
-  return {
-    products: products.map((p) => ({
-      id: p.id,
-      product_name: p.product_name,
-      stock: p.stock,
-      quantity: 1,
-      purchasePrice: p.purchasePrice,
-      sellingPrice: p.sellingPrice,
-    })),
-  };
-});
+    let products = [...db.products];
+    if (query) {
+      products = products.filter((p) =>
+        p.product_name.toLowerCase().includes(query)
+      );
+    }
+
+    return {
+      products: products.map((p) => ({
+        id: p.id,
+        product_name: p.product_name,
+        stock: p.stock,
+        quantity: 1,
+        purchasePrice: p.purchasePrice,
+        sellingPrice: p.sellingPrice,
+      })),
+    };
+  });
 
 export const getProductById = actionClient
   .inputSchema(getProductByList)
@@ -109,11 +122,15 @@ export const getProductById = actionClient
     const { id } = values.parsedInput;
     const product = db.products.find((p) => p.id === id);
     if (product) {
+      const allVariations = getVariations();
+      const ids: string[] = (product as any).variationIds ?? [];
       return {
         data: {
           ...product,
+          variationIds: ids,
           brand: db.brands.find((b) => b.id === product.brandId) || { name: "Unknown" },
           branch: db.branches.find((b) => b.id === product.branchId) || { name: "Unknown" },
+          variations: allVariations.filter((v: any) => ids.includes(v.id)),
         },
       };
     }
@@ -127,14 +144,21 @@ export const updateProduct = actionClient
     try {
       const idx = db.products.findIndex((p) => p.id === id);
       if (idx !== -1) {
-        const purchasePrice = inputData.purchasePrice ? Math.round(inputData.purchasePrice) : db.products[idx].purchasePrice;
-        const sellingPrice = inputData.sellingPrice ? Math.round(inputData.sellingPrice) : db.products[idx].sellingPrice;
+        const purchasePrice = inputData.purchasePrice
+          ? Math.round(inputData.purchasePrice)
+          : db.products[idx].purchasePrice;
+        const sellingPrice = inputData.sellingPrice
+          ? Math.round(inputData.sellingPrice)
+          : db.products[idx].sellingPrice;
+
+        const existingVariationIds: string[] = (db.products[idx] as any).variationIds ?? [];
 
         const updated = {
           ...db.products[idx],
           ...inputData,
           purchasePrice,
           sellingPrice,
+          variationIds: inputData.variationIds ?? existingVariationIds,
           updatedAt: new Date(),
         };
 

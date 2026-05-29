@@ -22,7 +22,7 @@ interface NavMainProps {
 
 export function NavMain({ items }: NavMainProps) {
   return (
-    <SidebarGroup>
+    <SidebarGroup className="p-0">
       <SidebarGroupContent className="flex flex-col gap-4">
         {navigation.showQuickCreate && (
           <SidebarMenu>

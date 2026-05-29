@@ -5,6 +5,7 @@
 import { SidebarGroup, SidebarGroupLabel } from "@/components/ui/sidebar";
 import type { NavItem } from "@/types/navigation";
 import { NavMenu } from "./nav-menu";
+import { cn } from "@/lib/utils";
 
 interface NavGroupProps {
   label?: string;
@@ -18,7 +19,7 @@ export function NavGroup({
   ...props
 }: NavGroupProps & React.ComponentPropsWithoutRef<typeof SidebarGroup>) {
   return (
-    <SidebarGroup className={className} {...props}>
+<SidebarGroup className={cn("p-0", className)} {...props}>
       {label && (
         <SidebarGroupLabel
           className="

@@ -24,7 +24,8 @@ import {
   History,
   FileSpreadsheet,
   Boxes,
-  BellRing
+  BellRing,
+  Layers
 } from "lucide-react";
 import type { SidebarData } from "@/types/navigation";
 import { APP_CONFIG } from "@/config/app";
@@ -73,7 +74,8 @@ export const SIDEBAR_DATA: any = {
           title: "Categories",
           url: "/admin/categories",
           icon: FolderTree,
-        }
+        },
+        { title: "Variations", url: "/admin/variations", icon: Layers }
       ],
     },
     {

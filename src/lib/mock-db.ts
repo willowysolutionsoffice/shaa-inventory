@@ -1,6 +1,5 @@
 // src/lib/mock-db.ts
 // Demo data based on Shaa Calicut — Kerala textile retail store
-// Products: Unstitched dress materials, sarees, kurtis, suits, lawn collections
 
 export interface Branch {
   id: string;
@@ -16,6 +15,14 @@ export interface Brand {
   id: string;
   name: string;
   description?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Variation {
+  id: string;
+  name: string;
+  values: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -47,9 +54,11 @@ export interface Product {
   brandId: string;
   branchId: string;
   stock: number;
+  unit?: string;
   purchasePrice: number;
   sellingPrice: number;
   description?: string;
+  variationIds: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -205,6 +214,7 @@ const globalStore = globalThis as unknown as {
   db: {
     branches: Branch[];
     brands: Brand[];
+    variations: Variation[];
     categories: ExpenseCategory[];
     expenses: Expense[];
     products: Product[];
@@ -303,6 +313,66 @@ if (!globalStore.db) {
       },
     ],
 
+    // ── VARIATIONS ─────────────────────────────────────────────────────────────
+    variations: [
+      {
+        id: "var-size-tshirts",
+        name: "Size (Tshirts)",
+        values: ["S", "M", "L", "XL"],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: "var-size-shoes",
+        name: "Size (Shoes)",
+        values: ["5", "6", "7", "8", "9"],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: "var-waist-jeans",
+        name: "Waist Size (Jeans)",
+        values: ["28", "30", "32", "34", "36"],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: "var-color",
+        name: "Color",
+        values: ["Black", "Blue", "Brown", "Grey", "Gold", "Gray", "White"],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: "var-waist",
+        name: "Waist Size",
+        values: ["28", "30", "32", "34", "36"],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: "var-size",
+        name: "Size",
+        values: ["S", "M", "L", "XL", "6", "7", "8", "9", "5"],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: "var-memory",
+        name: "Internal Memory",
+        values: ["64 GB", "128 GB", "32 GB"],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: "var-storage",
+        name: "Storage",
+        values: ["256 GB", "500 GB"],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ],
+
     // ── EXPENSE CATEGORIES ─────────────────────────────────────────────────────
     categories: [
       {
@@ -374,7 +444,6 @@ if (!globalStore.db) {
 
     // ── PRODUCTS ───────────────────────────────────────────────────────────────
     products: [
-      // Unstitched Dress Materials
       {
         id: "prod-1",
         product_name: "Gulaal Delia Lawn – Unstitched 3-Piece",
@@ -385,6 +454,7 @@ if (!globalStore.db) {
         purchasePrice: 3200,
         sellingPrice: 4999,
         description: "Printed lawn shirt, silk dupatta, printed cotton trouser with embroidered organza neckline",
+        variationIds: ["var-color"],
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -398,6 +468,7 @@ if (!globalStore.db) {
         purchasePrice: 2400,
         sellingPrice: 3799,
         description: "Digital printed lawn shirt, chiffon dupatta, dyed cambric trouser",
+        variationIds: ["var-color"],
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -411,6 +482,7 @@ if (!globalStore.db) {
         purchasePrice: 4500,
         sellingPrice: 6999,
         description: "Embroidered karandi shirt, organza embroidered dupatta, raw silk trouser",
+        variationIds: [],
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -424,10 +496,10 @@ if (!globalStore.db) {
         purchasePrice: 2800,
         sellingPrice: 4299,
         description: "Printed khaddar shirt, printed khaddar dupatta, dyed trouser – winter collection",
+        variationIds: ["var-color"],
         createdAt: new Date(),
         updatedAt: new Date(),
       },
-      // Sarees
       {
         id: "prod-5",
         product_name: "Banarasi Pure Silk Saree – Zari Border",
@@ -438,6 +510,7 @@ if (!globalStore.db) {
         purchasePrice: 5500,
         sellingPrice: 8999,
         description: "Handloom Banarasi pure silk saree with heavy zari border and brocade pallu – bridal range",
+        variationIds: ["var-color"],
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -451,6 +524,7 @@ if (!globalStore.db) {
         purchasePrice: 1200,
         sellingPrice: 1999,
         description: "Lightweight Kota doria saree with traditional block print – ideal for daily wear",
+        variationIds: [],
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -464,6 +538,7 @@ if (!globalStore.db) {
         purchasePrice: 2200,
         sellingPrice: 3499,
         description: "Soft georgette saree with sequin and thread embroidery – perfect for weddings and parties",
+        variationIds: ["var-color"],
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -477,10 +552,10 @@ if (!globalStore.db) {
         purchasePrice: 800,
         sellingPrice: 1399,
         description: "Traditional Kerala off-white cotton saree with golden kasavu border – festival special",
+        variationIds: [],
         createdAt: new Date(),
         updatedAt: new Date(),
       },
-      // Kurtis & Readymades
       {
         id: "prod-9",
         product_name: "Anarkali Rayon Kurti – Printed Long – XL",
@@ -491,6 +566,7 @@ if (!globalStore.db) {
         purchasePrice: 450,
         sellingPrice: 799,
         description: "Long printed rayon anarkali kurti with side slits – available in S/M/L/XL/XXL",
+        variationIds: ["var-size-tshirts", "var-color"],
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -504,10 +580,10 @@ if (!globalStore.db) {
         purchasePrice: 650,
         sellingPrice: 1099,
         description: "3-piece palazzo set: printed muslin kurti, matching palazzo, and contrast dupatta",
+        variationIds: ["var-size-tshirts", "var-color"],
         createdAt: new Date(),
         updatedAt: new Date(),
       },
-      // Fabrics by Metre
       {
         id: "prod-11",
         product_name: "Pure Linen Fabric – Solid – Per Metre",
@@ -518,6 +594,7 @@ if (!globalStore.db) {
         purchasePrice: 180,
         sellingPrice: 299,
         description: "60s count pure linen – breathable, ideal for kurtis and trousers – sold per metre",
+        variationIds: ["var-color"],
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -531,10 +608,10 @@ if (!globalStore.db) {
         purchasePrice: 120,
         sellingPrice: 199,
         description: "Lightweight digital printed chiffon fabric – ideal for dupattas and blouses",
+        variationIds: ["var-color"],
         createdAt: new Date(),
         updatedAt: new Date(),
       },
-      // Dupattas
       {
         id: "prod-13",
         product_name: "Embroidered Organza Dupatta – Bridal",
@@ -545,6 +622,7 @@ if (!globalStore.db) {
         purchasePrice: 900,
         sellingPrice: 1499,
         description: "Heavy embroidered organza dupatta with mirror work – bridal & wedding collection",
+        variationIds: ["var-color"],
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -558,10 +636,10 @@ if (!globalStore.db) {
         purchasePrice: 600,
         sellingPrice: 999,
         description: "Soft silk dupatta with digital floral print – pairs with any unstitched suit",
+        variationIds: ["var-color"],
         createdAt: new Date(),
         updatedAt: new Date(),
       },
-      // Salwar Sets
       {
         id: "prod-15",
         product_name: "Sapphire Ready-to-Wear Embroidered Suit",
@@ -572,6 +650,7 @@ if (!globalStore.db) {
         purchasePrice: 5200,
         sellingPrice: 7999,
         description: "Stitched 3-piece embroidered lawn suit with organza dupatta – Eid festive collection",
+        variationIds: ["var-size-tshirts"],
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -1096,5 +1175,6 @@ if (!globalStore.db) {
     ],
   };
 }
-
+if (!globalStore.db.variations) globalStore.db.variations = [];
+if (!globalStore.db.products)   globalStore.db.products   = [];
 export const db = globalStore.db;

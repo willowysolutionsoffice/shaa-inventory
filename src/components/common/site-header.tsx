@@ -41,6 +41,8 @@ export function SiteHeader({ title = defaultTitle }: SiteHeaderProps = {}) {
               </a>
             </Button>
           )}
+            <ModeToggle /> 
+
         </div>
       </div>
     </header>
