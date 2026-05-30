@@ -28,9 +28,11 @@ export default async function RootLayout({
           "--header-height": theme.headerHeight,
         } as React.CSSProperties
       }
+            className="h-screen overflow-hidden"  // ← add this
+
     >
       <AppSidebar variant="floating" user={session?.user} />
-      <SidebarInset>
+      <SidebarInset className="overflow-y-auto">  {/* ← add overflow-y-auto */}
         <SiteHeader />
         <main className="p-4 md:p-6 bg-background min-h-[calc(100vh-1rem)]">{children}</main>
       </SidebarInset>

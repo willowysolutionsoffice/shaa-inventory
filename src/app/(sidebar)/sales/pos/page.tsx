@@ -10,7 +10,6 @@ import {
   Percent, 
   CreditCard, 
   Wallet, 
-  DollarSign, 
   Receipt, 
   UserPlus, 
   PauseCircle, 
@@ -27,8 +26,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
+import { IndianRupee } from "lucide-react";
 
-// Mock products database for POS terminal
 const POS_PRODUCTS = [
   { id: "prod-1", name: "Gulaal Delia Lawn – Unstitched 3-Piece", sku: "GUL-DELIA-LP-01", price: 4999, stock: 24, category: "Unstitched" },
   { id: "prod-2", name: "Gul Ahmed Summer Lawn – Unstitched 3-Piece", sku: "GA-SML-UP-02", price: 3799, stock: 30, category: "Unstitched" },
@@ -65,19 +64,21 @@ export default function PosBillingPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [barcodeInput, setBarcodeInput] = useState("");
-const [selectedCustomer, setSelectedCustomer] = useState("cust-walk");
+  const [selectedCustomer, setSelectedCustomer] = useState("cust-walk");
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [discountPercent, setDiscountPercent] = useState<number>(0);
+
+  // Two separate discount states
+  const [couponDiscountPercent, setCouponDiscountPercent] = useState<number>(0);
+  const [manualDiscountPercent, setManualDiscountPercent] = useState<number | "">("");
+
   const [couponCode, setCouponCode] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "upi">("cash");
   const [heldBills, setHeldBills] = useState<Array<{ id: string; cart: CartItem[]; customerId: string; subtotal: number }>>([]);
 
-  // Categories extraction
   const categories = useMemo(() => {
     return ["All", ...Array.from(new Set(POS_PRODUCTS.map((p) => p.category)))];
   }, []);
 
-  // Filtered products list
   const filteredProducts = useMemo(() => {
     return POS_PRODUCTS.filter((p) => {
       const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.sku.toLowerCase().includes(searchTerm.toLowerCase());
@@ -86,7 +87,6 @@ const [selectedCustomer, setSelectedCustomer] = useState("cust-walk");
     });
   }, [searchTerm, selectedCategory]);
 
-  // Cart operations
   const addToCart = (product: typeof POS_PRODUCTS[0]) => {
     const existing = cart.find((item) => item.product.id === product.id);
     if (existing) {
@@ -125,7 +125,6 @@ const [selectedCustomer, setSelectedCustomer] = useState("cust-walk");
     toast.info("Item removed from terminal cart.");
   };
 
-  // Barcode enter handler
   const handleBarcodeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const found = POS_PRODUCTS.find((p) => p.sku.toLowerCase() === barcodeInput.trim().toLowerCase());
@@ -137,90 +136,81 @@ const [selectedCustomer, setSelectedCustomer] = useState("cust-walk");
     }
   };
 
-  // Pricing calculations
+  // ── Pricing ────────────────────────────────────────────────────────────────
+
   const subtotal = useMemo(() => {
     return cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
   }, [cart]);
 
-  const discountAmount = useMemo(() => {
-    return (subtotal * discountPercent) / 100;
-  }, [subtotal, discountPercent]);
+  // Coupon discount applied first
+  const couponDiscountAmount = useMemo(() => {
+    return (subtotal * couponDiscountPercent) / 100;
+  }, [subtotal, couponDiscountPercent]);
 
-  const taxAmount = useMemo(() => {
-    // 12% standard GST/VAT tax on net items
-    return ((subtotal - discountAmount) * 12) / 100;
-  }, [subtotal, discountAmount]);
+  // Manual discount applied on top of coupon-discounted price
+  const afterCoupon = subtotal - couponDiscountAmount;
+  const manualPct = typeof manualDiscountPercent === "number" ? Math.min(Math.max(manualDiscountPercent, 0), 100) : 0;
+  const manualDiscountAmount = useMemo(() => {
+    return (afterCoupon * manualPct) / 100;
+  }, [afterCoupon, manualPct]);
 
-  const grandTotal = useMemo(() => {
-    return subtotal - discountAmount + taxAmount;
-  }, [subtotal, discountAmount, taxAmount]);
+  const totalDiscountAmount = couponDiscountAmount + manualDiscountAmount;
 
-  // Apply Coupon
+  const taxBase = subtotal - totalDiscountAmount;
+  const taxAmount = useMemo(() => (taxBase * 12) / 100, [taxBase]);
+  const grandTotal = useMemo(() => taxBase + taxAmount, [taxBase, taxAmount]);
+
   const applyCoupon = () => {
     if (couponCode.toUpperCase() === "WELCOME10") {
-      setDiscountPercent(10);
-      toast.success("Coupon code WELCOME10 applied! 10% discount credited.");
+      setCouponDiscountPercent(10);
+      toast.success("Coupon WELCOME10 applied! 10% discount.");
     } else if (couponCode.toUpperCase() === "SUPERERP") {
-      setDiscountPercent(20);
-      toast.success("Coupon code SUPERERP applied! 20% discount credited.");
+      setCouponDiscountPercent(20);
+      toast.success("Coupon SUPERERP applied! 20% discount.");
     } else {
       toast.error("Invalid coupon code.");
     }
   };
 
-  // Hold current invoice
   const holdBill = () => {
-    if (cart.length === 0) {
-      toast.warning("Cannot hold an empty cart.");
-      return;
-    }
-    const newHold = {
-      id: `HOLD-${Date.now().toString().slice(-4)}`,
-      cart,
-      customerId: selectedCustomer,
-      subtotal,
-    };
+    if (cart.length === 0) { toast.warning("Cannot hold an empty cart."); return; }
+    const newHold = { id: `HOLD-${Date.now().toString().slice(-4)}`, cart, customerId: selectedCustomer, subtotal };
     setHeldBills([...heldBills, newHold]);
     setCart([]);
-    toast.success(`Transaction put on HOLD successfully. Ticket: ${newHold.id}`);
+    toast.success(`Transaction on HOLD. Ticket: ${newHold.id}`);
   };
 
-  // Restore held bill
   const restoreBill = (holdId: string) => {
     const ticket = heldBills.find((h) => h.id === holdId);
     if (ticket) {
       setCart(ticket.cart);
       setSelectedCustomer(ticket.customerId);
       setHeldBills(heldBills.filter((h) => h.id !== holdId));
-      toast.success(`Restored active cart from hold: ${holdId}`);
+      toast.success(`Restored cart from hold: ${holdId}`);
     }
   };
 
-  // Checkout submission
   const checkout = () => {
-    if (cart.length === 0) {
-      toast.warning("Cart is empty. Add products to generate invoice.");
-      return;
-    }
+    if (cart.length === 0) { toast.warning("Cart is empty."); return; }
     const customerName = CUSTOMERS.find((c) => c.id === selectedCustomer)?.name || "Walk-in";
     toast.success(
       <div className="flex flex-col gap-1">
         <span className="font-bold text-green-600 flex items-center gap-1">
-          <CheckCircle className="h-4 w-4" /> Invoice Generated Successfully!
+          <CheckCircle className="h-4 w-4" /> Invoice Generated!
         </span>
         <span className="text-xs">Customer: {customerName}</span>
-        <span className="text-xs">Amount Paid: {formatCurrency(grandTotal)} ({paymentMethod.toUpperCase()})</span>
+        <span className="text-xs">Amount: {formatCurrency(grandTotal)} ({paymentMethod.toUpperCase()})</span>
       </div>,
       { duration: 6000 }
     );
     setCart([]);
-    setDiscountPercent(0);
+    setCouponDiscountPercent(0);
+    setManualDiscountPercent("");
     setCouponCode("");
   };
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Header section */}
       <div className="flex flex-col gap-2 md:flex-row md:items-center justify-between">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
@@ -238,10 +228,9 @@ const [selectedCustomer, setSelectedCustomer] = useState("cust-walk");
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        {/* Left Section - Products Grid (7 cols) */}
+        {/* Left – Products */}
         <div className="xl:col-span-7 flex flex-col gap-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {/* Search Input */}
             <div className="relative md:col-span-2">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
@@ -251,28 +240,23 @@ const [selectedCustomer, setSelectedCustomer] = useState("cust-walk");
                 className="pl-9 h-10 border-border bg-card shadow-sm"
               />
             </div>
-
-            {/* Category Select */}
             <Select value={selectedCategory} onValueChange={setSelectedCategory}>
               <SelectTrigger className="h-10 border-border bg-card shadow-sm">
                 <SelectValue placeholder="Category" />
               </SelectTrigger>
               <SelectContent>
                 {categories.map((cat) => (
-                  <SelectItem key={cat} value={cat}>
-                    {cat}
-                  </SelectItem>
+                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
-          {/* Barcode Quick Entry Form */}
           <form onSubmit={handleBarcodeSubmit} className="flex gap-2 bg-purple-50/50 dark:bg-purple-950/10 border border-purple-100 dark:border-purple-900/40 p-3 rounded-xl items-center shadow-sm">
             <Barcode className="text-purple-600 h-5 w-5 shrink-0" />
-            <span className="text-xs font-semibold text-purple-800 dark:text-purple-300 hidden sm:inline">Barcode Scanner Input:</span>
+            <span className="text-xs font-semibold text-purple-800 dark:text-purple-300 hidden sm:inline">Barcode Scanner:</span>
             <Input
-              placeholder="Scan/Type SKU barcode and hit Enter... (e.g. SKU-HPH-01)"
+              placeholder="Scan/Type SKU and hit Enter..."
               value={barcodeInput}
               onChange={(e) => setBarcodeInput(e.target.value)}
               className="h-8 text-xs border-purple-200 dark:border-purple-800 focus-visible:ring-purple-500 bg-card"
@@ -282,11 +266,10 @@ const [selectedCustomer, setSelectedCustomer] = useState("cust-walk");
             </Button>
           </form>
 
-          {/* Products List Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-h-[520px] overflow-y-auto pr-1 no-scrollbar">
             {filteredProducts.map((prod) => (
-              <Card 
-                key={prod.id} 
+              <Card
+                key={prod.id}
                 className="cursor-pointer hover:border-purple-500 transition-all hover:shadow-md bg-card group border border-border flex flex-col justify-between h-36"
                 onClick={() => addToCart(prod)}
               >
@@ -313,15 +296,12 @@ const [selectedCustomer, setSelectedCustomer] = useState("cust-walk");
             ))}
           </div>
 
-          {/* Held Bills Board */}
           {heldBills.length > 0 && (
             <Card className="border border-yellow-200 bg-yellow-50/50 dark:bg-yellow-950/10 dark:border-yellow-900/30">
-              <CardHeader className="py-2.5 px-4 flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle className="text-sm font-semibold flex items-center gap-1.5 text-yellow-800 dark:text-yellow-400">
-                    <PauseCircle className="h-4 w-4" /> Held Transactions ({heldBills.length})
-                  </CardTitle>
-                </div>
+              <CardHeader className="py-2.5 px-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-1.5 text-yellow-800 dark:text-yellow-400">
+                  <PauseCircle className="h-4 w-4" /> Held Transactions ({heldBills.length})
+                </CardTitle>
               </CardHeader>
               <CardContent className="px-4 py-2 flex flex-wrap gap-2">
                 {heldBills.map((h) => (
@@ -332,7 +312,7 @@ const [selectedCustomer, setSelectedCustomer] = useState("cust-walk");
                     className="border-yellow-300 bg-card hover:bg-yellow-100 hover:text-yellow-900 dark:border-yellow-800"
                     onClick={() => restoreBill(h.id)}
                   >
-                    <span>{h.id}</span>
+                    {h.id}
                     <span className="text-[10px] opacity-75 font-normal ml-2">({formatCurrency(h.subtotal)})</span>
                   </Button>
                 ))}
@@ -341,23 +321,21 @@ const [selectedCustomer, setSelectedCustomer] = useState("cust-walk");
           )}
         </div>
 
-        {/* Right Section - Cart & Checkout Summary (5 cols) */}
+        {/* Right – Cart & Checkout */}
         <div className="xl:col-span-5">
-          <Card className="border-border shadow-md bg-card flex flex-col h-[760px] justify-between">
+          <Card className="border-border shadow-md bg-card flex flex-col h-[820px] justify-between">
             <CardHeader className="py-4 border-b border-border">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-lg font-bold flex items-center gap-1.5">
-                    Active Terminal Cart ({cart.reduce((sum, item) => sum + item.quantity, 0)})
+                  <CardTitle className="text-lg font-bold">
+                    Active Cart ({cart.reduce((sum, item) => sum + item.quantity, 0)})
                   </CardTitle>
-                  <CardDescription className="text-xs">Manage quantities and finalize tax codes</CardDescription>
+                  <CardDescription className="text-xs">Manage quantities and finalise</CardDescription>
                 </div>
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-red-500" onClick={() => setCart([])}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
-
-              {/* Customer Selector Dropdown */}
               <div className="mt-4 flex gap-2">
                 <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
                   <SelectTrigger className="h-9 border-border bg-muted/30">
@@ -371,19 +349,18 @@ const [selectedCustomer, setSelectedCustomer] = useState("cust-walk");
                     ))}
                   </SelectContent>
                 </Select>
-                <Button size="icon" variant="outline" className="h-9 w-9 shrink-0 border-border" onClick={() => toast.success("Added new customer form window mock.")}>
+                <Button size="icon" variant="outline" className="h-9 w-9 shrink-0" onClick={() => toast.success("New customer form.")}>
                   <UserPlus className="h-4 w-4 text-purple-600" />
                 </Button>
               </div>
             </CardHeader>
 
-            {/* Cart Items List */}
             <CardContent className="flex-1 overflow-y-auto py-3 space-y-3 pr-1 no-scrollbar">
               {cart.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
                   <ShoppingBag className="h-12 w-12 text-muted-foreground/30 mb-2 stroke-[1.5]" />
                   <p className="text-sm font-semibold">POS Cart is Empty</p>
-                  <p className="text-xs opacity-70">Scan barcode or click products to populate items list</p>
+                  <p className="text-xs opacity-70">Scan barcode or click products to add items</p>
                 </div>
               ) : (
                 cart.map((item) => (
@@ -391,35 +368,23 @@ const [selectedCustomer, setSelectedCustomer] = useState("cust-walk");
                     <div className="space-y-1">
                       <h4 className="font-semibold text-xs text-foreground line-clamp-1">{item.product.name}</h4>
                       <p className="text-[10px] text-muted-foreground">
-                        {formatCurrency(item.product.price)} / unit • <span className="text-purple-600 font-medium">Subtotal: {formatCurrency(item.product.price * item.quantity)}</span>
+                        {formatCurrency(item.product.price)} / unit •{" "}
+                        <span className="text-purple-600 font-medium">
+                          Subtotal: {formatCurrency(item.product.price * item.quantity)}
+                        </span>
                       </p>
                     </div>
-
                     <div className="flex items-center gap-2">
-                      {/* Quantity Toggles */}
                       <div className="flex items-center border border-border rounded-lg bg-card overflow-hidden">
-                        <button
-                          type="button"
-                          className="px-2 py-1 bg-muted hover:bg-muted/80 text-muted-foreground transition-colors"
-                          onClick={() => updateQuantity(item.product.id, -1)}
-                        >
+                        <button type="button" className="px-2 py-1 bg-muted hover:bg-muted/80 text-muted-foreground transition-colors" onClick={() => updateQuantity(item.product.id, -1)}>
                           <Minus className="h-3 w-3" />
                         </button>
                         <span className="px-2.5 font-bold text-xs text-foreground">{item.quantity}</span>
-                        <button
-                          type="button"
-                          className="px-2 py-1 bg-muted hover:bg-muted/80 text-muted-foreground transition-colors"
-                          onClick={() => updateQuantity(item.product.id, 1)}
-                        >
+                        <button type="button" className="px-2 py-1 bg-muted hover:bg-muted/80 text-muted-foreground transition-colors" onClick={() => updateQuantity(item.product.id, 1)}>
                           <Plus className="h-3 w-3" />
                         </button>
                       </div>
-
-                      <button
-                        type="button"
-                        className="p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-md transition-colors"
-                        onClick={() => removeFromCart(item.product.id)}
-                      >
+                      <button type="button" className="p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-md transition-colors" onClick={() => removeFromCart(item.product.id)}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
@@ -429,13 +394,14 @@ const [selectedCustomer, setSelectedCustomer] = useState("cust-walk");
             </CardContent>
 
             {/* Calculations & Checkout */}
-            <div className="border-t border-border bg-muted/20 p-4 space-y-4 rounded-b-xl">
-              {/* Discount / Coupon Bar */}
+            <div className="border-t border-border bg-muted/20 p-4 space-y-3 rounded-b-xl">
+
+              {/* Coupon row */}
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <Tag className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                   <Input
-                    placeholder="Enter Coupon (supererp, welcome10)..."
+                    placeholder="Coupon code (WELCOME10, SUPERERP)..."
                     value={couponCode}
                     onChange={(e) => setCouponCode(e.target.value)}
                     className="pl-8 h-9 text-xs bg-card"
@@ -446,73 +412,109 @@ const [selectedCustomer, setSelectedCustomer] = useState("cust-walk");
                 </Button>
               </div>
 
-              {/* Invoices Breakdown */}
+              {/* Manual discount row */}
+              <div className="flex gap-2 items-center">
+                <div className="relative flex-1">
+                  <Percent className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    placeholder="Instant discount %  (e.g. 10 = 10% off)"
+                    value={manualDiscountPercent}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "") {
+                        setManualDiscountPercent("");
+                        return;
+                      }
+                      const num = Math.min(Math.max(Number(val), 0), 100);
+                      setManualDiscountPercent(num);
+                    }}
+                    className="pl-8 h-9 text-xs bg-card"
+                  />
+                </div>
+                {manualPct > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setManualDiscountPercent("")}
+                    className="text-[10px] text-muted-foreground hover:text-destructive underline whitespace-nowrap"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {/* Invoice breakdown */}
               <div className="space-y-1.5 text-xs text-muted-foreground">
                 <div className="flex justify-between">
-                  <span>Cart Items Subtotal:</span>
+                  <span>Cart Total:</span>
                   <span className="font-semibold text-foreground">{formatCurrency(subtotal)}</span>
                 </div>
-                <div className="flex justify-between items-center text-green-600">
-                  <span className="flex items-center gap-1">
-                    <Sparkles className="h-3 w-3" /> Discounts Applied ({discountPercent}%):
-                  </span>
-                  <span className="font-semibold">-{formatCurrency(discountAmount)}</span>
-                </div>
+
+                {couponDiscountPercent > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span className="flex items-center gap-1">
+                      <Sparkles className="h-3 w-3" /> Coupon ({couponDiscountPercent}%):
+                    </span>
+                    <span className="font-semibold">−{formatCurrency(couponDiscountAmount)}</span>
+                  </div>
+                )}
+
+                {manualPct > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span className="flex items-center gap-1">
+                      <Percent className="h-3 w-3" /> Instant Discount ({manualPct}%):
+                    </span>
+                    <span className="font-semibold">−{formatCurrency(manualDiscountAmount)}</span>
+                  </div>
+                )}
+
+                {totalDiscountAmount > 0 && (
+                  <div className="flex justify-between text-green-700 font-medium border-t border-dashed border-green-200 pt-1">
+                    <span>Total Savings:</span>
+                    <span>−{formatCurrency(totalDiscountAmount)}</span>
+                  </div>
+                )}
+
                 <div className="flex justify-between">
-                  <span>Standard VAT/GST Tax (12%):</span>
+                  <span>GST / VAT (12%):</span>
                   <span className="font-semibold text-foreground">{formatCurrency(taxAmount)}</span>
                 </div>
-                <Separator className="my-2 bg-border" />
+
+                <Separator className="my-1 bg-border" />
+
                 <div className="flex justify-between text-base font-extrabold text-purple-700 dark:text-purple-400">
-                  <span>Total Payable Invoice:</span>
+                  <span>Total Payable:</span>
                   <span>{formatCurrency(grandTotal)}</span>
                 </div>
               </div>
 
-              {/* Payment Methods Selection */}
-              <div className="grid grid-cols-3 gap-2 py-2">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod("cash")}
-                  className={`flex flex-col items-center p-2.5 border rounded-xl gap-1 text-[11px] font-bold transition-all ${
-                    paymentMethod === "cash"
-                      ? "border-purple-600 bg-purple-50 text-purple-700 dark:bg-purple-950/20"
-                      : "border-border bg-card text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  <DollarSign className="h-4 w-4" />
-                  <span>Cash Payment</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod("card")}
-                  className={`flex flex-col items-center p-2.5 border rounded-xl gap-1 text-[11px] font-bold transition-all ${
-                    paymentMethod === "card"
-                      ? "border-purple-600 bg-purple-50 text-purple-700 dark:bg-purple-950/20"
-                      : "border-border bg-card text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  <CreditCard className="h-4 w-4" />
-                  <span>Card Swipe</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod("upi")}
-                  className={`flex flex-col items-center p-2.5 border rounded-xl gap-1 text-[11px] font-bold transition-all ${
-                    paymentMethod === "upi"
-                      ? "border-purple-600 bg-purple-50 text-purple-700 dark:bg-purple-950/20"
-                      : "border-border bg-card text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  <Wallet className="h-4 w-4" />
-                  <span>UPI Wallet</span>
-                </button>
+              {/* Payment methods */}
+              <div className="grid grid-cols-3 gap-2 py-1">
+                {(["cash", "card", "upi"] as const).map((method) => (
+                  <button
+                    key={method}
+                    type="button"
+                    onClick={() => setPaymentMethod(method)}
+                    className={`flex flex-col items-center p-2.5 border rounded-xl gap-1 text-[11px] font-bold transition-all ${
+                      paymentMethod === method
+                        ? "border-purple-600 bg-purple-50 text-purple-700 dark:bg-purple-950/20"
+                        : "border-border bg-card text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {method === "cash" && <IndianRupee className="h-4 w-4" />}
+                    {method === "card" && <CreditCard className="h-4 w-4" />}
+                    {method === "upi" && <Wallet className="h-4 w-4" />}
+                    <span>{method === "cash" ? "Cash" : method === "card" ? "Card" : "UPI"}</span>
+                  </button>
+                ))}
               </div>
 
-              {/* Checkout Controls */}
+              {/* Action buttons */}
               <div className="flex gap-2">
-                <Button variant="outline" className="flex-1 border-border gap-1 h-11 hover:bg-yellow-50 hover:text-yellow-800 dark:hover:bg-yellow-950/20" onClick={holdBill}>
-                  <PauseCircle className="h-4 w-4" /> Hold Ticket
+                <Button variant="outline" className="flex-1 gap-1 h-11 hover:bg-yellow-50 hover:text-yellow-800 dark:hover:bg-yellow-950/20" onClick={holdBill}>
+                  <PauseCircle className="h-4 w-4" /> Hold
                 </Button>
                 <Button className="flex-[2] bg-purple-600 hover:bg-purple-700 text-white gap-1 h-11 shadow-md shadow-purple-600/20 font-bold" onClick={checkout}>
                   <Receipt className="h-4 w-4" /> Complete Checkout
