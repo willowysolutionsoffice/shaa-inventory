@@ -4,8 +4,8 @@ import "./globals.css";
 import { APP_CONFIG } from "@/config/app";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
-
-import NextTopLoader from 'nextjs-toploader';
+import NextTopLoader from "nextjs-toploader";
+import { RoleSwitcher } from "@/components/dev/role-switcher";
 
 const fontSans = DM_Sans({
   variable: "--font-sans",
@@ -33,6 +33,7 @@ export default function RootLayout({
           <NextTopLoader color="#ea580c" showSpinner={false} />
           {children}
           <Toaster richColors position="top-right" />
+          <RoleSwitcher />
         </ThemeProvider>
       </body>
     </html>

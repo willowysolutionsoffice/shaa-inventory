@@ -1,3 +1,6 @@
+// src/components/sidebar/app-sidebar.tsx
+// Drop-in replacement. Now filters nav items based on user role permissions.
+
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -14,15 +17,36 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-import { SIDEBAR_DATA } from "@/constants/navigation";
+import { SIDEBAR_DATA, NavItem } from "@/constants/navigation";
+import { getPermissionsForRole } from "@/constants/permissions";
+import type { Permission } from "@/constants/permissions";
 import { UserProfile } from "@/types/user";
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   user?: UserProfile;
 }
 
+/** Filter nav items: include item if it has no permission requirement,
+ *  OR if the current user's role grants that permission. */
+function filterByPermission(items: NavItem[], userPermissions: Permission[]): NavItem[] {
+  return items.filter(
+    (item) => !item.permission || userPermissions.includes(item.permission)
+  );
+}
+
 export function AppSidebar({ user, ...props }: AppSidebarProps) {
   const { state, toggleSidebar } = useSidebar();
+
+  // Derive permissions from the user's role (sync, no async needed)
+  const userPermissions = user?.role
+    ? getPermissionsForRole(user.role)
+    : [];
+
+  const isAdmin = user?.role === "admin";
+
+  const visibleNavMain   = filterByPermission(SIDEBAR_DATA.navMain, userPermissions);
+  const visibleAdmin     = filterByPermission(SIDEBAR_DATA.admin, userPermissions);
+  const visibleSecondary = filterByPermission(SIDEBAR_DATA.navSecondary, userPermissions);
 
   return (
     <Sidebar
@@ -82,7 +106,7 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
         </div>
       </SidebarHeader>
 
-      {/* CONTENT — flex col, min-h-0 lets it shrink, overflow-y-auto enables scroll */}
+      {/* CONTENT */}
       <SidebarContent
         className="
           flex flex-col min-h-0
@@ -93,26 +117,38 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
           no-scrollbar py-4
         "
       >
-        {/* MAIN NAV */}
+        {/* MAIN NAV — filtered by permission */}
         <div className="px-2 shrink-0">
-          <NavMain items={SIDEBAR_DATA.navMain} />
+          <NavMain items={visibleNavMain} />
         </div>
 
-        {/* ADMIN */}
-        {user?.role === "admin" && (
+        {/* ADMIN SECTION — only shown if user has at least one admin permission */}
+        {isAdmin && visibleAdmin.length > 0 && (
           <div className="mt-4 shrink-0 group-data-[collapsible=icon]:hidden">
             <div className="px-5 mb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/50">
               Admin & Operations
             </div>
             <div className="px-2">
-              <NavGroup items={SIDEBAR_DATA.admin} />
+              <NavGroup items={visibleAdmin} />
+            </div>
+          </div>
+        )}
+
+        {/* Non-admin users who have some admin permissions (e.g. manage_branches for manager) */}
+        {!isAdmin && visibleAdmin.length > 0 && (
+          <div className="mt-4 shrink-0 group-data-[collapsible=icon]:hidden">
+            <div className="px-5 mb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/50">
+              Management
+            </div>
+            <div className="px-2">
+              <NavGroup items={visibleAdmin} />
             </div>
           </div>
         )}
 
         {/* SECONDARY — pinned to bottom */}
         <div className="mt-auto px-2 pb-2 shrink-0">
-          <NavGroup items={SIDEBAR_DATA.navSecondary} />
+          <NavGroup items={visibleSecondary} />
         </div>
       </SidebarContent>
 

@@ -4,8 +4,7 @@ import { AppSidebar } from "@/components/sidebar/app-sidebar";
 import { SiteHeader } from "@/components/common/site-header";
 import { APP_CONFIG, theme } from "@/config/app";
 import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
-
+import { headers, cookies } from "next/headers";
 
 export const metadata: Metadata = {
   title: APP_CONFIG.name,
@@ -20,6 +19,25 @@ export default async function RootLayout({
   const session = await auth.api.getSession({
     headers: await headers(),
   });
+    const cookieStore = await cookies();
+  const mockRole = process.env.NODE_ENV === "development"
+    ? cookieStore.get("shaa_mock_role")?.value
+    : undefined;
+     const MOCK_NAMES: Record<string, string> = {
+    admin:            "Arjun Menon",
+    store_manager:    "Faisal Ibrahim",
+    purchase_manager: "Suresh Nair",
+    billing_staff:    "Reshma Abdul Razak",
+    accountant:       "Priya Krishnan",
+    user:             "Demo Staff",
+  };
+   const effectiveUser = mockRole
+    ? {
+        ...session?.user,
+        role: mockRole,
+        name: MOCK_NAMES[mockRole] ?? session?.user?.name,
+      }
+    : session?.user;
   return (
     <SidebarProvider
       style={

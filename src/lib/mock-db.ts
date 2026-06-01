@@ -210,6 +210,28 @@ export interface BalancePayment {
   paymentNote?: string | null;
 }
 
+export interface Role {
+  id: string;
+  name: string;
+  description: string;
+  permissions: string[];   // Permission[]
+  color: string;           // RoleColor
+  status: "Active" | "Inactive";
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  roleId: string;
+  branchId: string;
+  status: "Active" | "Inactive";
+  createdAt: Date;
+  updatedAt: Date;
+}
 // ─── In-Memory Store ──────────────────────────────────────────────────────────
 const globalStore = globalThis as unknown as {
   db: {
@@ -232,6 +254,8 @@ const globalStore = globalThis as unknown as {
     purchaseReturns: PurchaseReturn[];
     purchaseReturnItems: PurchaseReturnItem[];
     balancePayments: BalancePayment[];
+    roles: Role[];
+    users: User[];
   };
 };
 
@@ -1189,8 +1213,75 @@ if (!globalStore.db) {
         paymentNote: "Gul Ahmed outstanding balance payment",
       },
     ],
+    roles: [
+      {
+        id: "role-admin",
+        name: "Admin",
+        description: "Full access to all features and settings",
+        permissions: [
+          "view_dashboard", "view_reports", "manage_products", "manage_branches",
+          "manage_customers", "manage_suppliers", "manage_sales", "manage_purchases",
+          "manage_returns", "manage_expenses", "manage_users", "manage_roles",
+        ],
+        color: "purple",
+        status: "Active",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: "role-manager",
+        name: "Manager",
+        description: "Manages day-to-day store operations",
+        permissions: [
+          "view_dashboard", "view_reports", "manage_products", "manage_branches",
+          "manage_customers", "manage_suppliers", "manage_sales", "manage_purchases",
+          "manage_returns", "manage_expenses",
+        ],
+        color: "blue",
+        status: "Active",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: "role-accountant",
+        name: "Accountant",
+        description: "Handles financial records and expense tracking",
+        permissions: [
+          "view_dashboard", "view_reports", "manage_expenses",
+          "manage_sales", "manage_purchases",
+        ],
+        color: "green",
+        status: "Active",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: "role-sales-staff",
+        name: "Sales Staff",
+        description: "Creates sales invoices and manages customers",
+        permissions: [
+          "view_dashboard", "manage_sales", "manage_customers", "manage_returns",
+        ],
+        color: "orange",
+        status: "Active",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: "role-cashier",
+        name: "Cashier",
+        description: "Processes payments and basic billing only",
+        permissions: ["view_dashboard", "manage_sales"],
+        color: "gray",
+        status: "Inactive",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ],
   };
 }
+if (!globalStore.db.roles) globalStore.db.roles = [];
+if (!globalStore.db.users) globalStore.db.users = [];
 if (!globalStore.db.variations) globalStore.db.variations = [];
-if (!globalStore.db.products)   globalStore.db.products   = [];
+if (!globalStore.db.products) globalStore.db.products = [];
 export const db = globalStore.db;
