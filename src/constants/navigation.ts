@@ -27,6 +27,8 @@ import {
   List,
   Undo2,
   History,
+  Truck,
+  TriangleAlert
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { type Permission, PERMISSIONS } from "./permissions";
@@ -225,6 +227,18 @@ const navMain: NavGroup[] = [
         title: "Stock Adjustments",
         url: "/admin/stock-adjustment",
         icon: PlusCircle,
+        permission: PERMISSIONS.MANAGE_PRODUCTS,
+      },
+      {
+        title: "Stock Tranfers",
+        url: "/admin/stock-transfer",
+        icon: Truck,
+        permission: PERMISSIONS.MANAGE_PRODUCTS,
+      },
+      {
+        title: " Tranfer History",
+        url: "/admin/stock-transfer/history",
+        icon: TriangleAlert,
         permission: PERMISSIONS.MANAGE_PRODUCTS,
       },
       {

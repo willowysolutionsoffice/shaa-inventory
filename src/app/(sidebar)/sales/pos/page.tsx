@@ -253,7 +253,6 @@ export default function PosBillingPage() {
           </div>
 
           <form onSubmit={handleBarcodeSubmit} className="flex gap-2 bg-purple-50/50 dark:bg-purple-950/10 border border-purple-100 dark:border-purple-900/40 p-3 rounded-xl items-center shadow-sm">
-            <Barcode className="text-purple-600 h-5 w-5 shrink-0" />
             <span className="text-xs font-semibold text-purple-800 dark:text-purple-300 hidden sm:inline">Barcode Scanner:</span>
             <Input
               placeholder="Scan/Type SKU and hit Enter..."
