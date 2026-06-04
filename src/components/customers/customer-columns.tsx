@@ -1,6 +1,6 @@
 "use client";
 
-import { Customer } from "@prisma/client";
+import type { Customer } from "@/lib/mock-db";
 import { CustomerFormDialog } from "./customer-form";
 import { CustomersDeleteDialog } from "./customer-delete-dailog";
 
@@ -12,6 +12,7 @@ import {
   Clock1,
   Edit2,
   Trash2,
+  History,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
@@ -19,6 +20,7 @@ import { CustomerPayDialog } from "./customer-pay-dialog";
 import { IconCash } from "@tabler/icons-react";
 import { CustomerPaymentHistoryModal } from "./customer-payment-history-modal";
 import { formatCurrency } from "@/lib/utils";
+import { useRouter } from "next/navigation";
 
 export const customersColumns: ColumnDef<Customer>[] = [
   {
@@ -135,42 +137,65 @@ interface CustomerActionsProps {
 }
 
 export const CustomerActions = ({ customer, branches }: CustomerActionsProps) => {
-  const [openDelete, setOpenDelete] = useState(false);
-  const [openEdit, setOpenEdit] = useState(false);
-  const [openPay, setOpenPay] = useState(false);
+  const router = useRouter();
+  const [openDelete, setOpenDelete]   = useState(false);
+  const [openEdit, setOpenEdit]       = useState(false);
+  const [openPay, setOpenPay]         = useState(false);
   const [openPayment, setOpenPayment] = useState(false);
 
   return (
     <div className="flex items-center gap-2">
+      {/* Pay */}
       <Button
         variant="ghost"
         size="sm"
         onClick={() => setOpenPay(true)}
         className="h-8 w-8 p-0"
+        title="Record Payment"
       >
         <IconCash className="h-4 w-4" />
       </Button>
+
+      {/* Payment history */}
       <Button
         variant="ghost"
         size="sm"
         onClick={() => setOpenPayment(true)}
         className="h-8 w-8 p-0"
+        title="Payment History"
       >
         <Clock1 className="h-4 w-4" />
       </Button>
+
+      {/* Customer history & rewards */}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => router.push(`/admin/customers/${customer.id}`)}
+        className="h-8 w-8 p-0 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/20"
+        title="Purchase History & Rewards"
+      >
+        <History className="h-4 w-4" />
+      </Button>
+
+      {/* Edit */}
       <Button
         variant="ghost"
         size="sm"
         onClick={() => setOpenEdit(true)}
         className="h-8 w-8 p-0"
+        title="Edit Customer"
       >
         <Edit2 className="h-4 w-4" />
       </Button>
+
+      {/* Delete */}
       <Button
         variant="ghost"
         size="sm"
         onClick={() => setOpenDelete(true)}
         className="text-destructive hover:text-destructive h-8 w-8 p-0"
+        title="Delete Customer"
       >
         <Trash2 className="h-4 w-4" />
       </Button>

@@ -6,6 +6,7 @@
 import {
   LayoutDashboard,
   Receipt,
+  ReceiptText,
   ShoppingBag,
   Users,
   Package,
@@ -28,7 +29,8 @@ import {
   Undo2,
   History,
   Truck,
-  TriangleAlert
+  TriangleAlert,
+  ClipboardCheck
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { type Permission, PERMISSIONS } from "./permissions";
@@ -113,6 +115,12 @@ const navMain: NavGroup[] = [
         permission: PERMISSIONS.MANAGE_SALES,
       },
       {
+        title: "Invoices",
+        url: "/sales/pos/invoice",
+        icon: ReceiptText,
+        permission: PERMISSIONS.MANAGE_SALES,
+      },
+      {
         title: "List Sales",
         url: "/sales",
         icon: List,
@@ -158,6 +166,18 @@ const navMain: NavGroup[] = [
         icon: Undo2,
         permission: PERMISSIONS.MANAGE_RETURNS,
       },
+      {
+  title: "GRN Screen",
+  url: "/admin/grn",
+  icon: ClipboardCheck,
+  permission: PERMISSIONS.MANAGE_PURCHASES,
+},
+{
+  title: "GRN History",
+  url: "/admin/grn/history",
+  icon: History,
+  permission: PERMISSIONS.MANAGE_PURCHASES,
+},
     ],
   },
 

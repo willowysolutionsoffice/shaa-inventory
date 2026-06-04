@@ -232,6 +232,28 @@ export interface User {
   createdAt: Date;
   updatedAt: Date;
 }
+export interface GRN {
+  id: string;
+  grnNo: string;
+  purchaseId: string;
+  supplierId: string;
+  branchId: string;
+  receivedDate: Date;
+  status: "Draft" | "Verified" | "Rejected";
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface GRNItem {
+  id: string;
+  grnId: string;
+  productId: string;
+  orderedQty: number;
+  receivedQty: number;
+  unitPrice: number;
+  total: number;
+}
 // ─── In-Memory Store ──────────────────────────────────────────────────────────
 const globalStore = globalThis as unknown as {
   db: {
@@ -256,11 +278,64 @@ const globalStore = globalThis as unknown as {
     balancePayments: BalancePayment[];
     roles: Role[];
     users: User[];
+    grns: GRN[];
+grnItems: GRNItem[];
   };
 };
 
 if (!globalStore.db) {
   globalStore.db = {
+
+    //GRN
+
+    grns: [
+  {
+    id: "grn-1",
+    grnNo: "GRN-2026-001",
+    purchaseId: "pur-1",
+    supplierId: "sup-1",
+    branchId: "branch-calicut",
+    receivedDate: new Date(Date.now() - 86400000 * 1),
+    status: "Verified",
+    notes: "All items received in good condition",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  {
+    id: "grn-2",
+    grnNo: "GRN-2026-002",
+    purchaseId: "pur-2",
+    supplierId: "sup-3",
+    branchId: "branch-calicut",
+    receivedDate: new Date(Date.now() - 86400000 * 3),
+    status: "Draft",
+    notes: "Pending quality check",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  {
+    id: "grn-3",
+    grnNo: "GRN-2026-003",
+    purchaseId: "pur-3",
+    supplierId: "sup-4",
+    branchId: "branch-malappuram",
+    receivedDate: new Date(Date.now() - 86400000 * 5),
+    status: "Verified",
+    notes: "2 pieces damaged, accepted rest",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+],
+grnItems: [
+  { id: "gitem-1", grnId: "grn-1", productId: "prod-1", orderedQty: 12, receivedQty: 12, unitPrice: 3200, total: 38400 },
+  { id: "gitem-2", grnId: "grn-1", productId: "prod-2", orderedQty: 12, receivedQty: 12, unitPrice: 2400, total: 28800 },
+  { id: "gitem-3", grnId: "grn-1", productId: "prod-13", orderedQty: 10, receivedQty: 10, unitPrice: 900, total: 9000 },
+  { id: "gitem-4", grnId: "grn-2", productId: "prod-5", orderedQty: 5, receivedQty: 3, unitPrice: 5500, total: 16500 },
+  { id: "gitem-5", grnId: "grn-2", productId: "prod-7", orderedQty: 8, receivedQty: 8, unitPrice: 2200, total: 17600 },
+  { id: "gitem-6", grnId: "grn-3", productId: "prod-3", orderedQty: 8, receivedQty: 6, unitPrice: 4500, total: 27000 },
+],
+
+
     // ── BRANCHES ───────────────────────────────────────────────────────────────
     branches: [
       {
@@ -1069,6 +1144,7 @@ if (!globalStore.db) {
       },
     ],
 
+    
     // ── SALES PAYMENTS ─────────────────────────────────────────────────────────
     salesPayments: [
       {
@@ -1278,10 +1354,14 @@ if (!globalStore.db) {
         updatedAt: new Date(),
       },
     ],
+    
   };
 }
 if (!globalStore.db.roles) globalStore.db.roles = [];
 if (!globalStore.db.users) globalStore.db.users = [];
 if (!globalStore.db.variations) globalStore.db.variations = [];
 if (!globalStore.db.products) globalStore.db.products = [];
+if (!globalStore.db.grns) globalStore.db.grns = [];
+if (!globalStore.db.grnItems) globalStore.db.grnItems = [];
+
 export const db = globalStore.db;
