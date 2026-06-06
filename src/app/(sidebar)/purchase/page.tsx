@@ -23,9 +23,8 @@ export default async function ProductPage({ searchParams }: ProductPageProps) {
 
   const today = getTodayUtcMidnight();
   const formattedToday = formatUtcDate(today);
-
-  const from = typeof params.from === "string" ? params.from : formattedToday;
-  const to = typeof params.to === "string" ? params.to : formattedToday;
+const from = typeof params.from === "string" ? params.from : undefined;
+const to = typeof params.to === "string" ? params.to : undefined;
 
 
   const { data } = await getPurchaseList({ page, limit, from, to });
@@ -40,9 +39,8 @@ export default async function ProductPage({ searchParams }: ProductPageProps) {
               <p className="text-muted-foreground">Manage your Purchases</p>
             </div>
             <div className="flex items-center gap-2">
-              <DateRangeFilter
-                defaultDate={{ from: today, to: today }}
-              />
+             <DateRangeFilter defaultDate={undefined} />
+
               <Link href="/purchase/new">
                 <Button>
                   <Plus className="mr-2 h-4 w-4" />

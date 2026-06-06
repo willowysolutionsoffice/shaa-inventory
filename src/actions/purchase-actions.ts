@@ -114,8 +114,8 @@ export const getPurchaseList = actionClient
       let filtered = [...db.purchases];
 
       if (from || to) {
-        const fromDate = from ? new Date(from) : null;
-        const toDate = to ? new Date(to) : null;
+       const fromDate = from ? new Date(`${from}T00:00:00.000Z`) : null;
+const toDate = to ? new Date(`${to}T23:59:59.999Z`) : null;
 
         filtered = filtered.filter((pur) => {
           const d = new Date(pur.purchaseDate);

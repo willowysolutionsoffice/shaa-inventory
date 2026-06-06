@@ -4,7 +4,7 @@
 import { actionClient } from '@/lib/safeAction';
 import { loginSchema, userFormSchema } from '@/schemas/user-schema';
 import { z } from 'zod';
-
+import { db } from '@/lib/mock-db';
 // Mock Data Arrays
 let mockUsers = [
   {
@@ -188,5 +188,5 @@ export const getAllRoles = async () => {
 };
 
 export const getAllBranches = async () => {
-  return mockBranches;
+  return db.branches.map((b) => ({ id: b.id, name: b.name }));
 };

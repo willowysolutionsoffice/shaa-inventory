@@ -145,10 +145,10 @@ export const purchaseColumns: ColumnDef<Purchase>[] = [
     },
   },
   {
-    accessorKey: "dueAmount",
+    accessorKey: "paymentDue",
     header: "Payment Due",
     cell: ({ row }) => {
-      const amount = row.getValue("dueAmount") as number;
+      const amount = row.getValue("paymentDue") as number;
       return (
         <div className="text-center font-medium">{formatCurrency(amount)}</div>
       );

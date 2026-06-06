@@ -395,7 +395,16 @@ const admin: NavGroup[] = [
       },
     ],
   },
-
+{
+  title: "Analytics",
+  url: "/admin/analytics/customers",
+  icon: BarChart3,
+  permission: PERMISSIONS.VIEW_REPORTS,
+  children: [
+    { title: "Customer Analytics", url: "/admin/analytics/customers", icon: FileSpreadsheet, permission: PERMISSIONS.VIEW_REPORTS },
+    { title: "Financial Analytics", url: "/admin/analytics/financial", icon: FileSpreadsheet, permission: PERMISSIONS.VIEW_REPORTS },
+  ],
+},
   // ── Master Management ──────────────────────────────────────────────────────
   {
     title: "Master Management",
@@ -422,6 +431,12 @@ const admin: NavGroup[] = [
       },
     ],
   },
+  {
+  title: "Audit Log",
+  url: "/admin/audit",
+  icon: Shield,
+  permission: PERMISSIONS.MANAGE_ROLES,
+},
 ];
 
 // ── Secondary nav (footer, always visible) ────────────────────────────────────
