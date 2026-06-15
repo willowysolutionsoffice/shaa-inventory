@@ -1,198 +1,103 @@
-// src/actions/supplier-action.ts
 'use server';
 
-import { db } from "@/lib/mock-db";
-import { actionClient } from "@/lib/safeAction";
-import {
-  supplierSchema,
-  updateSupplierSchema,
-  deleteSupplierSchema,
-} from "@/schemas/supplier-schema";
-import { revalidatePath } from "next/cache";
+import { actionClient } from '@/lib/safeAction';
+import { api } from '@/lib/api';
+import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 
-export const createSupplier = actionClient.inputSchema(supplierSchema).action(
-  async (values) => {
-    try {
-      const { name, email, phone, ...otherData } = values.parsedInput;
-
-      // Uniqueness checks in mock database
-      const existingName = db.suppliers.find((s) => s.name.toLowerCase() === name.toLowerCase());
-      if (existingName) {
-        return { error: "A supplier with this name already exists" };
-      }
-
-      if (email) {
-        const existingEmail = db.suppliers.find((s) => s.email?.toLowerCase() === email.toLowerCase());
-        if (existingEmail) {
-          return { error: "A supplier with this email already exists" };
-        }
-      }
-
-      if (phone) {
-        const existingPhone = db.suppliers.find((s) => s.phone === phone);
-        if (existingPhone) {
-          return { error: "A supplier with this phone number already exists" };
-        }
-      }
-
-      const newSupplier = {
-        id: `sup-${Date.now()}`,
-        name,
-        email: email || undefined,
-        phone: phone || undefined,
-        openingBalance: otherData.openingBalance || 0,
-        purchaseDue: 0,
-        purchaseReturnDue: 0,
-        branchId: otherData.branchId || "main-branch",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      db.suppliers.push(newSupplier);
-      revalidatePath("/suppliers");
-      return { data: newSupplier };
-    } catch (error: any) {
-      console.error("Create Supplier Error:", error);
-      return { error: error?.message || "Failed to create supplier. Please try again." };
-    }
-  }
-);
-
-export const getSupplierList = actionClient.action(async () => {
-  try {
-    const balancePaidMap = new Map();
-    db.balancePayments.forEach((b) => {
-      if (b.supplierId) {
-        const curr = balancePaidMap.get(b.supplierId) || 0;
-        balancePaidMap.set(b.supplierId, curr + b.amount);
-      }
-    });
-
-    const adjustedSuppliers = db.suppliers.map((s) => {
-      const generalPaid = balancePaidMap.get(s.id) || 0;
-
-      const openingPaid = Math.min(s.openingBalance, generalPaid);
-      let effectiveOpening = s.openingBalance - openingPaid;
-      let effectivePurchaseDue = (s.purchaseDue || 0) + openingPaid;
-
-      if (effectivePurchaseDue < 0) {
-        const remainingCredit = Math.abs(effectivePurchaseDue);
-        const absorption = Math.min(effectiveOpening, remainingCredit);
-        effectiveOpening -= absorption;
-        effectivePurchaseDue += absorption;
-      }
-
-      return {
-        ...s,
-        openingBalance: effectiveOpening,
-        purchaseDue: effectivePurchaseDue,
-      };
-    });
-
-    const calculatedTotals = adjustedSuppliers.reduce(
-      (acc, curr) => ({
-        openingBalance: acc.openingBalance + (curr.openingBalance || 0),
-        purchaseDue: acc.purchaseDue + (curr.purchaseDue || 0),
-        purchaseReturnDue: acc.purchaseReturnDue + (curr.purchaseReturnDue || 0),
-      }),
-      { openingBalance: 0, purchaseDue: 0, purchaseReturnDue: 0 }
-    );
-
-    return {
-      suppliers: adjustedSuppliers,
-      totals: calculatedTotals,
-    };
-  } catch (error) {
-    console.error("Get Suppliers Error:", error);
-    return { error: "Something went wrong" };
-  }
+const supplierSchema = z.object({
+  SupplierId:     z.string().min(1, 'Supplier ID is required'),
+  name:           z.string().min(1, 'Name is required'),
+  email:          z.string().optional(),
+  phone:          z.string().optional(),
+  address:        z.string().optional(),
+  openingBalance: z.coerce.number().optional().default(0),
+  branchId:       z.string().min(1, 'Branch is required'),
 });
 
-export const getSupplierListForDropdown = async () => {
-  return db.suppliers.map((s) => {
-    let effectiveOpening = s.openingBalance;
-    const purchaseDue = s.purchaseDue || 0;
-    const totalDue = effectiveOpening + purchaseDue;
+const updateSupplierSchema = supplierSchema.partial().extend({
+  id: z.string().min(1),
+});
 
-    if (totalDue <= 0) {
-      effectiveOpening = 0;
-    } else {
-      if (purchaseDue < 0) {
-        effectiveOpening = totalDue;
-      }
+const deleteSupplierSchema = z.object({
+  id: z.string().min(1),
+});
+
+function normalizeSupplier(s: any) {
+  return {
+    ...s,
+    openingBalance:    Number(s.openingBalance    ?? 0),
+    purchaseDue:       Number(s.purchaseDue       ?? 0),
+    purchaseReturnDue: Number(s.purchaseReturnDue ?? 0),
+  };
+}
+
+export const createSupplier = actionClient
+  .inputSchema(supplierSchema)
+  .action(async ({ parsedInput }) => {
+    try {
+      const raw = await api.post<any>('/suppliers', parsedInput);
+      const supplier = raw?.data ?? raw;
+      revalidatePath('/suppliers');
+      return { data: normalizeSupplier(supplier) };
+    } catch (error: any) {
+      return { error: error.message ?? 'Failed to create supplier' };
     }
-
-    return {
-      id: s.id,
-      name: s.name,
-      openingBalance: effectiveOpening,
-    };
   });
+
+export const getSupplierList = actionClient
+  .inputSchema(z.object({}))
+  .action(async () => {
+    try {
+      const raw     = await api.get<any>('/suppliers');
+      const payload = raw?.data ?? raw;
+      return {
+        suppliers: (payload.suppliers ?? []).map(normalizeSupplier),
+        totals:    payload.totals ?? {
+          openingBalance: 0, purchaseDue: 0, purchaseReturnDue: 0,
+        },
+      };
+    } catch (error: any) {
+      return { error: error.message ?? 'Failed to fetch suppliers' };
+    }
+  });
+
+export const getSupplierListForDropdown = async () => {
+  try {
+    const raw       = await api.get<any>('/suppliers/dropdown');
+    const suppliers = raw?.data ?? raw;
+    return (Array.isArray(suppliers) ? suppliers : []).map((s: any) => ({
+      id:             s.id,
+      name:           s.name,
+      openingBalance: Number(s.openingBalance ?? 0),
+    }));
+  } catch {
+    return [];
+  }
 };
 
-export const updateSupplier = actionClient.inputSchema(updateSupplierSchema).action(
-  async (values) => {
-    const { id, name, email, phone, ...otherData } = values.parsedInput;
+export const updateSupplier = actionClient
+  .inputSchema(updateSupplierSchema)
+  .action(async ({ parsedInput }) => {
     try {
-      const idx = db.suppliers.findIndex((s) => s.id === id);
-      if (idx === -1) {
-        return { error: "Supplier not found" };
-      }
-
-      // Uniqueness checks in mock database
-      const existingName = db.suppliers.find((s) => s.name.toLowerCase() === name.toLowerCase() && s.id !== id);
-      if (existingName) {
-        return { error: "A supplier with this name already exists" };
-      }
-
-      if (email) {
-        const existingEmail = db.suppliers.find((s) => s.email?.toLowerCase() === email.toLowerCase() && s.id !== id);
-        if (existingEmail) {
-          return { error: "A supplier with this email already exists" };
-        }
-      }
-
-      if (phone) {
-        const existingPhone = db.suppliers.find((s) => s.phone === phone && s.id !== id);
-        if (existingPhone) {
-          return { error: "A supplier with this phone number already exists" };
-        }
-      }
-
-      const updated = {
-        ...db.suppliers[idx],
-        name,
-        email: email || undefined,
-        phone: phone || undefined,
-        ...otherData,
-        updatedAt: new Date(),
-      };
-
-      db.suppliers[idx] = updated;
-      revalidatePath("/suppliers");
-      return { data: updated };
+      const { id, ...rest } = parsedInput;
+      const raw      = await api.patch<any>(`/suppliers/${id}`, rest);
+      const supplier = raw?.data ?? raw;
+      revalidatePath('/suppliers');
+      return { data: normalizeSupplier(supplier) };
     } catch (error: any) {
-      console.error("Update Supplier Error:", error);
-      return { error: error?.message || "Failed to update supplier. Please try again." };
+      return { error: error.message ?? 'Failed to update supplier' };
     }
-  }
-);
+  });
 
-export const deleteSupplier = actionClient.inputSchema(deleteSupplierSchema).action(
-  async (values) => {
-    const { id } = values.parsedInput;
+export const deleteSupplier = actionClient
+  .inputSchema(deleteSupplierSchema)
+  .action(async ({ parsedInput }) => {
     try {
-      const idx = db.suppliers.findIndex((s) => s.id === id);
-      if (idx !== -1) {
-        const deleted = db.suppliers[idx];
-        db.suppliers.splice(idx, 1);
-        revalidatePath("/suppliers");
-        return { data: deleted };
-      }
-      return { error: "Supplier not found" };
-    } catch (error) {
-      console.error("Delete Supplier Error:", error);
-      return { error: "Something went wrong" };
+      const raw = await api.delete<any>(`/suppliers/${parsedInput.id}`);
+      revalidatePath('/suppliers');
+      return { data: raw?.data ?? raw };
+    } catch (error: any) {
+      return { error: error.message ?? 'Failed to delete supplier' };
     }
-  }
-);
+  });

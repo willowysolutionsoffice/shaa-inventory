@@ -42,12 +42,12 @@ export function LoginForm({
       password: '',
     },
   });
-
-  useEffect(() => {
-    if (result?.data?.success) {
-      router.replace('/dashboard');
-    }
-  }, [result, router]);
+useEffect(() => {
+  if (result?.data?.success) {
+    router.refresh();       // ← tell Next.js to re-read cookies from server
+    router.push('/dashboard');  // ← then navigate
+  }
+}, [result, router]);
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
@@ -100,11 +100,16 @@ export function LoginForm({
                     </FormItem>
                   )}
                 />
-                {result?.validationErrors && (
-                  <div className="text-sm font-medium text-red-600">
-                    {result.validationErrors?._errors}
-                  </div>
-                )}
+                {result?.data?.success === false && (
+  <div className="rounded-md bg-red-50 px-3 py-2 text-sm font-medium text-red-600 border border-red-200">
+    {result.data.message ?? 'Invalid email or password'}
+  </div>
+)}
+{result?.validationErrors && (
+  <div className="text-sm font-medium text-red-600">
+    {result.validationErrors?._errors}
+  </div>
+)}
                 <Button type="submit" className="w-full" disabled={isExecuting}>
                   {isExecuting ? <Loader2 className="animate-spin size-4" /> : "Login"}
                 </Button>

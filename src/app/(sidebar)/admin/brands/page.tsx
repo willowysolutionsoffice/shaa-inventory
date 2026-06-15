@@ -1,51 +1,51 @@
-import { brandsColumns } from "@/components/brands/brands-columns";
-import { BrandTable } from "@/components/brands/brands-table";
-import { prisma } from "@/lib/prisma";
-import { BrandFormDialog } from "@/components/brands/brand-form";
-import { PaginationControls } from "@/components/ui/pagination-controls";
+// src/app/(admin)/admin/brands/page.tsx
+import { BrandsTable } from '@/components/brands/brands-table';
+import { BrandFormDialog } from '@/components/brands/brand-form';
+import { PaginationControls } from '@/components/ui/pagination-controls';
+import { api } from '@/lib/api';
+import type { Brand } from '@/actions/brand-actions';
 
 interface BrandsPageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
 export default async function BrandsPage({ searchParams }: BrandsPageProps) {
-  const resolvedSearchParams = await searchParams;
-  const page = Number(resolvedSearchParams?.page) || 1;
-  const limit = Number(resolvedSearchParams?.limit) || 10;
-  const skip = (page - 1) * limit;
+  const resolved = await searchParams;
+  const page  = Number(resolved?.page)  || 1;
+  const limit = Number(resolved?.limit) || 10;
+  const skip  = (page - 1) * limit;
 
-  const [brand, totalCount] = await Promise.all([
-    prisma.brand.findMany({
-      skip,
-      take: limit,
-      orderBy: {
-        createdAt: "desc",
-      },
-    }),
-    prisma.brand.count(),
-  ]);
+  let brands: Brand[]  = [];
+  let totalCount       = 0;
 
-  const totalPages = Math.ceil(totalCount / limit);
-  const hasNextPage = page < totalPages;
-  const hasPrevPage = page > 1;
+  try {
+    const res  = await api.get<any>(`/brands?skip=${skip}&take=${limit}`);
+    brands     = res.data  ?? res ?? [];
+    totalCount = res.total ?? brands.length;
+  } catch (e) {
+    console.error('Failed to fetch brands:', e);
+  }
+
+  const totalPages = Math.ceil(totalCount / limit) || 1;
 
   return (
     <div className="flex flex-1 flex-col">
-      <div className="@container/main flex flex-1 flex-col gap-2">
+      <div className="flex flex-1 flex-col gap-2">
         <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Brands</h1>
-              <p className="text-muted-foreground">Manage your brands</p>
+              <p className="text-muted-foreground">Manage your product brands</p>
             </div>
             <BrandFormDialog />
           </div>
 
-          <BrandTable columns={brandsColumns} data={brand} />
+          <BrandsTable brands={brands} />
+
           <PaginationControls
             totalPages={totalPages}
-            hasNextPage={hasNextPage}
-            hasPrevPage={hasPrevPage}
+            hasNextPage={page < totalPages}
+            hasPrevPage={page > 1}
             totalCount={totalCount}
           />
         </div>

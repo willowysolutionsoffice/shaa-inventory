@@ -1,4 +1,7 @@
-import { getAllUsers, getAllRoles, getAllBranches } from "@/actions/auth";
+// src/app/(sidebar)/admin/users/page.tsx
+import { getUsers } from "@/actions/user-action";
+import { getRoleListForDropdown } from "@/actions/role-action";
+import { getBranchListForDropdown } from "@/actions/branch-action";
 import { UsersTable } from "@/components/users-table";
 import { AddUserDialog } from "@/components/add-user-dialog";
 import { PaginationControls } from "@/components/ui/pagination-controls";
@@ -9,18 +12,19 @@ interface UsersPageProps {
 
 export default async function UsersPage({ searchParams }: UsersPageProps) {
   const resolvedSearchParams = await searchParams;
-  const page = Number(resolvedSearchParams?.page) || 1;
+  const page  = Number(resolvedSearchParams?.page)  || 1;
   const limit = Number(resolvedSearchParams?.limit) || 10;
-  const skip = (page - 1) * limit;
+  const skip  = (page - 1) * limit;
 
   const [usersData, roles, branches] = await Promise.all([
-    getAllUsers(skip, limit),
-    getAllRoles(),
-    getAllBranches(),
+    getUsers(skip, limit),
+    getRoleListForDropdown(),
+    getBranchListForDropdown(),
   ]);
 
+
   const { users, totalCount } = usersData;
-  const totalPages = Math.ceil(totalCount / limit);
+  const totalPages  = Math.ceil(totalCount / limit);
   const hasNextPage = page < totalPages;
   const hasPrevPage = page > 1;
 
@@ -45,4 +49,4 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
       />
     </div>
   );
-}
+} 

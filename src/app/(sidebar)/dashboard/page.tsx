@@ -753,9 +753,9 @@ const userName = (mockRole ? MOCK_NAMES[role] : session.user.name) ?? "User";
 
   // Branch display name for non-admins
   let branchName: string | undefined;
-  if (!isAdmin && session.user.branch) {
+if (!isAdmin && session.user.branchId) {
     const branch = await prisma.branch.findUnique({
-      where: { id: session.user.branch },
+    where: { id: session.user.branchId },  // ← was session.user.branch
       select: { name: true },
     });
     branchName = branch?.name;

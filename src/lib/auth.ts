@@ -1,46 +1,35 @@
-// src/lib/auth.ts
-import { cookies } from "next/headers";
-
-const MOCK_USERS: Record<string, { name: string; email: string }> = {
-  admin:            { name: "Arjun Menon",        email: "arjun@shaacalicut.com"  },
-  store_manager:    { name: "Faisal Ibrahim",      email: "faisal@shaacalicut.com" },
-  purchase_manager: { name: "Suresh Nair",         email: "suresh@shaacalicut.com" },
-  billing_staff:    { name: "Reshma Abdul Razak",  email: "reshma@shaacalicut.com" },
-  accountant:       { name: "Priya Krishnan",      email: "priya@shaacalicut.com"  },
-  user:             { name: "Demo Staff",           email: "staff@shaacalicut.com"  },
-};
+import { cookies } from 'next/headers';
+import { verifyAccessToken } from './jwt';  // ← your new jose version
 
 export const auth = {
   api: {
-    getSession: async (options?: any) => {
-      let role = "admin";
+    getSession: async () => {
+      const cookieStore = await cookies();
+      const token = cookieStore.get('access_token')?.value;
 
-      if (process.env.NODE_ENV === "development") {
-        const cookieStore = await cookies();
-        role = cookieStore.get("shaa_mock_role")?.value ?? "admin";
+      if (!token) return null;
+
+      try {
+        const payload = await verifyAccessToken(token); // ← add await
+
+        return {
+          user: {
+            id:          payload.sub,
+            email:       payload.email,
+            role:        payload.role,
+            branchId:    payload.branchId,
+                name:        payload.name,   // ← add this
+
+            permissions: payload.permissions,
+          },
+          session: {
+            token,
+            expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+          },
+        };
+      } catch {
+        return null;
       }
-
-      const mockUser = MOCK_USERS[role] ?? MOCK_USERS.admin;
-
-      return {
-        user: {
-          id: "mock-user",
-          name: mockUser.name,
-          email: mockUser.email,
-          role,
-          branch: "branch-calicut",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        session: {
-          id: "session-id",
-          userId: "mock-user",
-          expiresAt: new Date(Date.now() + 86400000 * 30),
-          token: "demo-token",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      };
     },
   },
 };

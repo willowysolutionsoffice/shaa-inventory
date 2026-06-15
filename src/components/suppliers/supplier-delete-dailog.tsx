@@ -11,14 +11,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { FC } from "react";
-import { Supplier } from "@prisma/client";
+import { SupplierRow } from "@/types/supplier";
 import { Button } from "../ui/button";
 import { toast } from "sonner";
 import { deleteSupplier } from "@/actions/supplier-action";
 import { useRouter } from "next/navigation";
 
 export const SupplierDeleteDialog: FC<{
-  supplier: Supplier;
+  supplier: SupplierRow;
   open: boolean;
   setOpen: (open: boolean) => void;
 }> = ({ supplier, open, setOpen }) => {

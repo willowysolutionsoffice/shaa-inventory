@@ -17,12 +17,14 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 
 export const purchaseReturnColumns: ColumnDef<PurchaseReturn>[] = [
   {
+    // backend: returnNo, normalized to referenceNo
     accessorKey: "referenceNo",
     header: ({ column }) => {
       const sort = column.getIsSorted();
       return (
         <Button variant="ghost" onClick={() => column.toggleSorting(sort === "asc")}>
-          Ref No {sort === "asc" ? <ArrowUp /> : sort === "desc" ? <ArrowDown /> : <ArrowUpDown />}
+          Return No{" "}
+          {sort === "asc" ? <ArrowUp /> : sort === "desc" ? <ArrowDown /> : <ArrowUpDown />}
         </Button>
       );
     },
@@ -33,6 +35,15 @@ export const purchaseReturnColumns: ColumnDef<PurchaseReturn>[] = [
     cell: ({ row }) => {
       const date = row.getValue("returnDate") as string | Date;
       return <div>{date ? formatDate(date) : "-"}</div>;
+    },
+  },
+  {
+    // shows the linked purchase number
+    accessorKey: "purchase",
+    header: "Purchase No",
+    cell: ({ row }) => {
+      const purchase = row.original.purchase as { purchaseNo?: string } | undefined;
+      return <span>{purchase?.purchaseNo ?? "-"}</span>;
     },
   },
   {
@@ -80,9 +91,17 @@ const PurchaseReturnActions = ({ purchaseReturn }: { purchaseReturn: PurchaseRet
       >
         <Trash2 className="h-4 w-4" />
       </Button>
-      
-      <PurchaseReturnFormSheet open={openEdit} openChange={setOpenEdit} purchaseReturn={purchaseReturn} />
-      <PurchaseReturnDeleteDialog purchaseReturn={purchaseReturn} open={openDelete} setOpen={setOpenDelete} />
+
+      <PurchaseReturnFormSheet
+        open={openEdit}
+        openChange={setOpenEdit}
+        purchaseReturn={purchaseReturn}
+      />
+      <PurchaseReturnDeleteDialog
+        purchaseReturn={purchaseReturn}
+        open={openDelete}
+        setOpen={setOpenDelete}
+      />
     </div>
   );
 };

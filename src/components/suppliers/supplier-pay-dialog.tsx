@@ -28,7 +28,7 @@ import { toast } from "sonner";
 import { FormProvider, useForm } from "react-hook-form";
 import { Calendar } from "@/components/ui/calendar";
 import { FC } from "react";
-import { Supplier } from "@prisma/client";
+import { SupplierRow } from "@/types/supplier";
 import { createBalancePayment } from "@/actions/balance-payment-action";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { balancePaymentSchema } from "@/schemas/balance-payment-schema";
@@ -38,7 +38,7 @@ import { Card } from "../ui/card";
 import { CURRENCY_SYMBOL, formatDate } from "@/lib/utils";
 
 export const SupplierPayDialog: FC<{
-  supplier: Supplier;
+  supplier: SupplierRow;
   open: boolean;
   setOpen: (open: boolean) => void;
 }> = ({ supplier, open, setOpen }) => {
@@ -57,18 +57,15 @@ export const SupplierPayDialog: FC<{
   });
 
   const handleSubmit = async (data: z.infer<typeof balancePaymentSchema>) => {
-    const payload = {
-      ...data,
-    };
-
-    try {
-      await create(payload);
-      toast.success("Balance payment sdded succesfull")
-      if (isControlled && setOpen) setOpen(false);
-    } catch {
-      toast.error("Failed to save balance payment");
-    }
-  };
+  const result = await create(data);
+  if (result?.data?.data || result?.data?.error === undefined) {
+    toast.success("Balance payment added successfully");
+    form.reset();
+    setOpen(false);
+  } else {
+    toast.error("Failed to save balance payment");
+  }
+};
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

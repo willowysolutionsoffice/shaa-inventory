@@ -25,7 +25,7 @@ import { z } from "zod";
 
 import { fullSalesReturnSchema } from "@/schemas/sales-return-item-schema";
 import { getCustomerListForDropdown } from "@/actions/customer-action";
-import { getProductListForDropdown } from "@/actions/product-actions";
+import { getProductDropdown } from "@/actions/product-actions";
 import { createSalesReturn, updateSalesReturn } from "@/actions/sales-return-action";
 
 import { Card } from "../ui/card";
@@ -54,7 +54,7 @@ import { useAction } from "next-safe-action/hooks";
 import { cn, CURRENCY_SYMBOL, formatDate } from "@/lib/utils";
 import { nanoid } from "nanoid";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getAllBranches } from "@/actions/auth";
+import { getBranchListForDropdown } from "@/actions/branch-action";
 
 
 export const SalesReturnFormSheet = ({
@@ -101,7 +101,7 @@ export const SalesReturnFormSheet = ({
   useEffect(() => {
     const fetchCustomers = async () => {
       const res = await getCustomerListForDropdown();
-      const branches = await getAllBranches()
+      const branches = await getBranchListForDropdown()
       setBranchList(branches);
       setCustomerList(res);
     };
@@ -111,7 +111,7 @@ export const SalesReturnFormSheet = ({
   useEffect(() => {
     const debounce = setTimeout(async () => {
       if (productSearch.length > 1) {
-        const res = await getProductListForDropdown({ query: productSearch });
+        const res = await getProductDropdown({ query: productSearch });
         setProductOptions(res?.data?.products || []);
       }
     }, 300);

@@ -1,3 +1,4 @@
+// src/app/(dashboard)/sales/page.tsx
 export const dynamic = "force-dynamic";
 
 import { SalesTable } from "@/components/sales/sales-table";
@@ -6,27 +7,24 @@ import { getSalesList } from "@/actions/sales-action";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { DateRangeFilter } from "@/components/common/date-range-filter";
+import { getTodayUtcMidnight, formatUtcDate } from "@/lib/date-utils";
 
 interface SalesPageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-import { DateRangeFilter } from "@/components/common/date-range-filter";
-
-import { format } from "date-fns";
-import { getTodayUtcMidnight, formatUtcDate } from "@/lib/date-utils";
-
 export default async function SalesPage({ searchParams }: SalesPageProps) {
   const params = await searchParams;
-  const page = typeof params.page === "string" ? Number(params.page) : 1;
-  const limit = 10000000;
 
-  const today = getTodayUtcMidnight();
+  const page  = typeof params.page  === "string" ? Number(params.page)  : 1;
+  const limit = typeof params.limit === "string" ? Number(params.limit) : 20;
+
+  const today          = getTodayUtcMidnight();
   const formattedToday = formatUtcDate(today);
 
   const from = typeof params.from === "string" ? params.from : formattedToday;
-  const to = typeof params.to === "string" ? params.to : formattedToday;
-
+  const to   = typeof params.to   === "string" ? params.to   : formattedToday;
 
   const { data } = await getSalesList({ page, limit, from, to });
 
@@ -40,12 +38,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
               <p className="text-muted-foreground">Manage your sales</p>
             </div>
             <div className="flex items-center gap-2">
-              <DateRangeFilter
-                defaultDate={{
-                  from: today,
-                  to: today,
-                }}
-              />
+              <DateRangeFilter defaultDate={{ from: today, to: today }} />
               <Link href="/sales/new">
                 <Button>
                   <Plus className="mr-2 h-4 w-4" />
@@ -60,8 +53,8 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
             data={(data?.sales ?? []) as any}
             metadata={
               data?.metadata ?? {
-                totalPages: 0,
-                totalCount: 0,
+                totalPages:  0,
+                totalCount:  0,
                 currentPage: 1,
                 hasNextPage: false,
                 hasPrevPage: false,

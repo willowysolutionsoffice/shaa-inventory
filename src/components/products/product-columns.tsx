@@ -2,16 +2,8 @@
 
 import { Product } from "@/types/product";
 import { ProductFormSheet } from "./product-form";
-
 import { ColumnDef } from "@tanstack/react-table";
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  Edit2,
-  Eye,
-  Trash2,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Edit2, Eye, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProductDeleteDialog } from "./products-delete-dailog";
 import { useRouter } from "next/navigation";
@@ -23,27 +15,26 @@ export const productColumns: ColumnDef<Product>[] = [
     accessorKey: "sku",
     header: () => <div className="px-3 text-left">SKU</div>,
     cell: ({ row }) => (
-      <div className="px-3 text-left">{row.getValue("sku")}</div>
+      <div className="px-3 text-left font-mono text-sm">{row.getValue("sku")}</div>
     ),
   },
   {
     accessorKey: "product_name",
     header: ({ column }) => {
       const sort = column.getIsSorted();
-      const renderIcon = () => {
-        if (!sort) return <ArrowUpDown className="size-4" />;
-        if (sort === "asc") return <ArrowUp className="size-4" />;
-        if (sort === "desc") return <ArrowDown className="size-4" />;
-        return null;
-      };
-
       return (
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(sort === "asc")}
         >
           Name
-          {renderIcon()}
+          {!sort ? (
+            <ArrowUpDown className="size-4" />
+          ) : sort === "asc" ? (
+            <ArrowUp className="size-4" />
+          ) : (
+            <ArrowDown className="size-4" />
+          )}
         </Button>
       );
     },
@@ -59,31 +50,44 @@ export const productColumns: ColumnDef<Product>[] = [
   {
     accessorKey: "purchasePrice",
     header: () => <div className="px-3 text-center">Purchase Price</div>,
-    cell: ({ row }) => {
-      const amount = row.getValue("purchasePrice") as number;
-      return (
-        <div className="px-3 text-center font-medium">
-          {formatCurrency(amount)}
-        </div>
-      );
-    },
+    cell: ({ row }) => (
+      <div className="px-3 text-center font-medium">
+        {formatCurrency(Number(row.getValue("purchasePrice")))}
+      </div>
+    ),
+  },
+  {
+    accessorKey: "sellingPrice",
+    header: () => <div className="px-3 text-center">Selling Price</div>,
+    cell: ({ row }) => (
+      <div className="px-3 text-center font-medium">
+        {formatCurrency(Number(row.getValue("sellingPrice")))}
+      </div>
+    ),
   },
   {
     accessorKey: "brand",
     header: "Brand",
-    cell: ({ row }) => {
-      const Brand = row.original.brand.name;
-
-      return (
-        <span
-          className={`items-left inline-flex py-0.5 text-sm font-medium text-blue-500`}
-        >
-          {Brand}
-        </span>
-      );
-    },
+    cell: ({ row }) => (
+      <span className="text-sm font-medium text-blue-500">
+        {row.original.brand?.name ?? "—"}
+      </span>
+    ),
   },
-
+  {
+  id: "category",
+  accessorFn: (row) => row.category?.id ?? "",
+  header: "Category",
+  cell: ({ row }) => (
+    <span className="text-sm font-medium text-emerald-600">
+      {row.original.category?.name ?? "—"}
+    </span>
+  ),
+  filterFn: (row, columnId, filterValue) => {
+    if (!filterValue) return true;
+    return row.getValue(columnId) === filterValue;
+  },
+},
   {
     id: "actions",
     header: () => <div className="px-3 text-center">Actions</div>,
@@ -103,15 +107,14 @@ export const productColumns: ColumnDef<Product>[] = [
 ];
 
 interface ProductActionsProps {
-  product: Product;
-  brands: { name: string; id: string }[];
-
+  product:  Product;
+  brands:   { name: string; id: string }[];
   branches: { name: string; id: string }[];
 }
 
 export const ProductActions = ({ product, brands, branches }: ProductActionsProps) => {
   const [openDelete, setOpenDelete] = useState(false);
-  const [openEdit, setOpenEdit] = useState(false);
+  const [openEdit,   setOpenEdit]   = useState(false);
   const router = useRouter();
 
   return (
@@ -141,7 +144,6 @@ export const ProductActions = ({ product, brands, branches }: ProductActionsProp
         <Trash2 className="h-4 w-4" />
       </Button>
 
-      {/* Sheet opens on Edit */}
       <ProductFormSheet
         product={product}
         open={openEdit}
@@ -150,7 +152,6 @@ export const ProductActions = ({ product, brands, branches }: ProductActionsProp
         branches={branches}
       />
 
-      {/* Dialog opens on Delete */}
       <ProductDeleteDialog
         product={product}
         open={openDelete}

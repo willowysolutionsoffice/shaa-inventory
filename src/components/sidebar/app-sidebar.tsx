@@ -1,5 +1,10 @@
 "use client";
 
+// src/components/sidebar/app-sidebar.tsx
+// No change to logic — still calls getPermissionsForRole(userRole).
+// The only real change: user prop now comes from the real JWT session
+// (passed from layout), not from the mock session hook.
+
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { NavMain } from "@/components/sidebar/nav-main";
 import { NavGroup } from "@/components/sidebar/nav-group";
@@ -14,17 +19,32 @@ import {
   visibleChildren,
 } from "@/constants/navigation";
 import { getPermissionsForRole } from "@/constants/permissions";
-import type { UserProfile } from "@/types/user";
+import type { Permission } from "@/constants/permissions";
+
+// ── Matches the shape coming from auth.api.getSession().user ─────────────────
+
+export interface SessionUser {
+  id:          string;
+  email:       string;
+  role:        string;
+  branchId:    string;
+  permissions: string[];
+  name?:       string;
+}
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
-  user?: UserProfile;
+  user?: SessionUser;
 }
 
 export function AppSidebar({ user, ...props }: AppSidebarProps) {
   const { state, toggleSidebar } = useSidebar();
 
-  const userRole = user?.role ?? "user";
-  const userPermissions = getPermissionsForRole(userRole);
+  const userRole        = user?.role ?? "user";
+  // Use permissions from the JWT (already embedded at login) as the source of truth.
+  // Fall back to deriving from role name if not present.
+  const userPermissions: Permission[] =
+    (user?.permissions as Permission[]) ?? getPermissionsForRole(userRole);
+
   const isAdmin = userRole === "admin";
 
   const visibleNavMain = SIDEBAR_DATA.navMain
@@ -82,13 +102,15 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
         <div className="flex items-center justify-center transition-all duration-300 group-data-[collapsible=icon]:hidden">
           <img
             src="https://shaacalicut.com/cdn/shop/files/ChatGPT_Image_Jul_12_2025_11_44_52_PM.png?height=100&v=1752344140"
-            alt="SHAA" className="h-14 w-auto object-contain"
+            alt="SHAA"
+            className="h-14 w-auto object-contain"
           />
         </div>
         <div className="hidden items-center justify-center transition-all duration-300 group-data-[collapsible=icon]:flex">
           <img
             src="https://shaacalicut.com/cdn/shop/files/ChatGPT_Image_Jul_12_2025_11_44_52_PM.png?height=100&v=1752344140"
-            alt="SHAA" className="h-8 w-8 object-contain"
+            alt="SHAA"
+            className="h-8 w-8 object-contain"
           />
         </div>
       </SidebarHeader>
@@ -130,4 +152,4 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       </SidebarFooter>
     </Sidebar>
   );
-} 
+}

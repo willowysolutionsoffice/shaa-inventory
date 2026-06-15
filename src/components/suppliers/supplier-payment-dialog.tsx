@@ -1,33 +1,35 @@
 "use client";
 
 import { FC, useEffect, useState } from "react";
-import { BalancePayment } from "@prisma/client";
 import { toast } from "sonner";
 import { Separator } from "@/components/ui/separator";
 import { getBalancePayments } from "@/actions/balance-payment-action";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card } from "@/components/ui/card";
 import { CURRENCY_SYMBOL, formatDate } from "@/lib/utils";
 
+// Use a local type — BalancePayment from Prisma doesn't have `method` or `note`
+interface PaymentRecord {
+  id:     string;
+  amount: number;
+  paidOn: Date | string;
+  method: string;
+  note?:  string | null;
+}
+
 export const SupplierHistoryListDialog: FC<{
-  open: boolean;
-  setOpen: (open: boolean) => void;
+  open:        boolean;
+  setOpen:     (open: boolean) => void;
   supplierId?: string;
 }> = ({ open, setOpen, supplierId }) => {
-  const [payments, setPayments] = useState<BalancePayment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [loading,  setLoading]  = useState(true);
 
   useEffect(() => {
     if (!open || !supplierId) return;
-    const fetch = async () => {
+    const load = async () => {
       setLoading(true);
       const result = await getBalancePayments({ supplierId });
-
       if (Array.isArray(result?.data?.data)) {
         setPayments(result.data.data);
       } else {
@@ -35,7 +37,7 @@ export const SupplierHistoryListDialog: FC<{
       }
       setLoading(false);
     };
-    fetch();
+    load();
   }, [open, supplierId]);
 
   return (
@@ -44,7 +46,6 @@ export const SupplierHistoryListDialog: FC<{
         <DialogHeader>
           <DialogTitle>Payment History</DialogTitle>
         </DialogHeader>
-
         <div className="mt-2">
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading...</p>
@@ -57,7 +58,7 @@ export const SupplierHistoryListDialog: FC<{
                   <div key={payment.id} className="space-y-1">
                     <div className="flex items-start justify-between">
                       <p className="font-semibold text-red-600 text-base">
-                        {CURRENCY_SYMBOL}{payment.amount}
+                        {CURRENCY_SYMBOL}{Number(payment.amount).toFixed(2)}
                       </p>
                       <p className="text-xs text-muted-foreground text-right">
                         {formatDate(payment.paidOn)} • {payment.method}

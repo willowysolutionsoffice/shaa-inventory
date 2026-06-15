@@ -12,7 +12,7 @@ import {
   CreditCard,
   MapPin,
   Phone,
-  Hash
+  Hash,
 } from 'lucide-react'
 import { notFound } from 'next/navigation'
 import type { Purchase as PurchaseType } from '@/types/purchase'
@@ -25,13 +25,15 @@ export interface PageParamsProps {
 export default async function Page({ params }: PageParamsProps) {
   const { purchaseid } = await params
 
-  const { data } = await getPurchaseById({ id: purchaseid })
-  if (!data) {
-    notFound()
+  const result = await getPurchaseById({ id: purchaseid })
+  if (!result?.data) notFound()
+
+  // normalizePurchase returns the object directly (not wrapped in { data })
+  const purchase = result.data as PurchaseType & {
+    purchaseNo?: string;
+    paymentStatus?: string;
+    paymentDue?: number;
   }
-
-  const { data: purchase } = data as { data: PurchaseType }
-
 
   return (
     <div className="max-h-screen overflow-y-auto p-6">
@@ -42,9 +44,12 @@ export default async function Page({ params }: PageParamsProps) {
         </div>
         <ExportInvoiceButton data={purchase} type="purchase" />
       </div>
-      <p className="text-sm text-muted-foreground">Reference No: {purchase.referenceNo}</p>
+      <p className="text-sm text-muted-foreground">
+        Purchase No: {purchase.purchaseNo ?? purchase.referenceNo}
+      </p>
 
       <div className="mt-6 space-y-6">
+        {/* Transaction Info */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Transaction Information</CardTitle>
@@ -58,8 +63,8 @@ export default async function Page({ params }: PageParamsProps) {
               </div>
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium">Reference:</span>
-                <span>{purchase.referenceNo}</span>
+                <span className="font-medium">Purchase No:</span>
+                <span>{purchase.purchaseNo ?? purchase.referenceNo}</span>
               </div>
               <div className="flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-muted-foreground" />
@@ -69,18 +74,30 @@ export default async function Page({ params }: PageParamsProps) {
               <div className="flex items-center gap-2">
                 <CreditCard className="h-4 w-4 text-muted-foreground" />
                 <span className="font-medium">Total Amount:</span>
-                <span className="font-bold">{formatCurrency(Number(purchase.totalAmount) || 0)}</span>
+                <span className="font-bold">
+                  {formatCurrency(Number(purchase.totalAmount) || 0)}
+                </span>
               </div>
             </div>
             <div className="flex gap-2">
-              <Badge className="bg-gray-100 text-gray-800">{purchase.status}</Badge>
-              <Badge className={purchase.dueAmount === 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                {purchase.dueAmount === 0 ? 'Paid' : 'Due'}
+              {/* paymentStatus is the real backend field; status is the alias */}
+              <Badge className="bg-gray-100 text-gray-800">
+                {purchase.paymentStatus ?? purchase.status}
+              </Badge>
+              <Badge
+                className={
+                  (purchase.paymentDue ?? purchase.dueAmount ?? 0) === 0
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-red-100 text-red-800'
+                }
+              >
+                {(purchase.paymentDue ?? purchase.dueAmount ?? 0) === 0 ? 'Paid' : 'Due'}
               </Badge>
             </div>
           </CardContent>
         </Card>
 
+        {/* Supplier Info */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
@@ -95,24 +112,25 @@ export default async function Page({ params }: PageParamsProps) {
                 <span className="font-medium">Name:</span>
                 <span>{purchase.supplier?.name ?? '—'}</span>
               </div>
-              {(purchase.supplier as { phone?: unknown })?.phone ? (
+              {(purchase.supplier as any)?.phone && (
                 <div className="flex items-center gap-2">
                   <Phone className="h-4 w-4 text-muted-foreground" />
                   <span className="font-medium">Phone:</span>
-                  <span>{String((purchase.supplier as { phone?: unknown }).phone)}</span>
+                  <span>{String((purchase.supplier as any).phone)}</span>
                 </div>
-              ) : null}
-              {(purchase.supplier as { email?: unknown })?.email ? (
+              )}
+              {(purchase.supplier as any)?.email && (
                 <div className="flex items-center gap-2">
                   <Hash className="h-4 w-4 text-muted-foreground" />
                   <span className="font-medium">Email:</span>
-                  <span>{String((purchase.supplier as { email?: unknown }).email)}</span>
+                  <span>{String((purchase.supplier as any).email)}</span>
                 </div>
-              ) : null}
+              )}
             </div>
           </CardContent>
         </Card>
 
+        {/* Products */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
@@ -131,7 +149,6 @@ export default async function Page({ params }: PageParamsProps) {
                         <th className="text-left p-2 font-medium">Product</th>
                         <th className="text-right p-2 font-medium">Quantity</th>
                         <th className="text-right p-2 font-medium">Unit Price</th>
-                        <th className="text-right p-2 font-medium">Discount</th>
                         <th className="text-right p-2 font-medium">Total</th>
                       </tr>
                     </thead>
@@ -142,16 +159,22 @@ export default async function Page({ params }: PageParamsProps) {
                           <td className="p-2">
                             <div>
                               <div className="font-medium">
-                                {item.product?.product_name || 'Unknown Product'}
+                                {/* product_name is the normalized alias for productName */}
+                                {item.product_name ||
+                                  (item.product as any)?.productName ||
+                                  'Unknown Product'}
                               </div>
-                              {(item.product as { sku?: unknown } | undefined)?.sku ? (
-                                <div className="text-sm text-muted-foreground">SKU: {String((item.product as { sku?: unknown }).sku)}</div>
-                              ) : null}
+                              {(item.product as any)?.sku && (
+                                <div className="text-sm text-muted-foreground">
+                                  SKU: {String((item.product as any).sku)}
+                                </div>
+                              )}
                             </div>
                           </td>
                           <td className="p-2 text-right">{item.quantity}</td>
-                          <td className="p-2 text-right">{formatCurrency(Number(item.unitPrice))}</td>
-                          <td className="p-2 text-right">{formatCurrency(Number(item.discount))}</td>
+                          <td className="p-2 text-right">
+                            {formatCurrency(Number(item.unitPrice))}
+                          </td>
                           <td className="p-2 text-right font-medium">
                             {formatCurrency(Number(item.total))}
                           </td>
@@ -168,9 +191,12 @@ export default async function Page({ params }: PageParamsProps) {
                     <div className="text-lg font-bold">
                       Grand Total: {formatCurrency(Number(purchase.totalAmount) || 0)}
                     </div>
-                    {purchase.dueAmount && purchase.dueAmount > 0 && (
+                    {(purchase.paymentDue ?? purchase.dueAmount ?? 0) > 0 && (
                       <div className="text-sm text-muted-foreground">
-                        Due Amount: {formatCurrency(Number(purchase.dueAmount) || 0)}
+                        Due Amount:{' '}
+                        {formatCurrency(
+                          Number(purchase.paymentDue ?? purchase.dueAmount) || 0
+                        )}
                       </div>
                     )}
                   </div>
@@ -184,7 +210,7 @@ export default async function Page({ params }: PageParamsProps) {
           </CardContent>
         </Card>
 
-        {/* Payment Information */}
+        {/* Payments */}
         {purchase.payments && purchase.payments.length > 0 && (
           <Card>
             <CardHeader>
@@ -196,9 +222,14 @@ export default async function Page({ params }: PageParamsProps) {
             <CardContent>
               <div className="space-y-3">
                 {purchase.payments.map((payment, index) => (
-                  <div key={index} className="flex justify-between items-center p-3 border rounded-lg">
+                  <div
+                    key={index}
+                    className="flex justify-between items-center p-3 border rounded-lg"
+                  >
                     <div>
-                      <div className="font-medium">{formatCurrency(payment.amount)}</div>
+                      <div className="font-medium">
+                        {formatCurrency(payment.amount)}
+                      </div>
                       <div className="text-sm text-muted-foreground">
                         {payment.paymentMethod} • {formatDate(payment.paidOn)}
                       </div>
@@ -218,5 +249,3 @@ export default async function Page({ params }: PageParamsProps) {
     </div>
   )
 }
-
-

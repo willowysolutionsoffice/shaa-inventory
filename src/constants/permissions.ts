@@ -20,6 +20,7 @@ export const PERMISSIONS = {
   // Admin
   MANAGE_USERS:      "manage_users",
   MANAGE_ROLES:      "manage_roles",
+  MANAGE_BRANDS: 'manage_brands',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -42,6 +43,7 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     PERMISSIONS.MANAGE_EXPENSES,
     PERMISSIONS.MANAGE_USERS,
     PERMISSIONS.MANAGE_ROLES,
+    PERMISSIONS.MANAGE_BRANDS,
   ],
   store_manager: [
     PERMISSIONS.VIEW_DASHBOARD,

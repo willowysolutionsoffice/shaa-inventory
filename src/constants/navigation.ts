@@ -216,14 +216,22 @@ const navMain: NavGroup[] = [
         permission: PERMISSIONS.MANAGE_PRODUCTS,
       },
       {
-        title: "Brands",
-        url: "/admin/brands",
-        icon: FolderTree,
-        permission: PERMISSIONS.MANAGE_PRODUCTS,
-      },
+  title: "Brands",
+  url: "/admin/brands",
+  icon: Tag,
+  permission: PERMISSIONS.MANAGE_PRODUCTS,
+},
+{
+  title: "Sub-brands",
+  url: "/admin/sub-brands",
+  icon: Layers,
+  permission: PERMISSIONS.MANAGE_PRODUCTS,
+},
+
+      
       {
         title: "Categories",
-        url: "/admin/categories",
+        url: "/admin/products/categories",
         icon: FolderTree,
         permission: PERMISSIONS.MANAGE_PRODUCTS,
       },

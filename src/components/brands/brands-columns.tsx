@@ -1,79 +1,115 @@
-"use client";
+// src/components/brands/brands-columns.tsx
+'use client';
 
-import { Brand } from "@prisma/client";
-import { BrandFormDialog } from "./brand-form";
+import { ColumnDef } from '@tanstack/react-table';
+import { Brand } from '@/actions/brand-actions';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { MoreHorizontal, Pencil, Trash2, ChevronDown, ChevronRight, Tag } from 'lucide-react';
+import { formatDate } from '@/lib/utils';
 
-import { ColumnDef } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown, Edit2, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { BrandsDeleteDialog } from "./brands-delete-dailog";
-import { useState } from "react";
+interface BrandColumnsOptions {
+  onEdit:        (brand: Brand)  => void;
+  onDelete:      (brand: Brand)  => void;
+  expandedRows:  Set<string>;
+  onToggleRow:   (id: string)    => void;
+}
 
-export const brandsColumns: ColumnDef<Brand>[] = [
-  {
-    accessorKey: "name",
-    header: ({ column }) => {
-      const sort = column.getIsSorted();
-      const renderIcon = () => {
-        if (!sort) return <ArrowUpDown className="size-4" />;
-        if (sort === "asc") return <ArrowUp className="size-4" />;
-        if (sort === "desc") return <ArrowDown className="size-4" />;
-        return null;
-      };
-
-      return (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(sort === "asc")}
-        >
-          Name
-          {renderIcon()}
-        </Button>
-      );
+export function getBrandColumns({
+  onEdit,
+  onDelete,
+  expandedRows,
+  onToggleRow,
+}: BrandColumnsOptions): ColumnDef<Brand>[] {
+  return [
+    {
+      id:     'expand',
+      header: '',
+      size:   40,
+      cell:   ({ row }) => {
+        const hasSubBrands = row.original.subBrands?.length > 0;
+        const isExpanded   = expandedRows.has(row.original.id);
+        return (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={() => onToggleRow(row.original.id)}
+            disabled={!hasSubBrands}
+          >
+            {hasSubBrands
+              ? isExpanded
+                ? <ChevronDown  className="h-4 w-4 text-muted-foreground" />
+                : <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              : <span className="h-4 w-4 block" />
+            }
+          </Button>
+        );
+      },
     },
-    cell: ({ row }) => (
-      <div className="px-3">{row.getValue("name") as string}</div>
-    ),
-  },
-  {
-    id: "actions",
-    header: () => <div className="text-center">Actions</div>,
-    cell: ({ row }) => row.original && <BrandActions brand={row.original} />,
-  },
-];
-
-export const BrandActions = ({ brand }: { brand: Brand }) => {
-  const [openDelete, setOpenDelete] = useState(false);
-  const [openEdit, setOpenEdit] = useState(false);
-
-  return (
-    <div className="flex items-center justify-center gap-2">
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setOpenEdit(true)}
-        className="h-8 w-8 p-0"
-      >
-        <Edit2 className="h-4 w-4" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setOpenDelete(true)}
-        className="text-destructive hover:text-destructive h-8 w-8 p-0"
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
-
-      {/* Edit Dialog */}
-      <BrandFormDialog open={openEdit} openChange={setOpenEdit} brand={brand} />
-
-      {/* Delete Dialog */}
-      <BrandsDeleteDialog
-        brand={brand}
-        open={openDelete}
-        setOpen={setOpenDelete}
-      />
-    </div>
-  );
-};
+    {
+      accessorKey: 'name',
+      header:      'Brand Name',
+      cell:        ({ row }) => (
+        <div className="font-medium flex items-center gap-2">
+          <Tag className="h-4 w-4 text-muted-foreground" />
+          {row.original.name}
+          {row.original.subBrands?.length > 0 && (
+            <span className="text-xs bg-muted text-muted-foreground rounded-full px-1.5 py-0.5">
+              {row.original.subBrands.length}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'description',
+      header:      'Description',
+      cell:        ({ row }) => (
+        <span className="text-muted-foreground text-sm">
+          {row.original.description ?? '—'}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'createdAt',
+      header:      'Created',
+      cell:        ({ row }) => (
+        <span className="text-muted-foreground text-sm">
+          {formatDate(row.original.createdAt)}
+        </span>
+      ),
+    },
+    {
+      id:   'actions',
+      header: () => <span className="text-right block">Actions</span>,
+      cell: ({ row }) => (
+        <div className="text-right">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-8 w-8 p-0">
+                <span className="sr-only">Open menu</span>
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onEdit(row.original)}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => onDelete(row.original)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      ),
+    },
+  ];
+}

@@ -1,78 +1,126 @@
 // src/actions/brand-actions.ts
 'use server';
 
-import { db } from "@/lib/mock-db";
-import { actionClient } from "@/lib/safeAction";
-import { brandSchema, deleteBrandSchema, updateBrandSchema } from "@/schemas/brand-schema";
-import { revalidatePath } from "next/cache";
+import { actionClient } from '@/lib/safeAction';
+import { revalidatePath } from 'next/cache';
+import {
+  brandSchema,
+  updateBrandSchema,
+  deleteBrandSchema,
+  subBrandSchema,
+  updateSubBrandSchema,
+  deleteSubBrandSchema,
+} from '@/schemas/brand-schema';
+import { api } from '@/lib/api';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+export type SubBrand = {
+  id:          string;
+  name:        string;
+  description: string | null;
+  brandId:     string;
+  createdAt:   string;
+  updatedAt:   string;
+  brand?:      { id: string; name: string };
+};
+
+export type Brand = {
+  id:          string;
+  name:        string;
+  description: string | null;
+  createdAt:   string;
+  updatedAt:   string;
+  subBrands:   SubBrand[];
+};
+
+// ── Brand Actions ─────────────────────────────────────────────────────────────
 
 export const createBrand = actionClient
   .inputSchema(brandSchema)
-  .action(async (values) => {
+  .action(async ({ parsedInput }) => {
     try {
-      const newBrand = {
-        id: `brand-${Date.now()}`,
-        ...values.parsedInput,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      db.brands.push(newBrand);
-      revalidatePath("/brands");
-      return { data: newBrand };
-    } catch (error) {
-      console.error("Created Brand Error :", error);
-      return { error: "Something went wrong" };
+      const brand = await api.post<Brand>('/brands', parsedInput);
+      revalidatePath('/brands');
+      return brand;
+    } catch (error: any) {
+      return { error: error.message ?? 'Something went wrong' };
     }
   });
 
-export const getBrandList = actionClient.action(async () => {
-  try {
-    revalidatePath("/brands");
-    return { data: db.brands };
-  } catch (error) {
-    console.error("Get Brand Error :", error);
-    return { error: "Something went wrong" };
-  }
-});
-
-export const getBrandlistForDropdown = async () => {
-  return db.brands.map(b => ({ id: b.id, name: b.name }));
-};
-
 export const updateBrand = actionClient
   .inputSchema(updateBrandSchema)
-  .action(async (values) => {
-    const { id, ...data } = values.parsedInput;
+  .action(async ({ parsedInput }) => {
+    const { id, ...data } = parsedInput;
     try {
-      const brand = db.brands.find(b => b.id === id);
-      if (brand) {
-        Object.assign(brand, data);
-        brand.updatedAt = new Date();
-        revalidatePath("/brands");
-        return { data: brand };
-      }
-      return { error: "Brand not found" };
-    } catch (error) {
-      console.error("Error on Brand Updating :", error);
-      return { error: "Something went wrong" };
+      const brand = await api.patch<Brand>(`/brands/${id}`, data);
+      revalidatePath('/brands');
+      return brand;
+    } catch (error: any) {
+      return { error: error.message ?? 'Something went wrong' };
     }
   });
 
 export const deleteBrand = actionClient
   .inputSchema(deleteBrandSchema)
-  .action(async (values) => {
-    const { id } = values.parsedInput;
+  .action(async ({ parsedInput }) => {
     try {
-      const idx = db.brands.findIndex(b => b.id === id);
-      if (idx !== -1) {
-        const deleted = db.brands[idx];
-        db.brands.splice(idx, 1);
-        revalidatePath("/brands");
-        return deleted;
-      }
-      return null;
-    } catch (error) {
-      console.error("Delete Brand Error:", error);
-      return null;
+      const brand = await api.delete<Brand>(`/brands/${parsedInput.id}`);
+      revalidatePath('/brands');
+      return brand;
+    } catch (error: any) {
+      return { error: error.message ?? 'Something went wrong' };
+    }
+  });
+
+export const getBrandListForDropdown = async (): Promise<{ id: string; name: string }[]> => {
+  try {
+    const brands = await api.get<Brand[]>('/brands?take=200');
+    return brands.map((b) => ({ id: b.id, name: b.name }));
+  } catch {
+    return [];
+  }
+};
+
+// ── SubBrand Actions ──────────────────────────────────────────────────────────
+
+export const createSubBrand = actionClient
+  .inputSchema(subBrandSchema)
+  .action(async ({ parsedInput }) => {
+    const { brandId, ...data } = parsedInput;
+    try {
+      const sb = await api.post<SubBrand>(`/brands/${brandId}/sub-brands`, data);
+      revalidatePath('/brands');
+      return sb;
+    } catch (error: any) {
+      return { error: error.message ?? 'Something went wrong' };
+    }
+  });
+
+export const updateSubBrand = actionClient
+  .inputSchema(updateSubBrandSchema)
+  .action(async ({ parsedInput }) => {
+    const { id, brandId, ...data } = parsedInput;
+    try {
+      const sb = await api.patch<SubBrand>(`/brands/${brandId}/sub-brands/${id}`, data);
+      revalidatePath('/brands');
+      return sb;
+    } catch (error: any) {
+      return { error: error.message ?? 'Something went wrong' };
+    }
+  });
+
+export const deleteSubBrand = actionClient
+  .inputSchema(deleteSubBrandSchema)
+  .action(async ({ parsedInput }) => {
+    // We need brandId — pass it via the id field as "brandId:subBrandId"
+    // Or better: deleteSubBrandSchema includes brandId
+    try {
+      const [brandId, subBrandId] = parsedInput.id.split('::');
+      const sb = await api.delete<SubBrand>(`/brands/${brandId}/sub-brands/${subBrandId}`);
+      revalidatePath('/brands');
+      return sb;
+    } catch (error: any) {
+      return { error: error.message ?? 'Something went wrong' };
     }
   });

@@ -4,15 +4,16 @@ import { supplierColumns } from "@/components/suppliers/supplier-columns";
 import { SupplierTable } from "@/components/suppliers/supplier-table";
 import { SupplierFormDialog } from "@/components/suppliers/supplier-form";
 import { getSupplierList } from "@/actions/supplier-action";
-import { getAllBranches } from "@/actions/auth";
-
-
+import { getBranchListForDropdown } from "@/actions/branch-action";
 
 export default async function SupplierPage() {
-  const [{ data }, branches] = await Promise.all([
-    getSupplierList(),
-    getAllBranches()
+  const [result, branches] = await Promise.all([
+    getSupplierList({}),
+    getBranchListForDropdown(),
   ]);
+
+  const suppliers = result?.data?.suppliers ?? [];
+  const totals    = result?.data?.totals    ?? { openingBalance: 0, purchaseDue: 0, purchaseReturnDue: 0 };
 
   return (
     <div className="flex flex-1 flex-col">
@@ -25,13 +26,7 @@ export default async function SupplierPage() {
             </div>
             <SupplierFormDialog branches={branches} />
           </div>
-
-          <SupplierTable
-            columns={supplierColumns}
-            data={data?.suppliers ?? []}
-            totals={data?.totals ?? { openingBalance: 0, purchaseDue: 0, purchaseReturnDue: 0 }}
-            branches={branches}
-          />
+          <SupplierTable columns={supplierColumns} data={suppliers} totals={totals} branches={branches} />
         </div>
       </div>
     </div>

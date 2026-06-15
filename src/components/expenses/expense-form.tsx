@@ -35,7 +35,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { getExpenseCategoryDropdown } from "@/actions/expense-category-action";
 import { useEffect, useState } from "react";
 import { ExpenseFormProps } from "@/types/expense";
-import { getAllBranches } from "@/actions/auth";
+import { getBranchListForDropdown } from "@/actions/branch-action";
 
 
 
@@ -56,7 +56,7 @@ export const ExpenseFormDialog = ({
   useEffect(() => {
     const fetchOptions = async () => {
       const expenseCategory = await getExpenseCategoryDropdown()
-      const branches = await getAllBranches()
+      const branches = await getBranchListForDropdown()
       setBranchList(branches);
       setExpenseCategoryList(expenseCategory)
     };

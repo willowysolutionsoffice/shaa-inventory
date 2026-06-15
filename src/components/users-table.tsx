@@ -1,208 +1,177 @@
 // src/components/users-table.tsx
 'use client';
+
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { IconSearch, IconDotsVertical, IconTrash, IconPencil } from '@tabler/icons-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAction } from 'next-safe-action/hooks';
+import { toast } from 'sonner';
+import {
+  IconSearch, IconDotsVertical, IconTrash, IconPencil,
+} from '@tabler/icons-react';
+import {
+  Card, CardContent, CardDescription, CardHeader, CardTitle,
+} from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatDate } from '@/lib/utils';
-import { toast } from 'sonner';
-import type { UsersTableProps } from '@/types/user';
-import { authClient } from '@/lib/auth-client';
-import { updateUserBranchAction } from '@/actions/auth';
-import { useAction } from 'next-safe-action/hooks';
-import { User } from '@prisma/client';
+import { deleteUser, updateUser, type User } from '@/actions/user-action';
 import { UserForm } from './user-form';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+
+interface RoleOption {
+  id:           string;
+  name:         string;
+  description?: string;
+}
+
+interface BranchOption {
+  id:       string;
+  name:     string;
+  address?: string;
+}
+
+interface UsersTableProps {
+  users:    User[];
+  roles:    RoleOption[];
+  branches: BranchOption[];
+}
+
+function roleColor(colorKey: string | undefined) {
+  switch (colorKey?.toUpperCase()) {
+    case 'RED':    return 'text-red-600 dark:text-red-400';
+    case 'GREEN':  return 'text-green-600 dark:text-green-400';
+    case 'BLUE':   return 'text-blue-600 dark:text-blue-400';
+    case 'PURPLE': return 'text-purple-600 dark:text-purple-400';
+    case 'ORANGE': return 'text-orange-600 dark:text-orange-400';
+    default:       return 'text-gray-600 dark:text-gray-400';
+  }
+}
 
 export function UsersTable({ users, roles, branches }: UsersTableProps) {
   const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [userToDelete, setUserToDelete] = useState<User | null>(null);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [updatingRoleUserId, setUpdatingRoleUserId] = useState<string | null>(null);
+
+  const [searchQuery,          setSearchQuery]          = useState('');
+  const [userToDelete,         setUserToDelete]         = useState<User | null>(null);
+  const [showDeleteDialog,     setShowDeleteDialog]     = useState(false);
+  const [isDeleting,           setIsDeleting]           = useState(false);
+  const [updatingRoleUserId,   setUpdatingRoleUserId]   = useState<string | null>(null);
   const [updatingBranchUserId, setUpdatingBranchUserId] = useState<string | null>(null);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editingUser,          setEditingUser]          = useState<User | null>(null);
+  const [showEditDialog,       setShowEditDialog]       = useState(false);
 
-
-  const { execute: updateBranch } = useAction(updateUserBranchAction, {
+  const { execute: execUpdate } = useAction(updateUser, {
     onSuccess: ({ data }) => {
-      if (data?.success) {
-        toast.success(data.message);
-        router.refresh();
-      }
+      if ((data as any)?.error) { toast.error((data as any).error); return; }
+      toast.success('User updated');
+      router.refresh();
     },
-    onError: () => {
-      toast.error('Failed to update user branch. Please try again.');
+    onError: (e) => {
+      console.error('updateUser onError:', e);
+      toast.error('Failed to update user. Please try again.');
     },
     onSettled: () => {
+      setUpdatingRoleUserId(null);
       setUpdatingBranchUserId(null);
     },
   });
 
-  const filteredUsers = useMemo(() => {
-    if (!searchQuery) return users;
-
-    const query = searchQuery.toLowerCase();
-    return users.filter(
-      (user) =>
-        user.name.toLowerCase().includes(query) ||
-        user.email.toLowerCase().includes(query) ||
-        (user.role && user.role.toLowerCase().includes(query)) ||
-        (user.branch &&
-          branches
-            .find((b) => b.id === user.branch)
-            ?.name.toLowerCase()
-            .includes(query))
-    );
-  }, [users, searchQuery, branches]);
-
-  const handleDeleteClick = (user: User) => {
-    setUserToDelete(user);
-    setShowDeleteDialog(true);
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!userToDelete) return;
-
-    setIsDeleting(true);
-    try {
-      await authClient.admin.removeUser({
-        userId: userToDelete.id,
-      });
-
-      toast.success(`User ${userToDelete.name} deleted successfully`);
+  const { execute: execDelete } = useAction(deleteUser, {
+    onSuccess: ({ data }) => {
+      if ((data as any)?.error) { toast.error((data as any).error); return; }
+      toast.success('User deleted successfully');
       setShowDeleteDialog(false);
       setUserToDelete(null);
       router.refresh();
-    } catch (error) {
-      console.error('Delete user error:', error);
-      toast.error('Failed to delete user. Please try again.');
-    } finally {
-      setIsDeleting(false);
-    }
+    },
+    onError: () => toast.error('Failed to delete user. Please try again.'),
+    onSettled: () => setIsDeleting(false),
+  });
+
+  const filteredUsers = useMemo(() => {
+    if (!searchQuery) return users;
+    const q = searchQuery.toLowerCase();
+    return users.filter(
+      (u) =>
+        u.name.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q) ||
+        u.role?.name?.toLowerCase().includes(q) ||
+        u.branch?.name?.toLowerCase().includes(q),
+    );
+  }, [users, searchQuery]);
+
+  // ── Use role.id and branch.id (not flat roleId/branchId) ─────────────────
+
+  const handleRoleUpdate = (user: User, newRoleId: string) => {
+    if (newRoleId === user.role?.id) return;
+    setUpdatingRoleUserId(user.id);
+    execUpdate({
+      id:       user.id,
+      name:     user.name,
+      email:    user.email,
+      roleId:   newRoleId,
+      branchId: user.branch?.id ?? '',
+      phone:    user.phone ?? undefined,
+    });
   };
 
-  const handleDeleteCancel = () => {
-    setShowDeleteDialog(false);
-    setUserToDelete(null);
+  const handleBranchUpdate = (user: User, newBranchId: string) => {
+    if (newBranchId === user.branch?.id) return;
+    setUpdatingBranchUserId(user.id);
+    execUpdate({
+      id:       user.id,
+      name:     user.name,
+      email:    user.email,
+      roleId:   user.role?.id ?? '',
+      branchId: newBranchId,
+      phone:    user.phone ?? undefined,
+    });
   };
 
-  const handleEditClick = (user: User) => {
-  setEditingUser(user);
-  setShowEditDialog(true);
+  const handleDeleteClick   = (user: User) => { setUserToDelete(user); setShowDeleteDialog(true); };
+  const handleDeleteCancel  = () => { setShowDeleteDialog(false); setUserToDelete(null); };
+  const handleDeleteConfirm = () => {
+    if (!userToDelete) return;
+    setIsDeleting(true);
+    execDelete({ id: userToDelete.id });
   };
-
-
-  const handleRoleUpdate = async (userId: string, newRole: string, currentRole: string) => {
-    if (newRole === currentRole) return;
-
-    setUpdatingRoleUserId(userId);
-    try {
-      await authClient.admin.setRole({
-        userId,
-        role: newRole as 'admin' | 'user',
-      });
-
-      toast.success(`User role updated to ${newRole.toUpperCase()}`);
-      router.refresh();
-    } catch (error) {
-      console.error('Update role error:', error);
-      toast.error('Failed to update user role. Please try again.');
-    } finally {
-      setUpdatingRoleUserId(null);
-    }
-  };
-
-  const handleBranchUpdate = async (
-    userId: string,
-    newBranchId: string,
-    currentBranchId: string
-  ) => {
-    if (newBranchId === currentBranchId) return;
-    setUpdatingBranchUserId(userId);
-    updateBranch({ userId, branchId: newBranchId });
-  };
+  const handleEditClick = (user: User) => { setEditingUser(user); setShowEditDialog(true); };
 
   const RoleSelect = ({ user }: { user: User }) => {
     const isUpdating = updatingRoleUserId === user.id;
-    const currentRole = user.role || '';
-
-    const getRoleDisplayText = (roleValue: string | null) => {
-      if (!roleValue) return 'No Role';
-      const role = roles.find((r) => r.value === roleValue);
-      return role ? role.name : 'Unknown Role';
-    }
-
-    const getRoleColor = (roleValue: string | null) => {
-      if (!roleValue) return 'text-muted-foreground';
-      switch (roleValue.toLowerCase()) {
-        case 'admin':
-          return 'text-red-600 dark:text-red-400';
-        case 'user':
-          return 'text-green-600 dark:text-green-400';
-        default:
-          return 'text-gray-600 dark:text-gray-400';
-      }
-    };
-
     return (
       <div className="flex items-center gap-2">
         <Select
-          value={currentRole}
-          onValueChange={(newRole) => handleRoleUpdate(user.id, newRole, currentRole)}
+          value={user.role?.id ?? ''}
+          onValueChange={(v) => handleRoleUpdate(user, v)}
           disabled={isUpdating}
         >
           <SelectTrigger className="w-36 h-8 border-none shadow-none p-2 hover:bg-muted/50 focus:ring-1 focus:ring-ring">
             <SelectValue>
-              <span className={`text-sm font-medium  ${getRoleColor(currentRole)}`}>
-                {getRoleDisplayText(currentRole)}
+              <span className={`text-sm font-medium ${roleColor(user.role?.color)}`}>
+                {user.role?.name ?? 'No Role'}
               </span>
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {roles.map((role) => (
-              <SelectItem key={role.id} value={role.value} className="cursor-pointer">
+            {roles.map((r) => (
+              <SelectItem key={r.id} value={r.id}>
                 <div className="flex flex-col">
-                  <span className={`font-medium text-sm ${getRoleColor(role.value)}`}>
-                    {getRoleDisplayText(role.value)}
-                  </span>
-                  {role.description && (
-                    <span className="text-xs text-muted-foreground">{role.description}</span>
+                  <span className="font-medium text-sm">{r.name}</span>
+                  {r.description && (
+                    <span className="text-xs text-muted-foreground">{r.description}</span>
                   )}
                 </div>
               </SelectItem>
@@ -218,37 +187,27 @@ export function UsersTable({ users, roles, branches }: UsersTableProps) {
 
   const BranchSelect = ({ user }: { user: User }) => {
     const isUpdating = updatingBranchUserId === user.id;
-    const currentBranchId = user.branch || '';
-
-    const getBranchDisplayText = (branchId: string | null) => {
-      if (!branchId) return 'No Branch';
-      const branch = branches.find((b) => b.id === branchId);
-      return branch ? branch.name : 'Unknown Branch';
-    };
-
     return (
       <div className="flex items-center gap-2">
         <Select
-          value={currentBranchId}
-          onValueChange={(newBranchId) => handleBranchUpdate(user.id, newBranchId, currentBranchId)}
+          value={user.branch?.id ?? ''}
+          onValueChange={(v) => handleBranchUpdate(user, v)}
           disabled={isUpdating}
         >
           <SelectTrigger className="w-36 h-8 border-none shadow-none p-2 hover:bg-muted/50 focus:ring-1 focus:ring-ring">
             <SelectValue>
               <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
-                {getBranchDisplayText(currentBranchId)}
+                {user.branch?.name ?? 'No Branch'}
               </span>
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {branches.map((branch) => (
-              <SelectItem key={branch.id} value={branch.id} className="cursor-pointer">
+            {branches.map((b) => (
+              <SelectItem key={b.id} value={b.id}>
                 <div className="flex flex-col">
-                  <p className="font-medium text-sm text-blue-600 dark:text-blue-400">
-                    {branch.name}
-                  </p>
-                  {branch.address && (
-                    <span className="text-xs text-muted-foreground">{branch.address}</span>
+                  <span className="font-medium text-sm text-blue-600 dark:text-blue-400">{b.name}</span>
+                  {b.address && (
+                    <span className="text-xs text-muted-foreground">{b.address}</span>
                   )}
                 </div>
               </SelectItem>
@@ -282,7 +241,6 @@ export function UsersTable({ users, roles, branches }: UsersTableProps) {
                 className="max-w-sm"
               />
             </div>
-
             <div className="rounded-md border">
               <Table>
                 <TableHeader>
@@ -291,6 +249,7 @@ export function UsersTable({ users, roles, branches }: UsersTableProps) {
                     <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Branch</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Created</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -298,7 +257,7 @@ export function UsersTable({ users, roles, branches }: UsersTableProps) {
                 <TableBody>
                   {filteredUsers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-4">
+                      <TableCell colSpan={7} className="text-center py-4 text-muted-foreground">
                         No users found
                       </TableCell>
                     </TableRow>
@@ -306,14 +265,21 @@ export function UsersTable({ users, roles, branches }: UsersTableProps) {
                     filteredUsers.map((user) => (
                       <TableRow key={user.id}>
                         <TableCell className="font-medium">{user.name}</TableCell>
-                        <TableCell>{user.email}</TableCell>
+                        <TableCell className="text-muted-foreground">{user.email}</TableCell>
+                        <TableCell><RoleSelect user={user} /></TableCell>
+                        <TableCell><BranchSelect user={user} /></TableCell>
                         <TableCell>
-                          <RoleSelect user={user} />
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                            user.status === 'ACTIVE'
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {user.status === 'ACTIVE' ? 'Active' : 'Inactive'}
+                          </span>
                         </TableCell>
-                        <TableCell>
-                          <BranchSelect user={user} />
+                        <TableCell className="text-muted-foreground">
+                          {formatDate(user.createdAt)}
                         </TableCell>
-                        <TableCell>{formatDate(user.createdAt)}</TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -328,7 +294,7 @@ export function UsersTable({ users, roles, branches }: UsersTableProps) {
                                 Edit
                               </DropdownMenuItem>
                               <DropdownMenuItem
-                                className="text-destructive"
+                                className="text-destructive focus:text-destructive"
                                 onClick={() => handleDeleteClick(user)}
                               >
                                 <IconTrash className="mr-2 h-4 w-4" />
@@ -347,18 +313,25 @@ export function UsersTable({ users, roles, branches }: UsersTableProps) {
         </CardContent>
       </Card>
 
+      {/* Edit dialog */}
       {editingUser && (
         <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Edit User</DialogTitle>
             </DialogHeader>
-
             <UserForm
-              initialData={editingUser}
+              isEdit
               roles={roles}
               branches={branches}
-              isEdit={true}
+              initialData={{
+                id:       editingUser.id,
+                name:     editingUser.name,
+                email:    editingUser.email,
+                phone:    editingUser.phone ?? undefined,
+                roleId:   editingUser.role?.id   ?? '',   // ← fixed
+                branchId: editingUser.branch?.id ?? '',   // ← fixed
+              }}
               onSuccess={() => {
                 setShowEditDialog(false);
                 setEditingUser(null);
@@ -369,16 +342,15 @@ export function UsersTable({ users, roles, branches }: UsersTableProps) {
         </Dialog>
       )}
 
-
-      {/* Delete Confirmation Dialog */}
+      {/* Delete confirmation */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the user{' '}
-              <span className="font-semibold">{userToDelete?.name}</span> and remove their data from
-              our servers.
+              This action cannot be undone. This will permanently delete{' '}
+              <span className="font-semibold">{userToDelete?.name}</span> and remove
+              their data from our servers.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

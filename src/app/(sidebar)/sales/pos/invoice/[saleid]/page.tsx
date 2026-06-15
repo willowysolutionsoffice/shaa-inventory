@@ -17,50 +17,48 @@ interface Props {
 export default async function POSInvoicePage({ params }: Props) {
   const { saleid } = await params;
 
-  // Same pattern as the existing sale detail page
-  const { data: resultData } = await getSaleById({ id: saleid });
+  const result = await getSaleById({ id: saleid });
 
-  if (!resultData?.data) notFound();
+  // getSaleById returns { data: { data: sale } } via next-safe-action wrapper
+  const sale = result?.data?.data;
 
-  const sale     = resultData.data;
+  if (!sale) notFound();
+
   const items    = sale.items    ?? [];
   const payments = sale.payments ?? [];
   const customer = sale.customer ?? { name: "Walk-in Customer" };
   const branch   = sale.branch   ?? { name: "Branch Central" };
 
   const subtotal = items.reduce(
-    (s, i) => s + toNum(i.quantity) * toNum(i.unitPrice),
-    0
+    (s: number, i: any) => s + toNum(i.quantity) * toNum(i.unitPrice), 0
   );
-  const itemDiscountTotal = items.reduce((s, i) => s + toNum(i.discount), 0);
+  const itemDiscountTotal = items.reduce((s: number, i: any) => s + toNum(i.discount), 0);
   const netAfterDiscount  = subtotal - itemDiscountTotal;
   const taxAmount         = (netAfterDiscount * 12) / 100;
-  const amountPaid        = payments.reduce((s, p) => s + toNum(p.amount), 0);
+  const amountPaid        = payments.reduce((s: number, p: any) => s + toNum(p.amount), 0);
 
   const invoice = {
     saleId:    sale.id,
     invoiceNo: sale.invoiceNo ?? "—",
-    date:      sale.salesdate,
+    date:      sale.salesDate ?? sale.salesdate,   // backend returns salesDate (Prisma field)
 
     customer: {
-      name:  (customer as any).name  ?? "Walk-in Customer",
+      name:  customer.name  ?? "Walk-in Customer",
       phone: (customer as any).phone ?? "",
     },
     branch: {
-      name:    (branch as any).name    ?? "Branch Central",
+      name:    branch.name    ?? "Branch Central",
       address: (branch as any).address ?? "Calicut, Kerala",
       phone:   (branch as any).phone   ?? "",
     },
 
     paymentMethod: payments[0]?.paymentMethod ?? "Cash",
 
-    items: items.map((item) => ({
+    items: items.map((item: any) => ({
       id:        item.id,
       productId: item.productId,
-      name:      (item.product as any)?.product_name
-                   ?? (item.product as any)?.name
-                   ?? "Unknown Product",
-      sku:       (item.product as any)?.sku ?? "",
+      name:      item.product?.productName ?? item.product?.product_name ?? "Unknown Product",
+      sku:       item.product?.sku ?? "",
       qty:       toNum(item.quantity),
       unitPrice: toNum(item.unitPrice),
       discount:  toNum(item.discount),
@@ -73,9 +71,9 @@ export default async function POSInvoicePage({ params }: Props) {
     manualDiscount: itemDiscountTotal,
     taxRate:        12,
     taxAmount,
-    grandTotal:     toNum(sale.grandTotal),
+    grandTotal:  toNum(sale.grandTotal),
     amountPaid,
-    change:         Math.max(0, amountPaid - toNum(sale.grandTotal)),
+    change:      Math.max(0, amountPaid - toNum(sale.grandTotal)),
   };
 
   return <POSInvoiceSystem invoice={invoice} />;

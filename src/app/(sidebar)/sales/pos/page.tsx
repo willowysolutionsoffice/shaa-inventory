@@ -1,162 +1,198 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
-  Search,
-  Trash2,
-  Plus,
-  Minus,
-  Percent,
-  CreditCard,
-  Wallet,
-  Receipt,
-  UserPlus,
-  PauseCircle,
-  CheckCircle,
-  Sparkles,
-  ShoppingBag,
-  Tag,
-  Loader2,
-  IndianRupee,
+  Search, Trash2, Plus, Minus, Percent, CreditCard, Wallet, Receipt,
+  UserPlus, PauseCircle, CheckCircle, Sparkles, ShoppingBag, Tag,
+  Loader2, IndianRupee,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Card, CardContent, CardHeader, CardTitle, CardDescription,
+} from "@/components/ui/card";
+import { Button }    from "@/components/ui/button";
+import { Input }     from "@/components/ui/input";
+import { Badge }     from "@/components/ui/badge";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { toast } from "sonner";
+import { toast }     from "sonner";
 import { formatCurrency } from "@/lib/utils";
-import { useRouter } from "next/navigation";
-import { useAction } from "next-safe-action/hooks";
-import { createSale } from "@/actions/sales-action";
-
-// ── Static data (replace with DB fetch if needed) ─────────────────────────────
-
-const POS_PRODUCTS = [
-  { id: "prod-1",  name: "Gulaal Delia Lawn – Unstitched 3-Piece",       sku: "GUL-DELIA-LP-01",  price: 4999, stock: 24,  category: "Unstitched" },
-  { id: "prod-2",  name: "Gul Ahmed Summer Lawn – Unstitched 3-Piece",   sku: "GA-SML-UP-02",     price: 3799, stock: 30,  category: "Unstitched" },
-  { id: "prod-3",  name: "Sapphire Eid Festive Unstitched – Embroidered",sku: "SAP-EID-EU-03",    price: 6999, stock: 15,  category: "Unstitched" },
-  { id: "prod-4",  name: "Gulaal Mahi Collection – Unstitched Khaddar",  sku: "GUL-MAHI-KH-04",  price: 4299, stock: 18,  category: "Unstitched" },
-  { id: "prod-5",  name: "Banarasi Pure Silk Saree – Zari Border",       sku: "BAN-SILK-ZB-05",   price: 8999, stock: 10,  category: "Sarees"     },
-  { id: "prod-6",  name: "Kota Doria Cotton-Silk Saree – Block Print",   sku: "KOTA-CS-BP-06",    price: 1999, stock: 20,  category: "Sarees"     },
-  { id: "prod-7",  name: "Georgette Embroidered Saree – Party Wear",     sku: "GEO-EMB-PW-07",    price: 3499, stock: 12,  category: "Sarees"     },
-  { id: "prod-8",  name: "Kerala Kasavu Saree – Pure Cotton",            sku: "KER-KAS-CM-08",    price: 1399, stock: 35,  category: "Sarees"     },
-  { id: "prod-9",  name: "Anarkali Rayon Kurti – Printed Long",          sku: "ANK-RAY-PL-XL-09", price: 799,  stock: 40,  category: "Kurtis"     },
-  { id: "prod-10", name: "Palazzo Kurti Set – Muslin with Dupatta",      sku: "PAL-MUS-DP-10",    price: 1099, stock: 25,  category: "Kurtis"     },
-  { id: "prod-11", name: "Pure Linen Fabric – Solid – Per Metre",        sku: "LIN-SOL-PM-11",    price: 299,  stock: 200, category: "Fabrics"    },
-  { id: "prod-12", name: "Chiffon Printed Fabric – Per Metre",           sku: "CHF-PRT-PM-12",    price: 199,  stock: 150, category: "Fabrics"    },
-  { id: "prod-13", name: "Embroidered Organza Dupatta – Bridal",         sku: "ORG-EMB-BD-13",    price: 1499, stock: 22,  category: "Dupattas"   },
-  { id: "prod-14", name: "Gul Ahmed Silk Dupatta – Digital Print",       sku: "GA-SILK-DP-14",    price: 999,  stock: 30,  category: "Dupattas"   },
-  { id: "prod-15", name: "Sapphire Ready-to-Wear Embroidered Suit",      sku: "SAP-RTW-ES-15",    price: 7999, stock: 8,   category: "Readymade"  },
-];
-
-const CUSTOMERS = [
-  { id: "cust-walk", name: "Walk-in Customer",    phone: "",           type: "Retail"    },
-  { id: "cust-1",    name: "Fathima Beevi K",     phone: "9447112345", type: "Retail"    },
-  { id: "cust-2",    name: "Zainab Hussain",       phone: "9895234567", type: "VIP"       },
-  { id: "cust-3",    name: "Mariyam Siddique",     phone: "9745345678", type: "Retail"    },
-  { id: "cust-4",    name: "Anitha Krishnan",      phone: "9387456789", type: "Wholesale" },
-  { id: "cust-5",    name: "Reshma Abdul Razak",   phone: "9656567890", type: "Retail"    },
-];
+import { useRouter }      from "next/navigation";
+import { useAction }      from "next-safe-action/hooks";
+import { createSale }     from "@/actions/sales-action";
+import { getCustomerListForDropdown } from "@/actions/customer-action";
+import { getProductDropdown }  from "@/actions/product-actions";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+interface POSProduct {
+  id:            string;
+  name:          string;
+  sku:           string;
+  price:         number;
+  purchasePrice: number;
+  stock:         number;
+  category:      string;
+}
+
+interface POSCustomer {
+  id:    string;
+  name:  string;
+  phone: string;
+}
+
 interface CartItem {
-  product: (typeof POS_PRODUCTS)[0];
+  product:  POSProduct;
   quantity: number;
 }
 
 interface HeldBill {
-  id: string;
-  cart: CartItem[];
-  customerId: string;
-  subtotal: number;
-  couponCode: string;
+  id:                    string;
+  cart:                  CartItem[];
+  customerId:            string;
+  subtotal:              number;
+  couponCode:            string;
   couponDiscountPercent: number;
   manualDiscountPercent: number | "";
-  paymentMethod: "cash" | "card" | "upi";
+  paymentMethod:         "cash" | "card" | "upi";
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// Walk-in customer fallback — must exist in your DB
+const WALK_IN_CUSTOMER_ID = "walk-in";
 
-export default function PosBillingPage() {
+export default function PosBillingPage({
+  branchId = "main-branch",
+}: {
+  branchId?: string;
+}) {
   const router = useRouter();
 
+  // ── Remote data ────────────────────────────────────────────────────────────
+  const [products,  setProducts]  = useState<POSProduct[]>([]);
+  const [customers, setCustomers] = useState<POSCustomer[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [custRes, prodRes] = await Promise.all([
+          getCustomerListForDropdown(),
+          getProductDropdown({ query: "" }),
+        ]);
+
+        const custList: POSCustomer[] = [
+          { id: WALK_IN_CUSTOMER_ID, name: "Walk-in Customer", phone: "" },
+          ...(custRes ?? []).map((c: any) => ({
+            id:    c.id,
+            name:  c.name,
+            phone: c.phone ?? "",
+          })),
+        ];
+
+        const prodList: POSProduct[] = (prodRes ?? []).map(  // ← not prodRes?.data?.products
+  (p: any) => ({
+    id:            p.id,
+    name:          p.product_name ?? p.productName,
+    sku:           p.sku,
+    price:         Number(p.sellingPrice ?? p.purchasePrice ?? 0),
+    purchasePrice: Number(p.purchasePrice ?? 0),
+    stock:         Number(p.stock ?? 0),
+    category:      p.category?.name ?? p.category ?? "General",
+  })
+);
+
+        setCustomers(custList);
+        setProducts(prodList);
+      } catch (err) {
+        toast.error("Failed to load POS data");
+      } finally {
+        setLoadingData(false);
+      }
+    })();
+  }, []);
+
   // ── UI state ───────────────────────────────────────────────────────────────
-  const [searchTerm, setSearchTerm]               = useState("");
-  const [selectedCategory, setSelectedCategory]   = useState("All");
-  const [barcodeInput, setBarcodeInput]           = useState("");
-  const [selectedCustomer, setSelectedCustomer]   = useState("cust-walk");
-  const [cart, setCart]                           = useState<CartItem[]>([]);
-  const [couponDiscountPercent, setCouponDiscountPercent] = useState<number>(0);
+  const [searchTerm,       setSearchTerm]       = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [barcodeInput,     setBarcodeInput]     = useState("");
+  const [selectedCustomer, setSelectedCustomer] = useState(WALK_IN_CUSTOMER_ID);
+  const [cart,             setCart]             = useState<CartItem[]>([]);
+  const [couponDiscountPercent, setCouponDiscountPercent] = useState(0);
   const [manualDiscountPercent, setManualDiscountPercent] = useState<number | "">("");
-  const [couponCode, setCouponCode]               = useState("");
-  const [appliedCoupon, setAppliedCoupon]         = useState("");   // the validated coupon string
-  const [paymentMethod, setPaymentMethod]         = useState<"cash" | "card" | "upi">("cash");
-  const [heldBills, setHeldBills]                 = useState<HeldBill[]>([]);
+  const [couponCode,   setCouponCode]   = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "upi">("cash");
+  const [heldBills,    setHeldBills]    = useState<HeldBill[]>([]);
 
   // ── Server action ──────────────────────────────────────────────────────────
-  const { execute: executeSale, isPending: isCheckingOut } = useAction(createSale, {
+  const { execute: executeSale, isExecuting: isCheckingOut } = useAction(createSale, {
     onSuccess: ({ data }) => {
-      const saleId = data?.data?.id;
+      const saleId = (data as any)?.id;
       if (saleId) {
         resetCart();
         toast.success("Invoice generated! Opening receipt…");
         router.push(`/sales/pos/invoice/${saleId}`);
       } else {
-        toast.error("Sale saved but no ID returned.");
+        toast.error((data as any)?.error ?? "Sale saved but no ID returned.");
       }
     },
-    onError: () => {
-      toast.error("Checkout failed. Please try again.");
-    },
+    onError: () => toast.error("Checkout failed. Please try again."),
   });
 
-  // ── Derived categories ─────────────────────────────────────────────────────
+  // ── Derived ────────────────────────────────────────────────────────────────
   const categories = useMemo(
-    () => ["All", ...Array.from(new Set(POS_PRODUCTS.map((p) => p.category)))],
-    []
+    () => ["All", ...Array.from(new Set(products.map((p) => p.category)))],
+    [products]
   );
 
   const filteredProducts = useMemo(
     () =>
-      POS_PRODUCTS.filter((p) => {
-        const matchesSearch =
-          p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          p.sku.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesCategory =
-          selectedCategory === "All" || p.category === selectedCategory;
-        return matchesSearch && matchesCategory;
+      products.filter((p) => {
+        const q = searchTerm.toLowerCase();
+        return (
+          (p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)) &&
+          (selectedCategory === "All" || p.category === selectedCategory)
+        );
       }),
-    [searchTerm, selectedCategory]
+    [products, searchTerm, selectedCategory]
   );
 
   // ── Pricing ────────────────────────────────────────────────────────────────
   const subtotal = useMemo(
-    () => cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0),
+    () => cart.reduce((s, i) => s + i.product.price * i.quantity, 0),
     [cart]
   );
-
-  const couponDiscountAmount  = useMemo(() => (subtotal * couponDiscountPercent) / 100, [subtotal, couponDiscountPercent]);
-  const afterCoupon           = subtotal - couponDiscountAmount;
-  const manualPct             = typeof manualDiscountPercent === "number" ? Math.min(Math.max(manualDiscountPercent, 0), 100) : 0;
-  const manualDiscountAmount  = useMemo(() => (afterCoupon * manualPct) / 100, [afterCoupon, manualPct]);
-  const totalDiscountAmount   = couponDiscountAmount + manualDiscountAmount;
-  const taxBase               = subtotal - totalDiscountAmount;
-  const taxAmount             = useMemo(() => (taxBase * 12) / 100, [taxBase]);
-  const grandTotal            = useMemo(() => taxBase + taxAmount, [taxBase, taxAmount]);
+  const couponDiscountAmount = (subtotal * couponDiscountPercent) / 100;
+  const afterCoupon          = subtotal - couponDiscountAmount;
+  const manualPct            =
+    typeof manualDiscountPercent === "number"
+      ? Math.min(Math.max(manualDiscountPercent, 0), 100)
+      : 0;
+  const manualDiscountAmount = (afterCoupon * manualPct) / 100;
+  const totalDiscountAmount  = couponDiscountAmount + manualDiscountAmount;
+  const taxBase              = subtotal - totalDiscountAmount;
+  const taxAmount            = (taxBase * 12) / 100;
+  const grandTotal           = taxBase + taxAmount;
 
   // ── Cart helpers ───────────────────────────────────────────────────────────
-  const addToCart = (product: (typeof POS_PRODUCTS)[0]) => {
+  const addToCart = (product: POSProduct) => {
     const existing = cart.find((i) => i.product.id === product.id);
     if (existing) {
       if (existing.quantity >= product.stock) {
         toast.warning(`Cannot exceed available stock of ${product.stock} units.`);
         return;
       }
-      setCart(cart.map((i) => i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i));
+      setCart(
+        cart.map((i) =>
+          i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i
+        )
+      );
     } else {
+      if (product.stock <= 0) {
+        toast.warning("This product is out of stock.");
+        return;
+      }
       setCart([...cart, { product, quantity: 1 }]);
     }
     toast.success(`${product.name} added to cart.`);
@@ -181,7 +217,7 @@ export default function PosBillingPage() {
 
   const removeFromCart = (productId: string) => {
     setCart(cart.filter((i) => i.product.id !== productId));
-    toast.info("Item removed from terminal cart.");
+    toast.info("Item removed from cart.");
   };
 
   const resetCart = () => {
@@ -195,28 +231,26 @@ export default function PosBillingPage() {
   // ── Barcode ────────────────────────────────────────────────────────────────
   const handleBarcodeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const found = POS_PRODUCTS.find(
+    const found = products.find(
       (p) => p.sku.toLowerCase() === barcodeInput.trim().toLowerCase()
     );
     if (found) {
       addToCart(found);
       setBarcodeInput("");
     } else {
-      toast.error("Invalid Barcode. No matching product SKU found.");
+      toast.error("No product found for that SKU.");
     }
   };
 
   // ── Coupon ─────────────────────────────────────────────────────────────────
+  const COUPONS: Record<string, number> = { WELCOME10: 10, SUPERERP: 20 };
+
   const applyCoupon = () => {
     const code = couponCode.trim().toUpperCase();
-    if (code === "WELCOME10") {
-      setCouponDiscountPercent(10);
+    if (COUPONS[code] !== undefined) {
+      setCouponDiscountPercent(COUPONS[code]);
       setAppliedCoupon(code);
-      toast.success("Coupon WELCOME10 applied! 10% discount.");
-    } else if (code === "SUPERERP") {
-      setCouponDiscountPercent(20);
-      setAppliedCoupon(code);
-      toast.success("Coupon SUPERERP applied! 20% discount.");
+      toast.success(`Coupon ${code} applied! ${COUPONS[code]}% discount.`);
     } else {
       toast.error("Invalid coupon code.");
     }
@@ -226,18 +260,18 @@ export default function PosBillingPage() {
   const holdBill = () => {
     if (cart.length === 0) { toast.warning("Cannot hold an empty cart."); return; }
     const hold: HeldBill = {
-      id: `HOLD-${Date.now().toString().slice(-4)}`,
+      id:                    `HOLD-${Date.now().toString().slice(-4)}`,
       cart,
-      customerId: selectedCustomer,
+      customerId:            selectedCustomer,
       subtotal,
-      couponCode: appliedCoupon,
+      couponCode:            appliedCoupon,
       couponDiscountPercent,
       manualDiscountPercent,
       paymentMethod,
     };
     setHeldBills([...heldBills, hold]);
     resetCart();
-    toast.success(`Transaction on HOLD. Ticket: ${hold.id}`);
+    toast.success(`Transaction held. Ticket: ${hold.id}`);
   };
 
   const restoreBill = (holdId: string) => {
@@ -257,24 +291,32 @@ export default function PosBillingPage() {
   // ── Checkout ───────────────────────────────────────────────────────────────
   const checkout = () => {
     if (cart.length === 0) { toast.warning("Cart is empty."); return; }
+    if (!selectedCustomer || selectedCustomer === WALK_IN_CUSTOMER_ID) {
+      // Walk-in: use a designated walk-in customer ID from env or first real customer
+      const fallbackId = customers.find((c) => c.id !== WALK_IN_CUSTOMER_ID)?.id;
+      if (!fallbackId) {
+        toast.error("Please select a customer or create a walk-in customer in the system.");
+        return;
+      }
+    }
 
-    const now = new Date().toISOString();
-
-    // Walk-in needs a real customer ID — use first real customer as fallback
-    // or create a walk-in customer in your DB.
+    const now        = new Date().toISOString();
     const customerId =
-      selectedCustomer === "cust-walk" ? "cust-1" : selectedCustomer;
+      selectedCustomer === WALK_IN_CUSTOMER_ID
+        ? (customers.find((c) => c.id !== WALK_IN_CUSTOMER_ID)?.id ?? "")
+        : selectedCustomer;
+
+    const pmMap: Record<string, string> = { cash: "cash", card: "card", upi: "upi" };
 
     executeSale({
       customerId,
-      branchId: "branch-calicut",   // swap with session/context branch
-      salesdate: now,
-      status: "Dispatched",
-  invoiceNo: "",          // server generates the real one; pass empty string
-  grandTotal: grandTotal,
-  dueAmount: 0,           // fully paid at POS
-  paidAmount: grandTotal,
-  
+      branchId,
+      salesdate:   now,
+      status:      "Dispatched",
+      invoiceNo:   "",
+      grandTotal,
+      dueAmount:   0,
+      paidAmount:  grandTotal,
       items: cart.map((item) => ({
         productId:     item.product.id,
         quantity:      item.quantity,
@@ -282,22 +324,26 @@ export default function PosBillingPage() {
         discount:      0,
         subtotal:      item.product.price * item.quantity,
         total:         item.product.price * item.quantity,
-        purchasePrice: 0,
+        purchasePrice: item.product.purchasePrice,
       })),
-
-      salesPayment: [
-        {
-          amount:        grandTotal,
-          paymentMethod: paymentMethod === "cash" ? "Cash"
-                       : paymentMethod === "card" ? "Card"
-                       : "UPI",
-          paidOn:        now,
-          paymentNote:   appliedCoupon ? `Coupon: ${appliedCoupon}` : null,
-          dueDate:       null,
-        },
-      ],
+      salesPayment: [{
+        amount:        grandTotal,
+        paymentMethod: pmMap[paymentMethod],
+        paidOn:        now,
+        paymentNote:   appliedCoupon ? `Coupon: ${appliedCoupon}` : null,
+        dueDate:       null,
+      }],
     });
   };
+
+  // ── Loading skeleton ───────────────────────────────────────────────────────
+  if (loadingData) {
+    return (
+      <div className="flex items-center justify-center h-64 text-muted-foreground">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading POS terminal…
+      </div>
+    );
+  }
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -309,16 +355,19 @@ export default function PosBillingPage() {
             <ShoppingBag className="text-purple-600 h-8 w-8" /> POS Billing Terminal
           </h1>
           <p className="text-muted-foreground text-sm">
-            High-speed smart billing checkout system with offline database updates
+            High-speed smart billing checkout system
           </p>
         </div>
-        <Badge variant="outline" className="px-3 py-1 bg-purple-50 text-purple-700 dark:bg-purple-950/20 border-purple-200 w-fit">
-          Terminal Active • Branch Central
+        <Badge
+          variant="outline"
+          className="px-3 py-1 bg-purple-50 text-purple-700 dark:bg-purple-950/20 border-purple-200 w-fit"
+        >
+          Terminal Active • {branchId}
         </Badge>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        {/* ── Left – Products ────────────────────────────────────────────── */}
+        {/* ── Left – Products ─────────────────────────────────────────────── */}
         <div className="xl:col-span-7 flex flex-col gap-4">
 
           {/* Search + Category */}
@@ -326,7 +375,7 @@ export default function PosBillingPage() {
             <div className="relative md:col-span-2">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search products by SKU, barcode, name..."
+                placeholder="Search products by SKU or name..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-9 h-10 border-border bg-card shadow-sm"
@@ -358,40 +407,65 @@ export default function PosBillingPage() {
               onChange={(e) => setBarcodeInput(e.target.value)}
               className="h-8 text-xs border-purple-200 dark:border-purple-800 focus-visible:ring-purple-500 bg-card"
             />
-            <Button type="submit" size="sm" className="bg-purple-600 hover:bg-purple-700 h-8 text-xs text-white">
+            <Button
+              type="submit"
+              size="sm"
+              className="bg-purple-600 hover:bg-purple-700 h-8 text-xs text-white"
+            >
               Scan
             </Button>
           </form>
 
           {/* Product grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-h-[520px] overflow-y-auto pr-1 no-scrollbar">
-            {filteredProducts.map((prod) => (
-              <Card
-                key={prod.id}
-                onClick={() => addToCart(prod)}
-                className="cursor-pointer hover:border-purple-500 transition-all hover:shadow-md bg-card group border border-border flex flex-col justify-between h-36"
-              >
-                <CardContent className="p-3.5 flex flex-col justify-between h-full w-full">
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-medium text-muted-foreground">{prod.sku}</span>
-                      <Badge className="bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-950/30 dark:text-purple-300 border border-purple-100 dark:border-purple-900/50 text-[10px] px-1.5 py-0">
-                        Stock: {prod.stock}
+            {filteredProducts.length === 0 ? (
+              <div className="col-span-3 text-center text-muted-foreground py-16 text-sm">
+                No products match your search.
+              </div>
+            ) : (
+              filteredProducts.map((prod) => (
+                <Card
+                  key={prod.id}
+                  onClick={() => addToCart(prod)}
+                  className={`cursor-pointer hover:border-purple-500 transition-all hover:shadow-md bg-card group border border-border flex flex-col justify-between h-36 ${
+                    prod.stock <= 0 ? "opacity-50 pointer-events-none" : ""
+                  }`}
+                >
+                  <CardContent className="p-3.5 flex flex-col justify-between h-full w-full">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-medium text-muted-foreground">
+                          {prod.sku}
+                        </span>
+                        <Badge
+                          className={`text-[10px] px-1.5 py-0 ${
+                            prod.stock <= 5
+                              ? "bg-red-50 text-red-700 border-red-100"
+                              : "bg-purple-50 text-purple-700 border-purple-100"
+                          }`}
+                        >
+                          Stock: {prod.stock}
+                        </Badge>
+                      </div>
+                      <h3 className="font-semibold text-sm line-clamp-2 group-hover:text-purple-600 transition-colors leading-tight">
+                        {prod.name}
+                      </h3>
+                    </div>
+                    <div className="flex items-center justify-between mt-auto pt-2 border-t border-dashed border-border/80">
+                      <span className="font-extrabold text-base text-purple-600">
+                        {formatCurrency(prod.price)}
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className="text-[9px] bg-slate-50 dark:bg-slate-900 border-slate-200"
+                      >
+                        {prod.category}
                       </Badge>
                     </div>
-                    <h3 className="font-semibold text-sm line-clamp-2 group-hover:text-purple-600 transition-colors leading-tight">
-                      {prod.name}
-                    </h3>
-                  </div>
-                  <div className="flex items-center justify-between mt-auto pt-2 border-t border-dashed border-border/80">
-                    <span className="font-extrabold text-base text-purple-600">{formatCurrency(prod.price)}</span>
-                    <Badge variant="outline" className="text-[9px] bg-slate-50 dark:bg-slate-900 border-slate-200">
-                      {prod.category}
-                    </Badge>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              ))
+            )}
           </div>
 
           {/* Held bills */}
@@ -412,7 +486,9 @@ export default function PosBillingPage() {
                     onClick={() => restoreBill(h.id)}
                   >
                     {h.id}
-                    <span className="text-[10px] opacity-75 font-normal ml-2">({formatCurrency(h.subtotal)})</span>
+                    <span className="text-[10px] opacity-75 font-normal ml-2">
+                      ({formatCurrency(h.subtotal)})
+                    </span>
                   </Button>
                 ))}
               </CardContent>
@@ -420,7 +496,7 @@ export default function PosBillingPage() {
           )}
         </div>
 
-        {/* ── Right – Cart & Checkout ────────────────────────────────────── */}
+        {/* ── Right – Cart & Checkout ──────────────────────────────────────── */}
         <div className="xl:col-span-5">
           <Card className="border-border shadow-md bg-card flex flex-col h-[820px] justify-between">
 
@@ -429,12 +505,15 @@ export default function PosBillingPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-lg font-bold">
-                    Active Cart ({cart.reduce((sum, i) => sum + i.quantity, 0)})
+                    Active Cart ({cart.reduce((s, i) => s + i.quantity, 0)})
                   </CardTitle>
-                  <CardDescription className="text-xs">Manage quantities and finalise</CardDescription>
+                  <CardDescription className="text-xs">
+                    Manage quantities and finalise
+                  </CardDescription>
                 </div>
                 <Button
-                  variant="ghost" size="icon"
+                  variant="ghost"
+                  size="icon"
                   className="h-8 w-8 text-muted-foreground hover:text-red-500"
                   onClick={() => setCart([])}
                 >
@@ -449,17 +528,18 @@ export default function PosBillingPage() {
                     <SelectValue placeholder="Customer" />
                   </SelectTrigger>
                   <SelectContent>
-                    {CUSTOMERS.map((c) => (
+                    {customers.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
-                        {c.name} ({c.type})
+                        {c.name} {c.phone ? `• ${c.phone}` : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <Button
-                  size="icon" variant="outline"
+                  size="icon"
+                  variant="outline"
                   className="h-9 w-9 shrink-0"
-                  onClick={() => toast.info("New customer form coming soon.")}
+                  onClick={() => toast.info("Add customer from Sales → Customers.")}
                 >
                   <UserPlus className="h-4 w-4 text-purple-600" />
                 </Button>
@@ -472,7 +552,9 @@ export default function PosBillingPage() {
                 <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
                   <ShoppingBag className="h-12 w-12 text-muted-foreground/30 mb-2 stroke-[1.5]" />
                   <p className="text-sm font-semibold">POS Cart is Empty</p>
-                  <p className="text-xs opacity-70">Scan barcode or click products to add items</p>
+                  <p className="text-xs opacity-70">
+                    Scan barcode or click products to add items
+                  </p>
                 </div>
               ) : (
                 cart.map((item) => (
@@ -481,11 +563,13 @@ export default function PosBillingPage() {
                     className="flex justify-between items-center p-2.5 rounded-lg border border-border/60 bg-muted/10 hover:bg-muted/20 transition-colors"
                   >
                     <div className="space-y-1 min-w-0 flex-1 mr-3">
-                      <h4 className="font-semibold text-xs text-foreground line-clamp-1">{item.product.name}</h4>
+                      <h4 className="font-semibold text-xs text-foreground line-clamp-1">
+                        {item.product.name}
+                      </h4>
                       <p className="text-[10px] text-muted-foreground">
                         {formatCurrency(item.product.price)} / unit •{" "}
                         <span className="text-purple-600 font-medium">
-                          Subtotal: {formatCurrency(item.product.price * item.quantity)}
+                          {formatCurrency(item.product.price * item.quantity)}
                         </span>
                       </p>
                     </div>
@@ -498,7 +582,9 @@ export default function PosBillingPage() {
                         >
                           <Minus className="h-3 w-3" />
                         </button>
-                        <span className="px-2.5 font-bold text-xs text-foreground">{item.quantity}</span>
+                        <span className="px-2.5 font-bold text-xs text-foreground">
+                          {item.quantity}
+                        </span>
                         <button
                           type="button"
                           className="px-2 py-1 bg-muted hover:bg-muted/80 text-muted-foreground transition-colors"
@@ -528,7 +614,7 @@ export default function PosBillingPage() {
                 <div className="relative flex-1">
                   <Tag className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                   <Input
-                    placeholder="Coupon code (WELCOME10, SUPERERP)..."
+                    placeholder="Coupon code..."
                     value={couponCode}
                     onChange={(e) => setCouponCode(e.target.value)}
                     disabled={couponDiscountPercent > 0}
@@ -537,14 +623,24 @@ export default function PosBillingPage() {
                 </div>
                 {couponDiscountPercent > 0 ? (
                   <Button
-                    size="sm" variant="outline"
+                    size="sm"
+                    variant="outline"
                     className="h-9 px-3 text-xs text-red-500 border-red-200 hover:bg-red-50"
-                    onClick={() => { setCouponDiscountPercent(0); setCouponCode(""); setAppliedCoupon(""); }}
+                    onClick={() => {
+                      setCouponDiscountPercent(0);
+                      setCouponCode("");
+                      setAppliedCoupon("");
+                    }}
                   >
                     Remove
                   </Button>
                 ) : (
-                  <Button size="sm" variant="outline" className="h-9 px-3 text-xs" onClick={applyCoupon}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-9 px-3 text-xs"
+                    onClick={applyCoupon}
+                  >
                     Apply
                   </Button>
                 )}
@@ -555,12 +651,16 @@ export default function PosBillingPage() {
                 <div className="relative flex-1">
                   <Percent className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                   <Input
-                    type="number" min={0} max={100}
-                    placeholder="Instant discount % (e.g. 10 = 10% off)"
+                    type="number"
+                    min={0}
+                    max={100}
+                    placeholder="Instant discount %"
                     value={manualDiscountPercent}
                     onChange={(e) => {
                       const v = e.target.value;
-                      setManualDiscountPercent(v === "" ? "" : Math.min(Math.max(Number(v), 0), 100));
+                      setManualDiscountPercent(
+                        v === "" ? "" : Math.min(Math.max(Number(v), 0), 100)
+                      );
                     }}
                     className="pl-8 h-9 text-xs bg-card"
                   />
@@ -580,14 +680,19 @@ export default function PosBillingPage() {
               <div className="space-y-1.5 text-xs text-muted-foreground">
                 <div className="flex justify-between">
                   <span>Cart Total:</span>
-                  <span className="font-semibold text-foreground">{formatCurrency(subtotal)}</span>
+                  <span className="font-semibold text-foreground">
+                    {formatCurrency(subtotal)}
+                  </span>
                 </div>
                 {couponDiscountPercent > 0 && (
                   <div className="flex justify-between text-green-600">
                     <span className="flex items-center gap-1">
-                      <Sparkles className="h-3 w-3" /> Coupon ({appliedCoupon} – {couponDiscountPercent}%):
+                      <Sparkles className="h-3 w-3" /> Coupon ({appliedCoupon} –{" "}
+                      {couponDiscountPercent}%):
                     </span>
-                    <span className="font-semibold">−{formatCurrency(couponDiscountAmount)}</span>
+                    <span className="font-semibold">
+                      −{formatCurrency(couponDiscountAmount)}
+                    </span>
                   </div>
                 )}
                 {manualPct > 0 && (
@@ -595,7 +700,9 @@ export default function PosBillingPage() {
                     <span className="flex items-center gap-1">
                       <Percent className="h-3 w-3" /> Instant Discount ({manualPct}%):
                     </span>
-                    <span className="font-semibold">−{formatCurrency(manualDiscountAmount)}</span>
+                    <span className="font-semibold">
+                      −{formatCurrency(manualDiscountAmount)}
+                    </span>
                   </div>
                 )}
                 {totalDiscountAmount > 0 && (
@@ -606,7 +713,9 @@ export default function PosBillingPage() {
                 )}
                 <div className="flex justify-between">
                   <span>GST / VAT (12%):</span>
-                  <span className="font-semibold text-foreground">{formatCurrency(taxAmount)}</span>
+                  <span className="font-semibold text-foreground">
+                    {formatCurrency(taxAmount)}
+                  </span>
                 </div>
                 <Separator className="my-1 bg-border" />
                 <div className="flex justify-between text-base font-extrabold text-purple-700 dark:text-purple-400">
@@ -615,7 +724,7 @@ export default function PosBillingPage() {
                 </div>
               </div>
 
-              {/* Payment method selector */}
+              {/* Payment method */}
               <div className="grid grid-cols-3 gap-2 py-1">
                 {(["cash", "card", "upi"] as const).map((method) => (
                   <button
@@ -631,7 +740,9 @@ export default function PosBillingPage() {
                     {method === "cash" && <IndianRupee className="h-4 w-4" />}
                     {method === "card" && <CreditCard className="h-4 w-4" />}
                     {method === "upi"  && <Wallet className="h-4 w-4" />}
-                    <span>{method === "cash" ? "Cash" : method === "card" ? "Card" : "UPI"}</span>
+                    <span>
+                      {method === "cash" ? "Cash" : method === "card" ? "Card" : "UPI"}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -662,6 +773,14 @@ export default function PosBillingPage() {
                   )}
                 </Button>
               </div>
+
+              <Button
+                variant="ghost"
+                className="w-full text-xs text-muted-foreground gap-1"
+                onClick={() => router.push("/sales/pos")}
+              >
+                <Receipt className="h-3.5 w-3.5" /> New Transaction
+              </Button>
             </div>
           </Card>
         </div>

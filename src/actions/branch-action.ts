@@ -1,73 +1,100 @@
 // src/actions/branch-action.ts
 'use server';
 
-import { db } from "@/lib/mock-db";
-import { actionClient } from "@/lib/safeAction";
-import { branchSchema, deleteBranchSchema, updateBranchSchema } from '@/schemas/branch-schema';
 import { revalidatePath } from 'next/cache';
+import { actionClient } from '@/lib/safeAction';
+import { branchSchema, deleteBranchSchema, updateBranchSchema } from '@/schemas/branch-schema';
+import { api } from '@/lib/api';
 
-export const createBranch = actionClient.inputSchema(branchSchema)
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+export interface Branch {
+  id: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  _count?: {
+    users: number;
+    products: number;
+    sales: number;
+    purchases: number;
+  };
+}
+
+export interface BranchDropdownItem {
+  id: string;
+  name: string;
+}
+
+// ── CREATE ────────────────────────────────────────────────────────────────────
+
+export const createBranch = actionClient
+  .inputSchema(branchSchema)
   .action(async (values) => {
     try {
-      const newBranch = {
-        id: `branch-${Date.now()}`,
-        ...values.parsedInput,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      db.branches.push(newBranch);
+      const branch = await api.post<Branch>('/branches', values.parsedInput);
       revalidatePath('/branch');
-      return { data: newBranch };
-    } catch (error) {
-      console.error("Created Branch Error :", error);
-      return { error: "Something went wrong" };
+      return { data: branch };
+    } catch (error: any) {
+      console.error('Create Branch Error:', error);
+      return { error: error?.message ?? 'Failed to create branch. Please try again.' };
     }
   });
 
+// ── LIST ──────────────────────────────────────────────────────────────────────
+
 export const getBranchList = actionClient.action(async () => {
   try {
-    revalidatePath("/branch");
-    return { data: db.branches };
-  } catch (error) {
-    console.error("Get Branch Error :", error);
-    return { error: "Something went wrong" };
+    const branches = await api.get<Branch[]>('/branches');
+    return { data: branches };
+  } catch (error: any) {
+    console.error('Get Branch List Error:', error);
+    return { error: error?.message ?? 'Failed to fetch branches.' };
   }
 });
 
-export const getBranchlistForDropdown = async () => {
-  return db.branches.map(b => ({ id: b.id, name: b.name }));
+// ── DROPDOWN ──────────────────────────────────────────────────────────────────
+
+export const getBranchListForDropdown = async (): Promise<BranchDropdownItem[]> => {
+  try {
+    return await api.get<BranchDropdownItem[]>('/branches/dropdown');
+  } catch (error) {
+    console.error('Branch Dropdown Error:', error);
+    return [];
+  }
 };
 
-export const updateBranch = actionClient.inputSchema(updateBranchSchema).action(async (values) => {
-  const { id, ...data } = values.parsedInput;
-  try {
-    const branch = db.branches.find(b => b.id === id);
-    if (branch) {
-      Object.assign(branch, data);
-      branch.updatedAt = new Date();
+// ── UPDATE ────────────────────────────────────────────────────────────────────
+
+export const updateBranch = actionClient
+  .inputSchema(updateBranchSchema)
+  .action(async (values) => {
+    const { id, ...data } = values.parsedInput;
+    try {
+      const branch = await api.patch<Branch>(`/branches/${id}`, data);
       revalidatePath('/branch');
       return { data: branch };
+    } catch (error: any) {
+      console.error('Update Branch Error:', error);
+      return { error: error?.message ?? 'Failed to update branch. Please try again.' };
     }
-    return { error: "Branch not found" };
-  } catch (error) {
-    console.error("Error on Branch Updating :", error);
-    return { error: "Something went wrong" };
-  }
-});
+  });
 
-export const deleteBranch = actionClient.inputSchema(deleteBranchSchema).action(async (values) => {
-  const { id } = values.parsedInput;
-  try {
-    const idx = db.branches.findIndex(b => b.id === id);
-    if (idx !== -1) {
-      const deleted = db.branches[idx];
-      db.branches.splice(idx, 1);
+// ── DELETE ────────────────────────────────────────────────────────────────────
+
+export const deleteBranch = actionClient
+  .inputSchema(deleteBranchSchema)
+  .action(async (values) => {
+    const { id } = values.parsedInput;
+    try {
+      const result = await api.delete<{ id: string }>(`/branches/${id}`);
       revalidatePath('/branch');
-      return deleted;
+      return { data: result };
+    } catch (error: any) {
+      console.error('Delete Branch Error:', error);
+      return { error: error?.message ?? 'Failed to delete branch. Please try again.' };
     }
-    return null;
-  } catch (error) {
-    console.error("Delete Branch Error:", error);
-    return null;
-  }
-});
+  });

@@ -4,14 +4,14 @@ import { customersColumns } from "@/components/customers/customer-columns";
 import { CustomerTable } from "@/components/customers/customer-table";
 import { CustomerFormDialog } from "@/components/customers/customer-form";
 import { getCustomerList } from "@/actions/customer-action";
-import { getAllBranches } from "@/actions/auth";
+import { getBranchListForDropdown } from "@/actions/branch-action";
 
 
 
 export default async function CustomerPage() {
   const [{ data }, branches] = await Promise.all([
     getCustomerList(),
-    getAllBranches(),
+    getBranchListForDropdown(),
   ]);
 
   return (

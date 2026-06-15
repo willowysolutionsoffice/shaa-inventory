@@ -653,19 +653,16 @@ function RefundScreen({ invoice, onClose, onComplete }: RefundScreenProps) {
   ];
 
   const handleRefundConfirm = () => {
-    executeRefund({
-      saleId: invoice.saleId,
-      customerId: invoice.customer.name, // your action may accept name or ID — adjust as needed
-      branchId: invoice.branch.name,     // same — adjust if your action expects IDs
-      refundMethod,
-      reason,
-      items: refundItems.map((r) => ({
-        productId: r.productId,
-        qty: r.refundQty,
-        unitPrice: r.unitPrice,
-      })),
-    });
-  };
+  executeRefund({
+    saleId: invoice.saleId,
+    refundMethod,
+    reason,
+    items: refundItems.map((r) => ({
+      productId: r.productId,
+      qty: r.refundQty,
+    })),
+  });
+};
 
   // ── Step: done ──────────────────────────────────────────────────────────────
   if (step === "done") {

@@ -40,22 +40,21 @@ import {
 import { Search } from "lucide-react";
 import { useState } from "react";
 import { PurchaseTableProps as PurchaseTablePropsType } from "@/types/purchase";
-
 import { formatCurrency } from "@/lib/utils";
 import { ExportListPdfButton } from "../common/export-list-pdf-button";
 
 interface PurchaseTableProps<TData> extends PurchaseTablePropsType<TData> {
   metadata: {
-    totalPages: number;
-    totalCount: number;
+    totalPages:  number;
+    totalCount:  number;
     currentPage: number;
     hasNextPage: boolean;
     hasPrevPage: boolean;
   };
   totals: {
     totalAmount: number;
-    dueAmount: number;
-    paidAmount: number;
+    dueAmount:   number;
+    paidAmount:  number;
   };
 }
 
@@ -65,60 +64,36 @@ export function PurchaseTable<TValue>({
   metadata,
   totals,
 }: PurchaseTableProps<TValue>) {
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [sorting, setSorting]           = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
   const table = useReactTable({
     data,
     columns,
-    onSortingChange: setSorting,
-    onGlobalFilterChange: setGlobalFilter,
+    onSortingChange:       setSorting,
+    onGlobalFilterChange:  setGlobalFilter,
     onColumnFiltersChange: setColumnFilters,
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    state: {
-      sorting,
-      globalFilter,
-      columnFilters,
-    },
+    getCoreRowModel:       getCoreRowModel(),
+    getFilteredRowModel:   getFilteredRowModel(),
+    getSortedRowModel:     getSortedRowModel(),
+    state: { sorting, globalFilter, columnFilters },
+    // Search by purchaseNo or supplier name
     globalFilterFn: (row, _columnId, filterValue) => {
-      const invoiceNo = row.getValue("invoiceNo") as string;
-      const supplier = row.original?.supplier?.name || "";
-      const filter = String(filterValue || "").toLowerCase();
+      const purchaseNo = (row.getValue("purchaseNo") as string) ?? "";
+      const supplier   = (row.original as any)?.supplier?.name ?? "";
+      const filter     = String(filterValue ?? "").toLowerCase();
       return (
-        invoiceNo?.toLowerCase().includes(filter) ||
-        supplier?.toLowerCase().includes(filter)
+        purchaseNo.toLowerCase().includes(filter) ||
+        supplier.toLowerCase().includes(filter)
       );
     },
     manualPagination: true,
     pageCount: metadata.totalPages,
   });
 
-
-
   return (
     <div className="flex flex-col gap-5">
-      {/* Filter Card */}
-      {/* <Card>
-        <CardHeader>
-          <div className="space-y-2">
-            <CardTitle>Filters</CardTitle>
-            <CardDescription>Search purchases by invoice, supplier or payment</CardDescription>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-4 mt-3">
-            <div className="w-full">
-              <label className="text-sm font-medium text-muted-foreground mb-1 block">
-                Filter by Purchase Status
-              </label>           
-            </div>
-          </div>
-        </CardHeader>
-      </Card> */}
-
-      {/* Table Card */}
       <Card>
         <CardHeader className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
           <div>
@@ -128,37 +103,42 @@ export function PurchaseTable<TValue>({
 
           <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:gap-2 md:w-auto">
             <ExportListPdfButton data={data} type="purchases" />
+
             <div className="relative w-full sm:w-64">
               <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
               <Input
-                placeholder="Search by Ref no or supplier"
+                placeholder="Search by purchase no or supplier"
                 value={globalFilter}
                 onChange={(e) => setGlobalFilter(e.target.value)}
                 className="pl-9"
               />
             </div>
+
+            {/* Filter by backend PaymentStatus enum */}
             <Select
               onValueChange={(value) =>
                 table.setColumnFilters((prev) => [
-                  ...prev.filter((f) => f.id !== "status"),
-                  { id: "status", value: value === "all" ? undefined : value },
+                  ...prev.filter((f) => f.id !== "paymentStatus"),
+                  {
+                    id:    "paymentStatus",
+                    value: value === "all" ? undefined : value,
+                  },
                 ])
               }
               defaultValue="all"
             >
-              <SelectTrigger className="w-full sm:w-32">
-                <SelectValue placeholder="All" />
+              <SelectTrigger className="w-full sm:w-36">
+                <SelectValue placeholder="All statuses" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All</SelectItem>
-                <SelectItem value="Received">Received</SelectItem>
-                <SelectItem value="Pending">Pending</SelectItem>
-                <SelectItem value="Cancelled">Cancelled</SelectItem>
+                <SelectItem value="PAID">Paid</SelectItem>
+                <SelectItem value="PARTIAL">Partial</SelectItem>
+                <SelectItem value="PENDING">Pending</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </CardHeader>
-
 
         <CardContent>
           <Table>
@@ -173,9 +153,9 @@ export function PurchaseTable<TValue>({
                       {header.isPlaceholder
                         ? null
                         : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )}
                     </TableHead>
                   ))}
                 </TableRow>
@@ -209,23 +189,21 @@ export function PurchaseTable<TValue>({
             </TableBody>
 
             <TableFooter className="bg-muted/50 border-t text-sm font-medium">
-
               <TableRow>
                 <TableCell colSpan={5} />
-                <TableCell className="border-r-2 text-center">
-                  Grand Total:
+                <TableCell className="border-r-2 text-center font-semibold">
+                  Totals
                 </TableCell>
                 <TableCell className="border-r-2 text-center">
-                  {formatCurrency(totals?.dueAmount ?? 0)}
+                  Due: {formatCurrency(totals?.dueAmount ?? 0)}
                 </TableCell>
-                <TableCell colSpan={2} className="border-r-2">
-                  {formatCurrency(totals?.totalAmount ?? 0)}
+                <TableCell colSpan={2}>
+                  Grand Total: {formatCurrency(totals?.totalAmount ?? 0)}
                 </TableCell>
               </TableRow>
             </TableFooter>
           </Table>
         </CardContent>
-
       </Card>
     </div>
   );

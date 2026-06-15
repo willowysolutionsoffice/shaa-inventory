@@ -1,13 +1,13 @@
+// src/app/(sidebar)/admin/products/page.tsx
 export const dynamic = "force-dynamic";
 
 import { ProductTable } from "@/components/products/product-table";
 import { ProductFormSheet } from "@/components/products/product-form";
 import { productColumns } from "@/components/products/product-columns";
 import { getProductList } from "@/actions/product-actions";
-
-import { getBrandlistForDropdown } from "@/actions/brand-actions";
-
-import { getAllBranches } from "@/actions/auth";
+import { getBrandListForDropdown } from "@/actions/brand-actions";
+import { getBranchListForDropdown } from "@/actions/branch-action";
+import { getCategoryDropdown } from "@/actions/category-actions"; // add this import
 
 interface ProductPageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -15,14 +15,18 @@ interface ProductPageProps {
 
 export default async function ProductPage({ searchParams }: ProductPageProps) {
   const params = await searchParams;
-  const page = typeof params.page === "string" ? Number(params.page) : 1;
+  const page  = typeof params.page  === "string" ? Number(params.page)  : 1;
   const limit = typeof params.limit === "string" ? Number(params.limit) : 10;
 
-  const [{ data }, brands, branches] = await Promise.all([
+  const [productResult, brands, branches, categories] = await Promise.all([
     getProductList({ page, limit }),
-    getBrandlistForDropdown(),
-    getAllBranches(),
+    getBrandListForDropdown(),
+    getBranchListForDropdown(),
+      getCategoryDropdown(),          // ← add this
+
   ]);
+
+  const data = productResult?.data?.data;
 
   return (
     <div className="flex flex-1 flex-col">
@@ -35,28 +39,24 @@ export default async function ProductPage({ searchParams }: ProductPageProps) {
               </h1>
               <p className="text-muted-foreground">Manage your Products</p>
             </div>
-            <ProductFormSheet
-              brands={brands}
-              branches={branches}
-            />
+            <ProductFormSheet brands={brands} branches={branches} />
           </div>
           <ProductTable
             columns={productColumns}
             data={data?.products ?? []}
-            metadata={
-              data?.metadata ?? {
-                totalPages: 0,
-                totalCount: 0,
-                currentPage: 1,
-                hasNextPage: false,
-                hasPrevPage: false,
-              }
-            }
+            metadata={data?.metadata ?? {
+              totalPages:  0,
+              totalCount:  0,
+              currentPage: 1,
+              hasNextPage: false,
+              hasPrevPage: false,
+            }}
             totals={data?.totals ?? { stock: 0 }}
             brands={brands}
             branches={branches}
-          />
+              categories={categories} // ← add this; same shape as brands/branches
 
+          />
         </div>
       </div>
     </div>

@@ -11,22 +11,84 @@ import {
   Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { updatePurchaseStatus } from "@/actions/purchase-actions";
 import { useAction } from "next-safe-action/hooks";
 import { toast } from "sonner";
-import { Check } from "lucide-react";
 
 import { PurchaseDeleteDialog } from "./purchase-delete-dailog";
 import { PurchaseFormSheet } from "./purchase-form";
-// Removed sheet import; we'll navigate to a dynamic page for view
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ExportInvoiceButton } from "../common/export-invoice-button";
 
+// ── Payment status badge ───────────────────────────────────────────────────────
+// Backend PaymentStatus enum: PENDING | PARTIAL | PAID
+
+const PAYMENT_STATUS_STYLES: Record<string, string> = {
+  PAID:    "bg-green-100 text-green-800",
+  PARTIAL: "bg-yellow-100 text-yellow-800",
+  PENDING: "bg-red-100 text-red-800",
+};
+
+function PaymentStatusBadge({ status }: { status: string }) {
+  const classes =
+    PAYMENT_STATUS_STYLES[status?.toUpperCase()] ?? "bg-gray-100 text-gray-800";
+  const label =
+    status === "PAID"    ? "Paid"    :
+    status === "PARTIAL" ? "Partial" :
+    status === "PENDING" ? "Pending" :
+    status ?? "—";
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-sm font-medium ${classes}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+// ── Overdue helper ─────────────────────────────────────────────────────────────
+
+function PaymentDueStatusBadge({ purchase }: { purchase: Purchase }) {
+  const dueAmount = purchase.dueAmount ?? purchase.paymentDue ?? 0;
+
+  if (dueAmount === 0) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-sm font-medium text-green-800">
+        Paid
+      </span>
+    );
+  }
+
+  const dueDate = (purchase.payments ?? []).find((p) => p.dueDate)?.dueDate;
+
+  if (!dueDate) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-sm font-medium text-gray-800">
+        No Due Date
+      </span>
+    );
+  }
+
+  const isOverdue = new Date(dueDate) < new Date();
+  return isOverdue ? (
+    <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-sm font-medium text-red-800">
+      Overdue
+    </span>
+  ) : (
+    <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-sm font-medium text-blue-800">
+      Upcoming
+    </span>
+  );
+}
+
+// ── Column definitions ─────────────────────────────────────────────────────────
+
 export const purchaseColumns: ColumnDef<Purchase>[] = [
   {
-    accessorKey: "referenceNo",
+    // purchaseNo is the canonical field; referenceNo is the frontend alias
+    accessorKey: "purchaseNo",
     header: ({ column }) => {
       const sort = column.getIsSorted();
       return (
@@ -34,7 +96,7 @@ export const purchaseColumns: ColumnDef<Purchase>[] = [
           variant="ghost"
           onClick={() => column.toggleSorting(sort === "asc")}
         >
-          Ref No{" "}
+          Purchase No{" "}
           {sort === "asc" ? (
             <ArrowUp />
           ) : sort === "desc" ? (
@@ -45,6 +107,9 @@ export const purchaseColumns: ColumnDef<Purchase>[] = [
         </Button>
       );
     },
+    cell: ({ row }) => (
+      <span>{row.original.purchaseNo ?? row.original.referenceNo ?? "—"}</span>
+    ),
   },
   {
     accessorKey: "purchaseDate",
@@ -53,7 +118,7 @@ export const purchaseColumns: ColumnDef<Purchase>[] = [
       const date = row.getValue("purchaseDate") as string | Date;
       return (
         <div className="flex justify-center px-3">
-          {date ? formatDate(date) : "-"}
+          {date ? formatDate(date) : "—"}
         </div>
       );
     },
@@ -61,94 +126,35 @@ export const purchaseColumns: ColumnDef<Purchase>[] = [
   {
     accessorKey: "location",
     header: "Location",
-    cell: ({ row }) => {
-      const Location = row.original.branch?.name;
-
-      return <span>{Location}</span>;
-    },
+    cell: ({ row }) => <span>{row.original.branch?.name ?? "—"}</span>,
   },
   {
     accessorKey: "supplierId",
     header: "Supplier",
-    cell: ({ row }) => {
-      const Supplier = row.original.supplier.name;
-
-      return <span>{Supplier}</span>;
-    },
+    cell: ({ row }) => <span>{row.original.supplier?.name ?? "—"}</span>,
   },
   {
-    accessorKey: "status",
-    header: "Purchase Status",
-    cell: ({ row }) => {
-      const purchaseStatus = row.original.status;
-
-      const statusColorMap: Record<string, string> = {
-        Received: "bg-green-100 text-green-800",
-        Pending: "bg-yellow-100 text-yellow-800",
-        Cancelled: "bg-red-100 text-red-800",
-      };
-
-      const colorClasses =
-        statusColorMap[purchaseStatus] || "bg-gray-100 text-gray-800";
-
-      return (
-        <span
-          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-sm font-medium ${colorClasses}`}
-        >
-          {purchaseStatus}
-        </span>
-      );
-    },
+    // paymentStatus from Prisma: PENDING | PARTIAL | PAID
+    id: "paymentStatus",
+    accessorKey: "paymentStatus",
+    header: "Payment Status",
+    cell: ({ row }) => (
+      <PaymentStatusBadge status={row.original.paymentStatus ?? ""} />
+    ),
     enableColumnFilter: true,
   },
   {
-    id: "paymentStatus",
-    header: "Payment Status",
-    cell: ({ row }) => {
-      const payments = row.original.payments ?? [];
-      const dueDate = payments.find((p) => p.dueDate)?.dueDate;
-      const dueAmount = row.original.dueAmount ?? 0;
-
-      // fully paid
-      if (dueAmount === 0) {
-        return (
-          <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-sm font-medium text-green-800">
-            Paid
-          </span>
-        );
-      }
-
-      if (!dueDate) {
-        return (
-          <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-sm font-medium text-gray-800">
-            No Due Date
-          </span>
-        );
-      }
-
-      const today = new Date();
-      const due = new Date(dueDate);
-
-      if (due < today) {
-        return (
-          <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-sm font-medium text-red-800">
-            Overdue
-          </span>
-        );
-      }
-
-      return (
-        <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-sm font-medium text-blue-800">
-          Upcoming Payment
-        </span>
-      );
-    },
+    id: "dueStatus",
+    header: "Due Status",
+    cell: ({ row }) => <PaymentDueStatusBadge purchase={row.original} />,
   },
   {
     accessorKey: "paymentDue",
-    header: "Payment Due",
+    header: "Amount Due",
     cell: ({ row }) => {
-      const amount = row.getValue("paymentDue") as number;
+      const amount = Number(
+        row.original.paymentDue ?? row.original.dueAmount ?? 0
+      );
       return (
         <div className="text-center font-medium">{formatCurrency(amount)}</div>
       );
@@ -158,13 +164,12 @@ export const purchaseColumns: ColumnDef<Purchase>[] = [
     accessorKey: "totalAmount",
     header: "Grand Total",
     cell: ({ row }) => {
-      const amount = row.getValue("totalAmount") as number;
+      const amount = Number(row.getValue("totalAmount") ?? 0);
       return (
         <div className="text-center font-medium">{formatCurrency(amount)}</div>
       );
     },
   },
-
   {
     id: "actions",
     header: () => (
@@ -179,47 +184,21 @@ export const purchaseColumns: ColumnDef<Purchase>[] = [
   },
 ];
 
+// ── Row-level actions ──────────────────────────────────────────────────────────
+
 const PurchaseActions = ({ purchase }: { purchase: Purchase }) => {
-  const [openEdit, setOpenEdit] = useState(false);
+  const [openEdit, setOpenEdit]     = useState(false);
   const [openDelete, setOpenDelete] = useState(false);
   const router = useRouter();
 
-  const { execute: updateStatus, isExecuting } = useAction(
-    updatePurchaseStatus,
-    {
-      onSuccess: ({ data }) => {
-        if (data?.error) {
-          toast.error(data.error);
-        } else {
-          toast.success("Purchase approved (Received)");
-        }
-      },
-      onError: () => toast.error("Something went wrong"),
-    },
-  );
-
   return (
-    <div className="flex w-[96px] justify-center">
-      {purchase.status === "Purchase_Order" ? (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => updateStatus({ id: purchase.id, status: "Received" })}
-          disabled={isExecuting}
-          className="h-8 gap-1 border-green-200 bg-green-50 text-green-700 hover:bg-green-100"
-        >
-          <Check className="h-3.5 w-3.5" />
-          {isExecuting ? "..." : "Approve"}
-        </Button>
-      ) : (
-        <div className="w-[88px]" /> // Approximate width of the Approve button to maintain alignment
-      )}
-
+    <div className="flex items-center justify-center gap-1">
       <Button
         variant="ghost"
         size="sm"
         onClick={() => router.push(`/purchase/${purchase.id}`)}
         className="h-8 w-8 p-0"
+        title="View details"
       >
         <Eye className="h-4 w-4" />
       </Button>
@@ -228,6 +207,7 @@ const PurchaseActions = ({ purchase }: { purchase: Purchase }) => {
         size="sm"
         onClick={() => setOpenEdit(true)}
         className="h-8 w-8 p-0"
+        title="Edit"
       >
         <Edit2 className="h-4 w-4" />
       </Button>
@@ -236,6 +216,7 @@ const PurchaseActions = ({ purchase }: { purchase: Purchase }) => {
         size="sm"
         onClick={() => setOpenDelete(true)}
         className="text-destructive hover:text-destructive h-8 w-8 p-0"
+        title="Delete"
       >
         <Trash2 className="h-4 w-4" />
       </Button>

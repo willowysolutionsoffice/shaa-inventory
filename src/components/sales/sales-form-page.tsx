@@ -9,10 +9,27 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { cn, CURRENCY_SYMBOL, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { Check, ChevronsUpDown, Plus, Search } from "lucide-react";
@@ -20,7 +37,6 @@ import { FormProvider, useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import z from "zod";
 import { useEffect, useState } from "react";
-
 import { createSale } from "@/actions/sales-action";
 import { useAction } from "next-safe-action/hooks";
 import { getCustomerListForDropdown } from "@/actions/customer-action";
@@ -28,114 +44,112 @@ import { Card } from "../ui/card";
 import { ProductOption } from "@/types/product";
 import { SaleItemField } from "@/types/sales";
 import { fullSalesSchema } from "@/schemas/sales-item-schema";
-import { getProductListForDropdown } from "@/actions/product-actions";
-import { Command, CommandGroup, CommandItem, CommandInput, CommandEmpty, CommandList } from "../ui/command";
+import { getProductDropdown } from "@/actions/product-actions";
+import {
+  Command,
+  CommandGroup,
+  CommandItem,
+  CommandInput,
+  CommandEmpty,
+  CommandList,
+} from "../ui/command";
 import { nanoid } from "nanoid";
-import { getAllBranches } from "@/actions/auth";
 import { useRouter } from "next/navigation";
 import { CustomerFormDialog } from "@/components/customers/customer-form";
 import { SalesStatusEnum } from "@/schemas/sales-schema";
 
-// Define props interface
 interface SalesFormPageProps {
   customers: { id: string; name: string; openingBalance: number }[];
-  branches: { name: string; id: string }[];
+  branches:  { name: string; id: string }[];
 }
 
 export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
   const router = useRouter();
-  const { execute: create, isExecuting: isCreating } = useAction(createSale);
-  const [customerList, setCustomerList] = useState<{ id: string; name: string, openingBalance: number }[]>(customers);
+  const { execute: create, isExecuting: isCreating } = useAction(createSale, {
+    onSuccess: ({ data }) => {
+      if ((data as any)?.error) {
+        toast.error((data as any).error);
+        return;
+      }
+      toast.success("Sale created successfully");
+      router.push("/sales");
+    },
+    onError: () => toast.error("Failed to create sale"),
+  });
+
+  const [customerList, setCustomerList] = useState(customers);
   const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
-  const [productSearch, setProductSearch] = useState("");
+  const [productSearch, setProductSearch]   = useState("");
   const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
-  const [selectedCustomerOpeningBalance, setSelectedCustomerOpeningBalance] = useState<number | null>(null);
-  const [baranchList, setBranchList] = useState<{ name: string; id: string; }[]>(branches);
+  const [selectedCustomerOpeningBalance, setSelectedCustomerOpeningBalance] =
+    useState<number | null>(null);
   const [openCustomerForm, setOpenCustomerForm] = useState(false);
+
+  const year = new Date().getFullYear();
 
   const form = useForm<z.infer<typeof fullSalesSchema>>({
     resolver: zodResolver(fullSalesSchema) as any,
     defaultValues: {
-      invoiceNo: "",
-      branchId: "",
-      customerId: "",
-      status: "Dispatched",
-      grandTotal: 0,
-      dueAmount: 0,
-      paidAmount: 0,
-      salesdate: new Date(),
-      items: [],
+      invoiceNo:    "",
+      branchId:     branches[0]?.id ?? "",
+      customerId:   "",
+      status:       "Dispatched",
+      grandTotal:   0,
+      dueAmount:    0,
+      paidAmount:   0,
+      salesdate:    new Date(),
+      items:        [],
       salesPayment: [{
-        amount: 0,
-        paidOn: new Date(),
+        amount:        0,
+        paidOn:        new Date(),
         paymentMethod: "cash",
-        paymentNote: "",
+        paymentNote:   "",
       }],
-    }
+    },
   });
-
-  const itemFieldKeys = [
-    "quantity",
-    "unitPrice",
-    "discount",
-    "subtotal",
-    "total",
-  ] as const;
-
-  const year = new Date().getFullYear();
 
   const { fields, append, remove } = useFieldArray({
     control: form.control,
     name: "items",
   });
 
-  // Removed fetchCustomerList and fetchBranches effects as data is passed via props
+  // Generate invoice number once on mount
+  useEffect(() => {
+    form.setValue("invoiceNo", `INV-${year}-${nanoid(4).toUpperCase()}`);
+  }, [form, year]);
 
-  // We still need to update customer list if a new customer is added via the modal
+  // Debounced product search
+  useEffect(() => {
+      const debounce = setTimeout(async () => {
+        if (productSearch.length > 1) {
+          const res = await getProductDropdown({ query: productSearch });
+          setProductOptions(res);
+        }
+      }, 300);
+      return () => clearTimeout(debounce);
+    }, [productSearch]);
+
   const handleCustomerAdded = async () => {
     const res = await getCustomerListForDropdown();
     setCustomerList(res);
   };
 
-  // Set invoice number after component mounts to avoid hydration issues
-  useEffect(() => {
-    form.setValue("invoiceNo", `INV-${year}-${nanoid(4).toUpperCase()}`);
-  }, [form, year]);
-
-  useEffect(() => {
-    const debounce = setTimeout(async () => {
-      if (productSearch.length > 1) {
-        const res = await getProductListForDropdown({ query: productSearch });
-        setProductOptions(res?.data?.products || []);
-      }
-    }, 300);
-    return () => clearTimeout(debounce);
-  }, [productSearch]);
-
-  const handleSubmit = async (data: z.infer<typeof fullSalesSchema>) => {
+  const handleSubmit = (data: z.infer<typeof fullSalesSchema>) => {
     const grandTotal = data.items.reduce((sum, item) => sum + (item.total || 0), 0);
-    const paidAmount = data.salesPayment.reduce((sum, payment) => sum + (payment.amount || 0), 0);
-    const dueAmount = grandTotal - paidAmount;
+    const paidAmount = data.salesPayment.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const dueAmount  = grandTotal - paidAmount;
 
-    form.setValue("grandTotal", grandTotal);
-    form.setValue("paidAmount", paidAmount);
-    form.setValue("dueAmount", dueAmount);
-
-    const payload = {
-      ...data,
-      grandTotal,
-      paidAmount,
-      dueAmount
-    };
-
-    try {
-      await create(payload);
-      toast.success("Sale created successfully");
-      router.push("/sales");
-    } catch {
-      toast.error("Failed to create sale");
-    }
+    create({ ...data, grandTotal, paidAmount, dueAmount });
   };
+
+  const itemFieldKeys = ["unitPrice", "discount", "subtotal", "total"] as const;
+
+  // ── Computed totals for display ──────────────────────────────────────────────
+  const watchedItems    = form.watch("items");
+  const watchedPayments = form.watch("salesPayment");
+  const displayTotal    = watchedItems.reduce((s, i) => s + (Number(i.total) || 0), 0);
+  const displayPaid     = watchedPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const displayDue      = displayTotal - displayPaid;
 
   return (
     <div className="container mx-auto p-6">
@@ -146,10 +160,13 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
 
       <FormProvider {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-          {/* Sale Details Card */}
+
+          {/* ── Sale Details ────────────────────────────────────────────────── */}
           <Card className="p-6">
             <h2 className="text-xl font-semibold mb-4">Sale Details</h2>
             <div className="grid md:grid-cols-2 gap-4">
+
+              {/* Customer */}
               <FormField
                 control={form.control}
                 name="customerId"
@@ -158,14 +175,21 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                     <FormLabel>Customer</FormLabel>
                     <div className="flex gap-2">
                       <div className="flex-1">
-                        <Popover open={showCustomerSuggestions} onOpenChange={setShowCustomerSuggestions}>
+                        <Popover
+                          open={showCustomerSuggestions}
+                          onOpenChange={setShowCustomerSuggestions}
+                        >
                           <PopoverTrigger asChild>
                             <Button
                               variant="outline"
                               role="combobox"
-                              className={cn("w-full justify-between", !field.value && "text-muted-foreground")}
+                              className={cn(
+                                "w-full justify-between",
+                                !field.value && "text-muted-foreground"
+                              )}
                             >
-                              {customerList.find((c) => c.id === field.value)?.name || "Select customer..."}
+                              {customerList.find((c) => c.id === field.value)?.name ||
+                                "Select customer..."}
                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                             </Button>
                           </PopoverTrigger>
@@ -181,14 +205,18 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                                       value={customer.name}
                                       onSelect={() => {
                                         field.onChange(customer.id);
-                                        setSelectedCustomerOpeningBalance(customer.openingBalance);
+                                        setSelectedCustomerOpeningBalance(
+                                          customer.openingBalance
+                                        );
                                         setShowCustomerSuggestions(false);
                                       }}
                                     >
                                       <Check
                                         className={cn(
                                           "mr-2 h-4 w-4",
-                                          customer.id === field.value ? "opacity-100" : "opacity-0"
+                                          customer.id === field.value
+                                            ? "opacity-100"
+                                            : "opacity-0"
                                         )}
                                       />
                                       {customer.name}
@@ -215,23 +243,33 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                 )}
               />
 
-              <FormField control={form.control} name="branchId" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Business Location</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger className="w-full"><SelectValue placeholder="Select Branch" /></SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {baranchList.map(branch => (
-                        <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
+              {/* Branch */}
+              <FormField
+                control={form.control}
+                name="branchId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Business Location</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select Branch" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {branches.map((branch) => (
+                          <SelectItem key={branch.id} value={branch.id}>
+                            {branch.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
+              {/* Invoice No */}
               <FormField
                 control={form.control}
                 name="invoiceNo"
@@ -246,6 +284,7 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                 )}
               />
 
+              {/* Sale Date */}
               <FormField
                 control={form.control}
                 name="salesdate"
@@ -256,9 +295,7 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                       <PopoverTrigger asChild>
                         <FormControl>
                           <Button variant="outline" className="w-full text-left">
-                            {field.value
-                              ? formatDate(field.value)
-                              : "Pick date"}
+                            {field.value ? formatDate(field.value) : "Pick date"}
                           </Button>
                         </FormControl>
                       </PopoverTrigger>
@@ -276,6 +313,7 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                 )}
               />
 
+              {/* Status */}
               <FormField
                 control={form.control}
                 name="status"
@@ -305,12 +343,17 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
             </div>
           </Card>
 
-          {/* Products Card */}
+          {/* ── Products ────────────────────────────────────────────────────── */}
           <Card className="p-6">
             <h2 className="text-xl font-semibold mb-4">Add Products</h2>
+
+            {/* Product search */}
             <FormItem className="relative max-w-sm mb-4">
               <FormLabel className="mb-1">Add Product</FormLabel>
-              <Popover open={productOptions.length > 0} onOpenChange={() => setProductOptions([])}>
+              <Popover
+                open={productOptions.length > 0}
+                onOpenChange={() => setProductOptions([])}
+              >
                 <PopoverTrigger asChild>
                   <div>
                     <Input
@@ -329,7 +372,6 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                       value={productSearch}
                       onValueChange={setProductSearch}
                     />
-
                     <CommandList>
                       <CommandEmpty>No products found.</CommandEmpty>
                       <CommandGroup>
@@ -338,25 +380,28 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                             key={p.id}
                             value={p.product_name}
                             onSelect={() => {
-                              // Simplified logic: Selling Price is flat, no additional tax
-                              const unitPrice = p.purchasePrice || 0;
-
+                              const unitPrice = p.sellingPrice ?? p.purchasePrice ?? 0;
                               append({
-                                productId: p.id,
-                                quantity: 1,
-                                product_name: p.product_name,
-                                stock: p.stock,
-                                discount: 0,
+                                productId:     p.id,
+                                quantity:      1,
+                                product_name:  p.product_name,
+                                stock:         p.stock,
+                                discount:      0,
                                 purchasePrice: p.purchasePrice,
-                                subtotal: unitPrice,
-                                total: unitPrice,
-                                unitPrice: unitPrice,
+                                subtotal:      unitPrice,
+                                total:         unitPrice,
+                                unitPrice,
                               });
                               setProductSearch("");
                               setProductOptions([]);
                             }}
                           >
-                            {p.product_name}
+                            <div className="flex justify-between w-full gap-4">
+                              <span>{p.product_name}</span>
+                              <span className="text-muted-foreground text-xs">
+                                Stock: {p.stock}
+                              </span>
+                            </div>
                           </CommandItem>
                         ))}
                       </CommandGroup>
@@ -368,137 +413,138 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
 
             {fields.length > 0 ? (
               <>
-                <Table className="min-w-[1500px]">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Product Name</TableHead>
-                      <TableHead>Available Stock</TableHead>
-                      <TableHead>Qty</TableHead>
-                      <TableHead>Buying Price</TableHead>
-                      <TableHead>Selling Price</TableHead>
-                      <TableHead>Discount</TableHead>
-                      <TableHead>Subtotal</TableHead>
-                      <TableHead>Total</TableHead>
-                      <TableHead />
-                    </TableRow>
-                  </TableHeader>
-
-                  <TableBody>
-                    {fields.filter(f => f.productId && f.product_name).map((f, idx) => (
-                      <TableRow key={f.id}>
-                        <TableCell>
-                          {f.product_name || "—"}
-                        </TableCell>
-                        <TableCell>
-                          {f.stock}
-                        </TableCell>
-
-                        <TableCell>
-                          <FormField
-                            control={form.control}
-                            name={`items.${idx}.quantity`}
-                            render={({ field }) => (
-                              <FormControl>
-                                <Input
-                                  type="number"
-                                  className="min-w-18"
-                                  {...field}
-                                  value={field.value ?? ""}
-                                  onChange={(e) => {
-                                    const value = Number(e.target.value);
-                                    field.onChange(value);
-
-                                    const currentValues = form.getValues(`items.${idx}`);
-                                    const discount = Number(currentValues.discount);
-                                    let unitPrice = Number(currentValues.unitPrice);
-
-                                    const subtotal = value * unitPrice;
-                                    const total = subtotal - discount;
-
-                                    form.setValue(`items.${idx}.subtotal`, subtotal);
-                                    form.setValue(`items.${idx}.total`, total);
-                                  }}
-                                />
-                              </FormControl>
-                            )}
-                          />
-                        </TableCell>
-
-                        <TableCell>
-                          <Input
-                            value={f.purchasePrice || 0}
-                            disabled
-                            readOnly
-                          />
-                        </TableCell>
-
-                        {itemFieldKeys.filter(k => k !== 'quantity').map((key) => (
-                          <TableCell key={key}>
-                            <FormField
-                              control={form.control}
-                              name={`items.${idx}.${key}`}
-                              render={({ field }) => (
-                                <FormControl>
-                                  <Input
-                                    type="number"
-                                    className="min-w-18"
-                                    {...field}
-                                    value={
-                                      (field.value === undefined || field.value === null || Number.isNaN(field.value))
-                                        ? ""
-                                        : field.value
-                                    }
-                                    onChange={(e) => {
-                                      const value = Number(e.target.value);
-                                      field.onChange(value);
-
-                                      const currentValues = form.getValues(`items.${idx}`);
-                                      const quantity = Number(currentValues.quantity);
-                                      const discount = Number(currentValues.discount);
-
-                                      let unitPrice = Number(currentValues.unitPrice);
-
-                                      if (key === "unitPrice") {
-                                        unitPrice = value;
-                                      }
-
-                                      const subtotal = quantity * unitPrice;
-                                      const total = subtotal - discount;
-
-                                      form.setValue(`items.${idx}.subtotal`, subtotal);
-                                      form.setValue(`items.${idx}.total`, total);
-                                    }}
-                                    readOnly={key === "subtotal" || key === "total"}
-                                    disabled={key === "subtotal" || key === "total"}
-                                  />
-                                </FormControl>
-                              )}
-                            />
-                          </TableCell>
-                        ))}
-
-                        <TableCell>
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            onClick={() => remove(idx)}
-                          >
-                            Remove
-                          </Button>
-                        </TableCell>
+                <div className="overflow-x-auto">
+                  <Table className="min-w-[900px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Product Name</TableHead>
+                        <TableHead>Stock</TableHead>
+                        <TableHead>Qty</TableHead>
+                        <TableHead>Buy Price</TableHead>
+                        <TableHead>Sell Price</TableHead>
+                        <TableHead>Discount</TableHead>
+                        <TableHead>Subtotal</TableHead>
+                        <TableHead>Total</TableHead>
+                        <TableHead />
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {fields
+                        .filter((f) => f.productId && f.product_name)
+                        .map((f, idx) => (
+                          <TableRow key={f.id}>
+                            <TableCell className="font-medium">
+                              {f.product_name || "—"}
+                            </TableCell>
+                            <TableCell>{f.stock}</TableCell>
+
+                            {/* Quantity */}
+                            <TableCell>
+                              <FormField
+                                control={form.control}
+                                name={`items.${idx}.quantity`}
+                                render={({ field }) => (
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      className="w-20"
+                                      {...field}
+                                      value={field.value ?? ""}
+                                      onChange={(e) => {
+                                        const value = Number(e.target.value);
+                                        field.onChange(value);
+                                        const { unitPrice, discount } =
+                                          form.getValues(`items.${idx}`);
+                                        const subtotal = value * Number(unitPrice);
+                                        const total    = subtotal - Number(discount || 0);
+                                        form.setValue(`items.${idx}.subtotal`, subtotal);
+                                        form.setValue(`items.${idx}.total`, total);
+                                      }}
+                                    />
+                                  </FormControl>
+                                )}
+                              />
+                            </TableCell>
+
+                            {/* Buy price (read-only) */}
+                            <TableCell>
+                              <Input
+                                value={f.purchasePrice ?? 0}
+                                disabled
+                                readOnly
+                                className="w-24"
+                              />
+                            </TableCell>
+
+                            {/* unitPrice, discount, subtotal, total */}
+                            {itemFieldKeys.map((key) => (
+                              <TableCell key={key}>
+                                <FormField
+                                  control={form.control}
+                                  name={`items.${idx}.${key}`}
+                                  render={({ field }) => (
+                                    <FormControl>
+                                      <Input
+                                        type="number"
+                                        className="w-24"
+                                        {...field}
+                                        value={
+                                          field.value == null || Number.isNaN(field.value)
+                                            ? ""
+                                            : field.value
+                                        }
+                                        readOnly={
+                                          key === "subtotal" || key === "total"
+                                        }
+                                        disabled={
+                                          key === "subtotal" || key === "total"
+                                        }
+                                        onChange={(e) => {
+                                          const value = Number(e.target.value);
+                                          field.onChange(value);
+                                          const current = form.getValues(`items.${idx}`);
+                                          const qty      = Number(current.quantity);
+                                          const discount = Number(current.discount);
+                                          const unitPrice =
+                                            key === "unitPrice"
+                                              ? value
+                                              : Number(current.unitPrice);
+                                          const subtotal = qty * unitPrice;
+                                          const total    =
+                                            key === "discount"
+                                              ? subtotal - value
+                                              : subtotal - discount;
+                                          form.setValue(`items.${idx}.subtotal`, subtotal);
+                                          form.setValue(`items.${idx}.total`, total);
+                                        }}
+                                      />
+                                    </FormControl>
+                                  )}
+                                />
+                              </TableCell>
+                            ))}
+
+                            <TableCell>
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => remove(idx)}
+                              >
+                                Remove
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
                 <div className="flex justify-end pr-4 mt-4">
-                  <div className="text-right space-y-1">
+                  <div className="text-right">
                     <div className="text-muted-foreground text-sm">Grand Total:</div>
                     <div className="text-xl font-semibold">
-                      {CURRENCY_SYMBOL}{" "}
-                      {form
-                        .watch("items")
-                        .reduce((sum, item) => sum + (Number(item.total) || 0), 0)
-                        .toFixed(2)}
+                      {CURRENCY_SYMBOL} {displayTotal.toFixed(2)}
                     </div>
                   </div>
                 </div>
@@ -511,14 +557,15 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
             )}
           </Card>
 
-          {/* Payment Card */}
+          {/* ── Payment ─────────────────────────────────────────────────────── */}
           <Card className="p-6">
             <h2 className="text-xl font-semibold mb-4">Add Payment</h2>
 
             {selectedCustomerOpeningBalance !== null && (
-              <div className="text-sm text-muted-foreground mb-4">
-                Opening Balance: {CURRENCY_SYMBOL} {selectedCustomerOpeningBalance.toFixed(2)}
-              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Opening Balance: {CURRENCY_SYMBOL}{" "}
+                {Number(selectedCustomerOpeningBalance).toFixed(2)}
+              </p>
             )}
 
             <div className="grid md:grid-cols-2 gap-4">
@@ -529,7 +576,12 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                   <FormItem>
                     <FormLabel>Amount Paid</FormLabel>
                     <FormControl>
-                      <Input type="number" {...field} value={field.value ?? ""} />
+                      <Input
+                        type="number"
+                        {...field}
+                        value={field.value ?? ""}
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -546,9 +598,7 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                       <PopoverTrigger asChild>
                         <FormControl>
                           <Button variant="outline" className="w-full text-left">
-                            {field.value
-                              ? formatDate(field.value)
-                              : formatDate(new Date())}
+                            {field.value ? formatDate(field.value) : formatDate(new Date())}
                           </Button>
                         </FormControl>
                       </PopoverTrigger>
@@ -579,9 +629,9 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {["cash", "card", "bank"].map((method) => (
-                          <SelectItem key={method} value={method}>
-                            {method}
+                        {["cash", "card", "bank", "upi"].map((m) => (
+                          <SelectItem key={m} value={m}>
+                            {m.toUpperCase()}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -607,73 +657,48 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
             </div>
 
             <div className="flex justify-end pr-4 mt-4">
-              <div className="text-right space-y-1">
+              <div className="text-right">
                 <div className="text-muted-foreground text-sm">Due Amount:</div>
-                <div className="text-xl font-semibold">
-                  {CURRENCY_SYMBOL}{" "}
-                  {(
-                    form.watch("items").reduce(
-                      (sum, item) => sum + (Number(item.total) || 0),
-                      0
-                    ) -
-                    form.watch("salesPayment").reduce(
-                      (sum, p) => sum + (Number(p.amount) || 0),
-                      0
-                    )
-                  ).toFixed(2)}
+                <div className={cn("text-xl font-semibold", displayDue > 0 && "text-destructive")}>
+                  {CURRENCY_SYMBOL} {displayDue.toFixed(2)}
                 </div>
               </div>
             </div>
 
-            {(() => {
-              const total = form
-                .watch("items")
-                .reduce((sum, item) => sum + (Number(item.total) || 0), 0);
-              const paid = form
-                .watch("salesPayment")
-                .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-              const due = total - paid;
-
-              if (due > 0) {
-                return (
-                  <div className="grid md:grid-cols-2 gap-4 mt-4">
-                    <FormField
-                      control={form.control}
-                      name="salesPayment.0.dueDate"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Due Date</FormLabel>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <FormControl>
-                                <Button variant="outline" className="w-full text-left">
-                                  {field.value
-                                    ? formatDate(field.value)
-                                    : "Select date"}
-                                </Button>
-                              </FormControl>
-                            </PopoverTrigger>
-                            <PopoverContent>
-                              <Calendar
-                                mode="single"
-                                selected={field.value ? new Date(field.value) : undefined}
-                                onSelect={field.onChange}
-                                captionLayout="dropdown"
-                              />
-                            </PopoverContent>
-                          </Popover>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                );
-              }
-              return null;
-            })()}
+            {displayDue > 0 && (
+              <div className="grid md:grid-cols-2 gap-4 mt-4">
+                <FormField
+                  control={form.control}
+                  name="salesPayment.0.dueDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Due Date</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button variant="outline" className="w-full text-left">
+                              {field.value ? formatDate(field.value) : "Select date"}
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent>
+                          <Calendar
+                            mode="single"
+                            selected={field.value ? new Date(field.value) : undefined}
+                            onSelect={field.onChange}
+                            captionLayout="dropdown"
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
           </Card>
 
-          {/* Action Buttons */}
+          {/* ── Actions ─────────────────────────────────────────────────────── */}
           <div className="flex justify-end gap-4">
             <Button
               type="button"
@@ -689,15 +714,12 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
         </form>
       </FormProvider>
 
-      {/* Customer Form Dialog */}
       <CustomerFormDialog
         customer={undefined}
         open={openCustomerForm}
         openChange={(open) => {
           setOpenCustomerForm(open);
-          if (!open) {
-            handleCustomerAdded();
-          }
+          if (!open) handleCustomerAdded();
         }}
         branches={branches}
       />

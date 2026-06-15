@@ -14,11 +14,20 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { UserForm } from '@/components/user-form';
-import type { Role, Branch } from '@prisma/client';
+
+interface RoleOption {
+  id:   string;
+  name: string;
+}
+
+interface BranchOption {
+  id:   string;
+  name: string;
+}
 
 interface AddUserDialogProps {
-  roles: Role[];
-  branches: Branch[];
+  roles:    RoleOption[];
+  branches: BranchOption[];
 }
 
 export function AddUserDialog({ roles, branches }: AddUserDialogProps) {

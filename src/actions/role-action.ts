@@ -1,157 +1,147 @@
 // src/actions/role-action.ts
-'use server';
+// Server actions / API wrappers for the role endpoints.
 
-import { db } from "@/lib/mock-db";
-import { actionClient } from "@/lib/safeAction";
-import {
-  roleSchema,
-  updateRoleSchema,
-  deleteRoleSchema,
-} from "@/schemas/role-schema";
-import { revalidatePath } from "next/cache";
+const API = process.env.API_URL
+         ?? process.env.NEXT_PUBLIC_API_URL
+         ?? "http://localhost:4000";
 
-// ── CREATE ─────────────────────────────────────────────────────────────────────
-export const createRole = actionClient.inputSchema(roleSchema).action(
-  async (values) => {
-    try {
-      const { name, ...rest } = values.parsedInput;
+// ── Types ──────────────────────────────────────────────────────────────────────
 
-      const existing = db.roles.find(
-        (r) => r.name.toLowerCase() === name.toLowerCase()
-      );
-      if (existing) {
-        return { error: "A role with this name already exists" };
-      }
+export interface Role {
+  id:          string;
+  name:        string;
+  description: string | null;
+  color:       string;
+  status:      "ACTIVE" | "INACTIVE";
+  userCount:   number;
+  permissions: { id: string; name: string; label: string | null }[];
+  createdAt:   string;
+  updatedAt:   string;
+}
 
-      const newRole = {
-        id: `role-${Date.now()}`,
-        name,
-        description: rest.description ?? "",
-        permissions: rest.permissions,
-        color: rest.color,
-        status: rest.status,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
+interface ApiResponse<T> {
+  success: boolean;
+  data?:   T;
+  message?: string;
+}
 
-      db.roles.push(newRole);
-      revalidatePath("/roles");
-      return { data: newRole };
-    } catch (error: any) {
-      console.error("Create Role Error:", error);
-      return { error: error?.message || "Failed to create role. Please try again." };
-    }
-  }
-);
+// ── Helper ─────────────────────────────────────────────────────────────────────
+// Dynamic import so `next/headers` is never bundled into the client build.
+// On the server it reads the access_token cookie and forwards it.
+// In the browser (client actions) credentials are sent via the fetch cookie jar.
 
-// ── GET LIST ───────────────────────────────────────────────────────────────────
-export const getRoleList = actionClient.action(async () => {
+async function getAuthHeader(): Promise<Record<string, string>> {
+  if (typeof window !== "undefined") return {}; // browser — cookies sent automatically
   try {
-    // Attach live user count to each role
-    const rolesWithCount = db.roles.map((role) => ({
-      ...role,
-      userCount: db.users.filter((u) => u.roleId === role.id).length,
-    }));
-
-    return { data: rolesWithCount };
-  } catch (error) {
-    console.error("Get Roles Error:", error);
-    return { error: "Something went wrong" };
+    const { cookies } = await import("next/headers");
+    const cookieStore = await cookies();
+    const token = cookieStore.get("access_token")?.value;
+    if (token) return { Cookie: `access_token=${token}` };
+  } catch {
+    // Outside request context (e.g. during build) — skip auth header.
   }
-});
+  return {};
+}
 
-// ── GET FOR DROPDOWN ───────────────────────────────────────────────────────────
-export const getRoleListForDropdown = async () => {
-  return db.roles
-    .filter((r) => r.status === "Active")
-    .map((r) => ({ id: r.id, name: r.name }));
-};
+async function apiFetch<T>(
+  path:  string,
+  init?: RequestInit,
+): Promise<{ data?: T; error?: string }> {
+  try {
+    const authHeader = await getAuthHeader();
 
-// ── UPDATE ─────────────────────────────────────────────────────────────────────
-export const updateRole = actionClient.inputSchema(updateRoleSchema).action(
-  async (values) => {
-    const { id, name, ...rest } = values.parsedInput;
-    try {
-      const idx = db.roles.findIndex((r) => r.id === id);
-      if (idx === -1) {
-        return { error: "Role not found" };
-      }
+    const res = await fetch(`${API}${path}`, {
+      ...init,
+      credentials: "include", // still needed for browser-side calls
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeader,
+        ...init?.headers,
+      },
+    });
 
-      const duplicate = db.roles.find(
-        (r) => r.name.toLowerCase() === name.toLowerCase() && r.id !== id
-      );
-      if (duplicate) {
-        return { error: "A role with this name already exists" };
-      }
+    const json: ApiResponse<T> = await res.json();
 
-      const updated = {
-        ...db.roles[idx],
-        name,
-        description: rest.description ?? "",
-        permissions: rest.permissions,
-        color: rest.color,
-        status: rest.status,
-        updatedAt: new Date(),
-      };
-
-      db.roles[idx] = updated;
-      revalidatePath("/roles");
-      return { data: updated };
-    } catch (error: any) {
-      console.error("Update Role Error:", error);
-      return { error: error?.message || "Failed to update role. Please try again." };
+    if (!res.ok || !json.success) {
+      return { error: json.message ?? "Request failed" };
     }
+
+    return { data: json.data };
+  } catch (err: any) {
+    return { error: err?.message ?? "Network error" };
   }
-);
+}
 
-// ── DELETE ─────────────────────────────────────────────────────────────────────
-export const deleteRole = actionClient.inputSchema(deleteRoleSchema).action(
-  async (values) => {
-    const { id } = values.parsedInput;
-    try {
-      const idx = db.roles.findIndex((r) => r.id === id);
-      if (idx === -1) {
-        return { error: "Role not found" };
-      }
+// ── Actions ────────────────────────────────────────────────────────────────────
 
-      // Prevent deletion if users are assigned
-      const assignedUsers = db.users.filter((u) => u.roleId === id);
-      if (assignedUsers.length > 0) {
-        return {
-          error: `Cannot delete: ${assignedUsers.length} user(s) are assigned this role. Reassign them first.`,
-        };
-      }
+export async function getRoleList() {
+  const result = await apiFetch<Role[]>("/roles");
+  if (result.error) return { data: null, serverError: result.error };
+  return { data: result.data };
+}
 
-      const deleted = db.roles[idx];
-      db.roles.splice(idx, 1);
-      revalidatePath("/roles");
-      return { data: deleted };
-    } catch (error) {
-      console.error("Delete Role Error:", error);
-      return { error: "Something went wrong" };
-    }
-  }
-);
+export interface RoleOption {
+  id:   string;
+  name: string;
+}
 
-// ── TOGGLE STATUS ──────────────────────────────────────────────────────────────
-export const toggleRoleStatus = actionClient
-  .inputSchema(deleteRoleSchema) // reuse { id } shape
-  .action(async (values) => {
-    const { id } = values.parsedInput;
-    try {
-      const idx = db.roles.findIndex((r) => r.id === id);
-      if (idx === -1) return { error: "Role not found" };
+export async function getRoleListForDropdown(): Promise<RoleOption[]> {
+  const result = await apiFetch<Role[]>("/roles");
+  if (result.error || !result.data) return [];
+  return result.data
+    .filter((r) => r.status === "ACTIVE")
+    .map(({ id, name }) => ({ id, name }));
+}
 
-      db.roles[idx] = {
-        ...db.roles[idx],
-        status: db.roles[idx].status === "Active" ? "Inactive" : "Active",
-        updatedAt: new Date(),
-      };
+export async function getRoleById(id: string) {
+  const result = await apiFetch<Role>(`/roles/${id}`);
+  if (result.error) return { data: null, serverError: result.error };
+  return { data: result.data };
+}
 
-      revalidatePath("/roles");
-      return { data: db.roles[idx] };
-    } catch (error) {
-      console.error("Toggle Role Status Error:", error);
-      return { error: "Something went wrong" };
-    }
+export async function createRole(input: {
+  name:         string;
+  description?: string;
+  color?:       string;
+  permissions:  string[];
+}) {
+  const result = await apiFetch<Role>("/roles", {
+    method: "POST",
+    body:   JSON.stringify(input),
   });
+  if (result.error) return { data: { error: result.error } };
+  return { data: { data: result.data } };
+}
+
+export async function updateRole(input: {
+  id:           string;
+  name?:        string;
+  description?: string;
+  color?:       string;
+  status?:      "ACTIVE" | "INACTIVE";
+  permissions?: string[];
+}) {
+  const { id, ...body } = input;
+  const result = await apiFetch<Role>(`/roles/${id}`, {
+    method: "PATCH",
+    body:   JSON.stringify(body),
+  });
+  if (result.error) return { data: { error: result.error } };
+  return { data: { data: result.data } };
+}
+
+export async function deleteRole(input: { id: string }) {
+  const result = await apiFetch<{ id: string }>(`/roles/${input.id}`, {
+    method: "DELETE",
+  });
+  if (result.error) return { data: { error: result.error }, serverError: undefined };
+  return { data: { data: result.data }, serverError: undefined };
+}
+
+export async function toggleRoleStatus(input: { id: string }) {
+  const result = await apiFetch<Role>(`/roles/${input.id}/toggle-status`, {
+    method: "PATCH",
+  });
+  if (result.error) return { data: { error: result.error } };
+  return { data: { data: result.data } };
+}

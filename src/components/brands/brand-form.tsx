@@ -1,112 +1,152 @@
+// src/components/brands/brand-form.tsx
 'use client';
-import { useEffect } from "react";
-import { FormDialog, FormDialogContent, FormDialogDescription, FormDialogFooter, FormDialogHeader, FormDialogTitle, FormDialogTrigger } from "@/components/common/form-dialog";
-import { brandSchema } from "@/schemas/brand-schema";
-import z from "zod";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
-import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { DialogClose } from "../ui/dialog";
-import { createBrand, updateBrand } from "@/actions/brand-actions";
-import { useAction } from "next-safe-action/hooks";
-import { toast } from "sonner";
-import { BrandFormProps } from "@/types/brand";
 
+import { useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useAction } from 'next-safe-action/hooks';
+import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
+import z from 'zod';
 
-export const BrandFormDialog = ({ brand, open, openChange }: BrandFormProps) => {
+import { brandSchema } from '@/schemas/brand-schema';
+import { createBrand, updateBrand, type Brand } from '@/actions/brand-actions';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose,
+} from '@/components/ui/dialog';
+import {
+  Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Plus } from 'lucide-react';
+import { useState } from 'react';
 
-  const { execute: createProject, isExecuting: isCreating } = useAction(createBrand);
-  const { execute: updateProject, isExecuting: isUpdating } = useAction(updateBrand);
+interface BrandFormDialogProps {
+  brand?:       Brand | null;
+  open?:        boolean;
+  openChange?:  (open: boolean) => void;
+}
 
-  const form = useForm<z.infer<typeof brandSchema>>({
+type FormFields = z.infer<typeof brandSchema>;
+
+export function BrandFormDialog({ brand, open: controlledOpen, openChange }: BrandFormDialogProps) {
+  const router  = useRouter();
+  const isEdit  = !!brand;
+  const [internalOpen, setInternalOpen] = useState(false);
+
+  const open    = controlledOpen ?? internalOpen;
+  const setOpen = openChange     ?? setInternalOpen;
+
+  const form = useForm<FormFields>({
     resolver: zodResolver(brandSchema),
     defaultValues: {
-      name: brand?.name || "",
+      name:        brand?.name        ?? '',
+      description: brand?.description ?? '',
     },
   });
 
   useEffect(() => {
-    if (brand) {
-      form.reset({
-        name: brand.name,
-      });
-    } else {
-      form.reset({
-        name: "",
-      });
-    }
-  }, [brand, form]);
+    form.reset({
+      name:        brand?.name        ?? '',
+      description: brand?.description ?? '',
+    });
+  }, [brand]);
 
-  const handleSubmit = async (
-    data: z.infer<typeof brandSchema>,
-    close: () => void,
-  ) => {
-    if (brand) {
-      await updateProject({ id: brand.id, ...data });
-      toast.success("Brand updated successfully");
+  const { execute: execCreate, isExecuting: creating } = useAction(createBrand, {
+    onSuccess: ({ data }) => {
+      if ((data as any)?.error) { toast.error((data as any).error); return; }
+      toast.success('Brand created');
+      form.reset({ name: '', description: '' });
+      setOpen(false);
+      router.refresh();
+    },
+    onError: () => toast.error('Failed to create brand'),
+  });
+
+  const { execute: execUpdate, isExecuting: updating } = useAction(updateBrand, {
+    onSuccess: ({ data }) => {
+      if ((data as any)?.error) { toast.error((data as any).error); return; }
+      toast.success('Brand updated');
+      setOpen(false);
+      router.refresh();
+    },
+    onError: () => toast.error('Failed to update brand'),
+  });
+
+  const isExecuting = creating || updating;
+
+  const handleSubmit = (data: FormFields) => {
+    if (isEdit && brand) {
+      execUpdate({ id: brand.id, ...data });
     } else {
-      await createProject(data);
-      toast.success("Brand created successfully");
+      execCreate(data);
     }
-    close();
   };
 
   return (
-    <FormDialog
-      open={open}
-      openChange={openChange}
-      form={form}
-      onSubmit={handleSubmit}
-    >
-      <FormDialogTrigger asChild>
-        <Button>
-          <Plus className="size-4" />
+    <>
+      {/* Trigger — only rendered in uncontrolled mode */}
+      {controlledOpen === undefined && (
+        <Button onClick={() => setOpen(true)}>
+          <Plus className="h-4 w-4 mr-1" />
           New Brand
         </Button>
-      </FormDialogTrigger>
+      )}
 
-      <FormDialogContent className="sm:max-w-sm">
-        <FormDialogHeader>
-          <FormDialogTitle>
-            {brand ? "Edit Brand" : "New Brand"}
-          </FormDialogTitle>
-          <FormDialogDescription>
-            Fill out the brand details. Click save when you&apos;re done.
-          </FormDialogDescription>
-        </FormDialogHeader>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{isEdit ? 'Edit Brand' : 'New Brand'}</DialogTitle>
+          </DialogHeader>
 
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Brand Name</FormLabel>
-              <FormControl>
-                <Input placeholder="Brand Name" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Brand Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. Adidas" disabled={isExecuting} {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-        <FormDialogFooter>
-          <DialogClose asChild>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={isCreating || isUpdating}
-            >
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button type="submit" disabled={isCreating || isUpdating}>
-            {isCreating || isUpdating ? "Saving..." : "Save"}
-          </Button>
-        </FormDialogFooter>
-      </FormDialogContent>
-    </FormDialog>
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Description{' '}
+                      <span className="text-muted-foreground text-xs">(optional)</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input placeholder="Short description" disabled={isExecuting} {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button type="button" variant="outline" disabled={isExecuting}>
+                    Cancel
+                  </Button>
+                </DialogClose>
+                <Button type="submit" disabled={isExecuting}>
+                  {isExecuting ? 'Saving...' : isEdit ? 'Update' : 'Create'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+    </>
   );
-};
+}

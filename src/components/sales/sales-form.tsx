@@ -39,10 +39,10 @@ import { Card } from "../ui/card";
 import { ProductOption } from "@/types/product";
 import { SaleItemField } from "@/types/sales";
 import { fullSalesSchema } from "@/schemas/sales-item-schema";
-import { getProductListForDropdown } from "@/actions/product-actions";
+import { getProductDropdown } from "@/actions/product-actions";
 import { Command, CommandGroup, CommandItem, CommandInput, CommandEmpty, CommandList } from "../ui/command";
 import { nanoid } from "nanoid";
-import { getAllBranches } from "@/actions/auth";
+import { getBranchListForDropdown } from "@/actions/branch-action";
 import { SalesStatusEnum } from "@/schemas/sales-schema";
 
 export const SalesFormSheet = ({ sales, open, openChange }: SaleFormProps) => {
@@ -124,7 +124,7 @@ export const SalesFormSheet = ({ sales, open, openChange }: SaleFormProps) => {
     const fetchCustomers = async () => {
       const [result, branches] = await Promise.all([
         getCustomerListForDropdown(),
-        getAllBranches(),
+        getBranchListForDropdown(),
       ]);
       setBranchList(branches);
       setCustomerList(result);
@@ -183,7 +183,7 @@ export const SalesFormSheet = ({ sales, open, openChange }: SaleFormProps) => {
   useEffect(() => {
     const debounce = setTimeout(async () => {
       if (productSearch.length > 1) {
-        const res = await getProductListForDropdown({ query: productSearch });
+        const res = await getProductDropdown({ query: productSearch });
         setProductOptions(res?.data?.products || []);
       }
     }, 300);

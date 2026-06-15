@@ -1,193 +1,164 @@
-// src/actions/product-actions.ts
 'use server';
 
-import { db } from "@/lib/mock-db";
-import { actionClient } from "@/lib/safeAction";
-import { getProductByList, productSchema, productUpdateSchema } from "@/schemas/product-schema";
+import { actionClient } from '@/lib/safeAction';
 import { revalidatePath } from 'next/cache';
+import { api } from '@/lib/api';
 import { z } from 'zod';
 
-/** Safe accessor — handles the case where the global store was seeded
- *  before the `variations` array was added (hot-reload / persistent globals). */
-const getVariations = () => (db as any).variations ?? [];
+const createProductSchema = z.object({
+  product_name:  z.string().min(1, 'Product name is required'),
+  sku:           z.string().min(1, 'SKU is required'),
+  unit:          z.string().min(1, 'Unit is required'),
+  stock:         z.coerce.number().default(0),
+  purchasePrice: z.coerce.number().min(0),
+  sellingPrice:  z.coerce.number().min(0),
+  brandId:       z.string().min(1, 'Brand is required'),
+  subBrandId:    z.string().optional(),
+  categoryId:    z.string().optional(),
+  branchId:      z.string().min(1, 'Branch is required'),
+  description:   z.string().optional(),
+  hsl:           z.string().optional(),
+  variationIds:  z.array(z.string()).optional().default([]),
+});
+
+const updateProductSchema = createProductSchema.partial().extend({
+  id: z.string().min(1),
+});
+
+const deleteProductSchema = z.object({
+  id: z.string().min(1),
+});
+
+const getProductByIdSchema = z.object({
+  id: z.string().min(1),
+});
+
+const getProductListSchema = z.object({
+  page:       z.coerce.number().optional().default(1),
+  limit:      z.coerce.number().optional().default(10),
+  branchId:   z.string().optional(),
+  brandId:    z.string().optional(),
+  subBrandId: z.string().optional(),
+  categoryId: z.string().optional(),
+  search:     z.string().optional(),
+});
+
+function normalizeProduct(p: any): any {
+  return {
+    ...p,
+    product_name:  p.productName ?? p.product_name ?? '',
+    purchasePrice: Number(p.purchasePrice),
+    sellingPrice:  Number(p.sellingPrice),
+    stock:         Number(p.stock),
+    hsl:           p.hsl        ?? null,
+    category:      p.category   ?? null,
+    // Derive categoryId from direct field or nested object
+    categoryId:    p.categoryId ?? p.category?.id ?? null,
+  };
+}
 
 export const createProduct = actionClient
-  .inputSchema(productSchema)
-  .action(async (values) => {
-    try {
-      const data = values.parsedInput;
-
-      const purchasePrice = data.purchasePrice ? Math.round(data.purchasePrice) : 0;
-      const sellingPrice = data.sellingPrice ? Math.round(data.sellingPrice) : 0;
-
-      const newProduct = {
-        id: `prod-${Date.now()}`,
-        product_name: data.product_name,
-        sku: data.sku,
-        brandId: data.brandId,
-        branchId: data.branchId || "main-branch",
-        unit: data.unit || undefined,
-        stock: data.stock || 0,
-        purchasePrice,
-        sellingPrice,
-        description: data.description || undefined,
-        variationIds: data.variationIds ?? [],
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      db.products.push(newProduct);
-      revalidatePath("/products");
-      return { data: newProduct };
-    } catch (error) {
-      console.error("Product Creation Error :", error);
-      return { error: "Something went wrong" };
-    }
-  });
-
-export const getProductList = actionClient
-  .inputSchema(
-    z.object({
-      page: z.number().default(1),
-      limit: z.number().default(10),
-    })
-  )
-  .action(async (values) => {
-    try {
-      const { page, limit } = values.parsedInput;
-      const allVariations = getVariations();
-
-      const products = db.products.map((p) => {
-        const ids: string[] = (p as any).variationIds ?? [];
-        return {
-          ...p,
-          variationIds: ids,
-          brand: db.brands.find((b) => b.id === p.brandId) || { name: "Unknown" },
-          variations: allVariations.filter((v: any) => ids.includes(v.id)),
-        };
-      });
-
-      const totalCount = products.length;
-      const totalPages = Math.ceil(totalCount / limit);
-      const totalStock = products.reduce((sum, p) => sum + p.stock, 0);
-
-      products.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-
-      return {
-        products,
-        metadata: {
-          totalPages,
-          totalCount,
-          currentPage: page,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1,
-        },
-        totals: {
-          stock: totalStock,
-        },
-      };
-    } catch (error) {
-      console.error("Get Product List error:", error);
-      return { error: "Something went wrong" };
-    }
-  });
-
-export const getProductListForDropdown = actionClient
-  .inputSchema(z.object({ query: z.string().optional() }))
+  .inputSchema(createProductSchema)
   .action(async ({ parsedInput }) => {
-    const query = parsedInput.query?.trim().toLowerCase() || "";
-
-    let products = [...db.products];
-    if (query) {
-      products = products.filter((p) =>
-        p.product_name.toLowerCase().includes(query)
-      );
+    try {
+      const { product_name, subBrandId, categoryId, hsl, ...rest } = parsedInput;
+      const product = await api.post<any>('/products', {
+        productName: product_name,
+        ...rest,
+        hsl:        hsl        ? hsl        : undefined,
+        subBrandId: subBrandId ? subBrandId : undefined,
+        categoryId: categoryId ? categoryId : undefined,
+      });
+      revalidatePath('/admin/products');
+      return { data: normalizeProduct(product) };
+    } catch (error: any) {
+      return { error: error.message ?? 'Something went wrong' };
     }
-
-    return {
-      products: products.map((p) => ({
-        id: p.id,
-        product_name: p.product_name,
-        stock: p.stock,
-        quantity: 1,
-        purchasePrice: p.purchasePrice,
-        sellingPrice: p.sellingPrice,
-      })),
-    };
-  });
-
-export const getProductById = actionClient
-  .inputSchema(getProductByList)
-  .action(async (values) => {
-    const { id } = values.parsedInput;
-    const product = db.products.find((p) => p.id === id);
-    if (product) {
-      const allVariations = getVariations();
-      const ids: string[] = (product as any).variationIds ?? [];
-      return {
-        data: {
-          ...product,
-          variationIds: ids,
-          brand: db.brands.find((b) => b.id === product.brandId) || { name: "Unknown" },
-          branch: db.branches.find((b) => b.id === product.branchId) || { name: "Unknown" },
-          variations: allVariations.filter((v: any) => ids.includes(v.id)),
-        },
-      };
-    }
-    return { data: null };
   });
 
 export const updateProduct = actionClient
-  .inputSchema(productUpdateSchema)
-  .action(async (values) => {
-    const { id, ...inputData } = values.parsedInput;
+  .inputSchema(updateProductSchema)
+  .action(async ({ parsedInput }) => {
     try {
-      const idx = db.products.findIndex((p) => p.id === id);
-      if (idx !== -1) {
-        const purchasePrice = inputData.purchasePrice
-          ? Math.round(inputData.purchasePrice)
-          : db.products[idx].purchasePrice;
-        const sellingPrice = inputData.sellingPrice
-          ? Math.round(inputData.sellingPrice)
-          : db.products[idx].sellingPrice;
-
-        const existingVariationIds: string[] = (db.products[idx] as any).variationIds ?? [];
-
-        const updated = {
-          ...db.products[idx],
-          ...inputData,
-          purchasePrice,
-          sellingPrice,
-          variationIds: inputData.variationIds ?? existingVariationIds,
-          updatedAt: new Date(),
-        };
-
-        db.products[idx] = updated;
-        revalidatePath("/products");
-        return { data: updated };
-      }
-      return { error: "Product not found" };
-    } catch (error) {
-      console.error("Updating Product Error :", error);
-      return { error: "Something went wrong" };
+      const { id, product_name, subBrandId, categoryId, hsl, ...rest } = parsedInput;
+      const product = await api.patch<any>(`/products/${id}`, {
+        ...(product_name ? { productName: product_name } : {}),
+        ...rest,
+        hsl:        hsl        ? hsl        : undefined,
+        subBrandId: subBrandId ? subBrandId : undefined,
+        categoryId: categoryId ? categoryId : undefined,
+      });
+      revalidatePath('/admin/products');
+      return { data: normalizeProduct(product) };
+    } catch (error: any) {
+      return { error: error.message ?? 'Something went wrong' };
     }
   });
 
 export const deleteProduct = actionClient
-  .inputSchema(getProductByList)
-  .action(async (values) => {
-    const { id } = values.parsedInput;
+  .inputSchema(deleteProductSchema)
+  .action(async ({ parsedInput }) => {
     try {
-      const idx = db.products.findIndex((p) => p.id === id);
-      if (idx !== -1) {
-        const deleted = db.products[idx];
-        db.products.splice(idx, 1);
-        revalidatePath("/products");
-        return deleted;
-      }
-      return null;
-    } catch (error) {
-      console.error("Delete product error:", error);
-      return null;
+      const product = await api.delete<any>(`/products/${parsedInput.id}`);
+      revalidatePath('/admin/products');
+      return { data: product };
+    } catch (error: any) {
+      return { error: error.message ?? 'Something went wrong' };
     }
   });
+
+export const getProductById = actionClient
+  .inputSchema(getProductByIdSchema)
+  .action(async ({ parsedInput }) => {
+    try {
+      const product = await api.get<any>(`/products/${parsedInput.id}`);
+      return { data: normalizeProduct(product) };
+    } catch (error: any) {
+      return { error: error.message ?? 'Product not found' };
+    }
+  });
+
+export const getProductList = actionClient
+  .inputSchema(getProductListSchema)
+  .action(async ({ parsedInput }) => {
+    try {
+      const { page, limit, branchId, brandId, subBrandId, categoryId, search } = parsedInput;
+      const params = new URLSearchParams({
+        page:  String(page),
+        limit: String(limit),
+        ...(branchId   && { branchId }),
+        ...(brandId    && { brandId }),
+        ...(subBrandId && { subBrandId }),
+        ...(categoryId && { categoryId }),
+        ...(search     && { search }),
+      });
+      const payload = await api.get<any>(`/products?${params}`);
+      if (payload?.products) {
+        payload.products = payload.products.map(normalizeProduct);
+      }
+      return { data: payload };
+    } catch (error: any) {
+      return { error: error.message ?? 'Something went wrong' };
+    }
+  });
+
+export const getProductDropdown = async (params?: { query?: string; branchId?: string }) => {
+  try {
+    const searchParams = new URLSearchParams();
+    if (params?.branchId) searchParams.set('branchId', params.branchId);
+    if (params?.query)    searchParams.set('search', params.query);
+
+    const url = `/products/dropdown${searchParams.toString() ? `?${searchParams}` : ''}`;
+    const products = await api.get<any[]>(url);
+    return (products ?? []).map((p: any) => ({
+      ...p,
+      product_name:  p.productName ?? p.product_name ?? '',
+      purchasePrice: Number(p.purchasePrice),
+      sellingPrice:  Number(p.sellingPrice),
+      stock:         Number(p.stock),
+    }));
+  } catch {
+    return [];
+  }
+};
+

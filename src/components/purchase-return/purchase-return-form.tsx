@@ -21,9 +21,10 @@ import { useForm, FormProvider, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { fullPurchaseReturnSchema } from "@/schemas/purchase-return-item-schema";
-import { createPurchaseReturn, updatePurchaseReturn } from "@/actions/purchase-return-action";
+import { createPurchaseReturn, updatePurchaseReturn, getPurchaseReturnList } from "@/actions/purchase-return-action";
 import { getSupplierListForDropdown } from "@/actions/supplier-action";
-import { getProductListForDropdown } from "@/actions/product-actions";
+import { getProductDropdown } from "@/actions/product-actions";
+import { getPurchaseList } from "@/actions/purchase-actions";
 import { useAction } from "next-safe-action/hooks";
 import { useEffect, useState } from "react";
 import {
@@ -41,17 +42,17 @@ import { ProductOption } from "@/types/product";
 import { PurchaseReturnFormProps, PurchaseReturnItemField } from "@/types/purchase-return";
 import { Calendar } from "../ui/calendar";
 import { Popover, PopoverTrigger, PopoverContent } from "../ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "../ui/command";
 import { cn, CURRENCY_SYMBOL, formatDate } from "@/lib/utils";
 import { nanoid } from "nanoid";
-import { getAllBranches } from "@/actions/auth";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
+import { getBranchListForDropdown } from "@/actions/branch-action";
 
 export const PurchaseReturnFormSheet = ({
   purchaseReturn,
@@ -61,13 +62,19 @@ export const PurchaseReturnFormSheet = ({
   const isControlled = typeof open === "boolean";
   const { execute: create, isExecuting: isCreating } = useAction(createPurchaseReturn);
   const { execute: update, isExecuting: isUpdating } = useAction(updatePurchaseReturn);
+
   const [supplierList, setSupplierList] = useState<{ name: string; id: string }[]>([]);
   const [showSupplierSuggestions, setShowSupplierSuggestions] = useState(false);
+
+  const [branchList, setBranchList] = useState<{ name: string; id: string }[]>([]);
+  const [showBranchSuggestions, setShowBranchSuggestions] = useState(false);
+
+  // Purchase picker — needed because backend requires purchaseId
+  const [purchaseList, setPurchaseList] = useState<{ id: string; purchaseNo: string; supplierId: string }[]>([]);
+  const [showPurchaseSuggestions, setShowPurchaseSuggestions] = useState(false);
+
   const [productSearch, setProductSearch] = useState("");
   const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
-
-  const [baranchList, setBranchList] = useState<{ name: string; id: string; }[]>([]);
-  const [showBranchSuggestions, setShowBranchSuggestions] = useState(false);
 
   const itemFieldKeys: PurchaseReturnItemField[] = [
     "quantity",
@@ -77,23 +84,37 @@ export const PurchaseReturnFormSheet = ({
   ];
 
   useEffect(() => {
-    const fetchSuppliers = async () => {
-      const res = await getSupplierListForDropdown();
-      const branches = await getAllBranches()
+    const fetchDropdowns = async () => {
+      const [suppliers, branches, purchasesData] = await Promise.all([
+        getSupplierListForDropdown(),
+        getBranchListForDropdown(),
+        getPurchaseList({ page: 1, limit: 1000 }),
+      ]);
+      setSupplierList(suppliers);
       setBranchList(branches);
-      setSupplierList(res);
+      // purchasesData is the action result
+      const purchases = (purchasesData?.data?.purchases ?? []).map((p: any) => ({
+        id:         p.id,
+        purchaseNo: p.purchaseNo ?? p.referenceNo ?? '',
+        supplierId: p.supplierId ?? '',
+      }));
+      setPurchaseList(purchases);
     };
-    fetchSuppliers();
+    fetchDropdowns();
   }, []);
 
   const form = useForm<z.infer<typeof fullPurchaseReturnSchema>>({
     resolver: zodResolver(fullPurchaseReturnSchema),
     defaultValues: {
-      referenceNo: purchaseReturn?.referenceNo || "",
-      branchId: purchaseReturn?.branchId || "",
-      supplierId: purchaseReturn?.supplierId || "",
-      returnDate: purchaseReturn?.returnDate ? new Date(purchaseReturn.returnDate) : new Date(),
-      totalAmount: purchaseReturn?.totalAmount || 0,
+        referenceNo:        `RET-${nanoid(4).toUpperCase()}`,  // ← add this
+
+      purchaseId:         purchaseReturn?.purchaseId        || "",
+      branchId:           purchaseReturn?.branchId          || "",
+      supplierId:         purchaseReturn?.supplierId         || "",
+      returnDate:         purchaseReturn?.returnDate
+                            ? new Date(purchaseReturn.returnDate)
+                            : new Date(),
+      totalAmount:        purchaseReturn?.totalAmount        || 0,
       purchaseReturnItem: purchaseReturn?.purchaseReturnItem || [],
     },
   });
@@ -103,30 +124,45 @@ export const PurchaseReturnFormSheet = ({
     name: "purchaseReturnItem",
   });
 
+  // When editing, reset to existing data
   useEffect(() => {
-    if (!purchaseReturn) {
-      form.setValue("referenceNo", `REF-${nanoid(4).toUpperCase()}`);
+    if (purchaseReturn) {
+      form.reset({
+        purchaseId:         purchaseReturn.purchaseId        || "",
+        branchId:           purchaseReturn.branchId          || "",
+        supplierId:         purchaseReturn.supplierId         || "",
+        returnDate:         purchaseReturn.returnDate
+                              ? new Date(purchaseReturn.returnDate)
+                              : new Date(),
+        totalAmount:        purchaseReturn.totalAmount        || 0,
+        purchaseReturnItem: purchaseReturn.purchaseReturnItem || [],
+      });
     }
   }, [form, purchaseReturn]);
 
   useEffect(() => {
     const debounce = setTimeout(async () => {
       if (productSearch.length > 1) {
-        const res = await getProductListForDropdown({ query: productSearch });
-        setProductOptions(res?.data?.products || []);
+       const products = await getProductDropdown({ query: productSearch });
+setProductOptions(products);
       }
     }, 300);
     return () => clearTimeout(debounce);
   }, [productSearch]);
 
   const handleSubmit = async (data: z.infer<typeof fullPurchaseReturnSchema>) => {
-    const totalAmount = data.purchaseReturnItem.reduce((sum, item) => sum + (item.total || 0), 0);
+    if (!data.purchaseId) {
+      toast.error("Please select a purchase");
+      return;
+    }
+
+    const totalAmount = data.purchaseReturnItem.reduce(
+      (sum, item) => sum + (item.total || 0),
+      0
+    );
     form.setValue("totalAmount", totalAmount);
 
-    const payload = {
-      ...data,
-      totalAmount,
-    };
+    const payload = { ...data, totalAmount };
 
     if (purchaseReturn) {
       await update({ id: purchaseReturn.id, ...payload });
@@ -151,24 +187,97 @@ export const PurchaseReturnFormSheet = ({
         <FormProvider {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
             <SheetHeader>
-              <SheetTitle>{purchaseReturn ? "Edit Purchase Return" : "New Purchase Return"}</SheetTitle>
+              <SheetTitle>
+                {purchaseReturn ? "Edit Purchase Return" : "New Purchase Return"}
+              </SheetTitle>
             </SheetHeader>
 
             <Card className="grid md:grid-cols-2 gap-4 p-4">
+              {/* Purchase selector — required by backend */}
+              <FormField
+                control={form.control}
+                name="purchaseId"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Purchase <span className="text-destructive">*</span></FormLabel>
+                    <Popover
+                      open={showPurchaseSuggestions}
+                      onOpenChange={setShowPurchaseSuggestions}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          className={cn(
+                            "w-full justify-between",
+                            !field.value && "text-muted-foreground"
+                          )}
+                        >
+                          {purchaseList.find((p) => p.id === field.value)?.purchaseNo ||
+                            "Select purchase..."}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-full p-0">
+                        <Command>
+                          <CommandInput placeholder="Search purchase no..." />
+                          <CommandList>
+                            <CommandEmpty>No purchases found.</CommandEmpty>
+                            <CommandGroup>
+                              {purchaseList.map((p) => (
+                                <CommandItem
+                                  key={p.id}
+                                  value={p.purchaseNo}
+                                  onSelect={() => {
+                                    field.onChange(p.id);
+                                    // auto-fill supplier from the selected purchase
+                                    if (p.supplierId) {
+                                      form.setValue("supplierId", p.supplierId);
+                                    }
+                                    setShowPurchaseSuggestions(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      p.id === field.value ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  {p.purchaseNo}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Supplier */}
               <FormField
                 control={form.control}
                 name="supplierId"
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel>Supplier</FormLabel>
-                    <Popover open={showSupplierSuggestions} onOpenChange={setShowSupplierSuggestions}>
+                    <Popover
+                      open={showSupplierSuggestions}
+                      onOpenChange={setShowSupplierSuggestions}
+                    >
                       <PopoverTrigger asChild>
                         <Button
                           variant="outline"
                           role="combobox"
-                          className={cn("w-full justify-between", !field.value && "text-muted-foreground")}
+                          className={cn(
+                            "w-full justify-between",
+                            !field.value && "text-muted-foreground"
+                          )}
                         >
-                          {supplierList.find((s) => s.id === field.value)?.name || "Select supplier..."}
+                          {supplierList.find((s) => s.id === field.value)?.name ||
+                            "Select supplier..."}
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                       </PopoverTrigger>
@@ -190,7 +299,9 @@ export const PurchaseReturnFormSheet = ({
                                   <Check
                                     className={cn(
                                       "mr-2 h-4 w-4",
-                                      supplier.id === field.value ? "opacity-100" : "opacity-0"
+                                      supplier.id === field.value
+                                        ? "opacity-100"
+                                        : "opacity-0"
                                     )}
                                   />
                                   {supplier.name}
@@ -205,34 +316,29 @@ export const PurchaseReturnFormSheet = ({
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="referenceNo"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Reference No</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
 
+              {/* Branch */}
               <FormField
                 control={form.control}
                 name="branchId"
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel>Business Location</FormLabel>
-                    <Popover open={showBranchSuggestions} onOpenChange={setShowBranchSuggestions}>
+                    <Popover
+                      open={showBranchSuggestions}
+                      onOpenChange={setShowBranchSuggestions}
+                    >
                       <PopoverTrigger asChild>
                         <Button
                           variant="outline"
                           role="combobox"
-                          className={cn("w-full justify-between", !field.value && "text-muted-foreground")}
+                          className={cn(
+                            "w-full justify-between",
+                            !field.value && "text-muted-foreground"
+                          )}
                         >
-                          {baranchList.find((b) => b.id === field.value)?.name || "Select Branch..."}
+                          {branchList.find((b) => b.id === field.value)?.name ||
+                            "Select Branch..."}
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                       </PopoverTrigger>
@@ -242,7 +348,7 @@ export const PurchaseReturnFormSheet = ({
                           <CommandList>
                             <CommandEmpty>No branch found.</CommandEmpty>
                             <CommandGroup>
-                              {baranchList.map((branch) => (
+                              {branchList.map((branch) => (
                                 <CommandItem
                                   key={branch.id}
                                   value={branch.name}
@@ -254,7 +360,9 @@ export const PurchaseReturnFormSheet = ({
                                   <Check
                                     className={cn(
                                       "mr-2 h-4 w-4",
-                                      branch.id === field.value ? "opacity-100" : "opacity-0"
+                                      branch.id === field.value
+                                        ? "opacity-100"
+                                        : "opacity-0"
                                     )}
                                   />
                                   {branch.name}
@@ -270,6 +378,7 @@ export const PurchaseReturnFormSheet = ({
                 )}
               />
 
+              {/* Return Date */}
               <FormField
                 control={form.control}
                 name="returnDate"
@@ -289,6 +398,7 @@ export const PurchaseReturnFormSheet = ({
                           mode="single"
                           selected={new Date(field.value)}
                           onSelect={field.onChange}
+                          captionLayout="dropdown"
                         />
                       </PopoverContent>
                     </Popover>
@@ -298,10 +408,14 @@ export const PurchaseReturnFormSheet = ({
               />
             </Card>
 
+            {/* Products */}
             <Card className="p-4 space-y-4">
               <FormItem className="relative max-w-sm">
                 <FormLabel>Add Product</FormLabel>
-                <Popover open={productOptions.length > 0} onOpenChange={() => setProductOptions([])}>
+                <Popover
+                  open={productOptions.length > 0}
+                  onOpenChange={() => setProductOptions([])}
+                >
                   <PopoverTrigger asChild>
                     <div>
                       <Input
@@ -315,7 +429,11 @@ export const PurchaseReturnFormSheet = ({
                   </PopoverTrigger>
                   <PopoverContent className="w-full p-0">
                     <Command shouldFilter={false}>
-                      <CommandInput placeholder="Search product..." value={productSearch} onValueChange={setProductSearch} />
+                      <CommandInput
+                        placeholder="Search product..."
+                        value={productSearch}
+                        onValueChange={setProductSearch}
+                      />
                       <CommandList>
                         <CommandEmpty>No products found.</CommandEmpty>
                         <CommandGroup>
@@ -325,12 +443,12 @@ export const PurchaseReturnFormSheet = ({
                               value={p.product_name}
                               onSelect={() => {
                                 append({
-                                  productId: p.id,
+                                  productId:    p.id,
                                   product_name: p.product_name,
-                                  quantity: 1,
-                                  unitPrice: p.purchasePrice,
-                                  subtotal: p.purchasePrice,
-                                  total: p.purchasePrice,
+                                  quantity:     1,
+                                  unitPrice:    p.purchasePrice,
+                                  subtotal:     p.purchasePrice,
+                                  total:        p.purchasePrice,
                                 });
                                 setProductSearch("");
                                 setProductOptions([]);
@@ -360,9 +478,7 @@ export const PurchaseReturnFormSheet = ({
                 <TableBody>
                   {fields.map((f, idx) => (
                     <TableRow key={f.id}>
-                      <TableCell>
-                        {f.product_name || "—"}
-                      </TableCell>
+                      <TableCell>{f.product_name || "—"}</TableCell>
 
                       {itemFieldKeys.map((key) => (
                         <TableCell key={key}>
@@ -377,7 +493,9 @@ export const PurchaseReturnFormSheet = ({
                                   readOnly={key === "total"}
                                   tabIndex={key === "total" ? -1 : 0}
                                   value={
-                                    (field.value === undefined || field.value === null || Number.isNaN(field.value))
+                                    field.value === undefined ||
+                                    field.value === null ||
+                                    Number.isNaN(field.value)
                                       ? ""
                                       : field.value
                                   }
@@ -386,17 +504,36 @@ export const PurchaseReturnFormSheet = ({
                                     field.onChange(val);
 
                                     if (key === "quantity" || key === "unitPrice") {
-                                      const qty = key === "quantity" ? Number(val) : Number(form.getValues(`purchaseReturnItem.${idx}.quantity`));
-                                      const unitPrice = key === "unitPrice" ? Number(val) : Number(form.getValues(`purchaseReturnItem.${idx}.unitPrice`));
-
+                                      const qty =
+                                        key === "quantity"
+                                          ? Number(val)
+                                          : Number(
+                                              form.getValues(
+                                                `purchaseReturnItem.${idx}.quantity`
+                                              )
+                                            );
+                                      const unitPrice =
+                                        key === "unitPrice"
+                                          ? Number(val)
+                                          : Number(
+                                              form.getValues(
+                                                `purchaseReturnItem.${idx}.unitPrice`
+                                              )
+                                            );
                                       const subtotal = qty * unitPrice;
-                                      const total = subtotal;
-
-                                      form.setValue(`purchaseReturnItem.${idx}.subtotal`, subtotal);
-                                      form.setValue(`purchaseReturnItem.${idx}.total`, total);
+                                      form.setValue(
+                                        `purchaseReturnItem.${idx}.subtotal`,
+                                        subtotal
+                                      );
+                                      form.setValue(
+                                        `purchaseReturnItem.${idx}.total`,
+                                        subtotal
+                                      );
                                     } else if (key === "subtotal") {
-                                      const subtotal = Number(val);
-                                      form.setValue(`purchaseReturnItem.${idx}.total`, subtotal);
+                                      form.setValue(
+                                        `purchaseReturnItem.${idx}.total`,
+                                        Number(val)
+                                      );
                                     }
                                   }}
                                 />

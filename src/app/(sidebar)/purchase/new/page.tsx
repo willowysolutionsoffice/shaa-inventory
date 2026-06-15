@@ -1,11 +1,11 @@
 import { PurchaseFormPage } from "@/components/purchase/purchase-form-page";
 import { getSupplierListForDropdown } from "@/actions/supplier-action";
-import { getAllBranches } from "@/actions/auth";
+import { getBranchListForDropdown } from "@/actions/branch-action";
 
 export default async function NewPurchasePage() {
   const [suppliers, branches] = await Promise.all([
     getSupplierListForDropdown(),
-    getAllBranches(),
+    getBranchListForDropdown(),
   ]);
 
   return <PurchaseFormPage suppliers={suppliers} branches={branches} />;
