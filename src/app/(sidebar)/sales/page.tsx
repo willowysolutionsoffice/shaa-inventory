@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { SalesTable } from "@/components/sales/sales-table";
 import { salesColumns } from "@/components/sales/sales-colums";
-import { getSalesList } from "@/actions/sales-action";
+import { fetchSales } from "@/actions/sales-action";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import Link from "next/link";
@@ -26,8 +26,8 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
   const from = typeof params.from === "string" ? params.from : formattedToday;
   const to   = typeof params.to   === "string" ? params.to   : formattedToday;
 
-  const { data } = await getSalesList({ page, limit, from, to });
-
+const result = await fetchSales({ page, limit});
+console.log("SALES ACTION RESULT:", result);
   return (
     <div className="flex flex-1 flex-col">
       <div className="@container/main flex flex-1 flex-col gap-2">
@@ -49,19 +49,25 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
           </div>
 
           <SalesTable
-            columns={salesColumns}
-            data={(data?.sales ?? []) as any}
-            metadata={
-              data?.metadata ?? {
-                totalPages:  0,
-                totalCount:  0,
-                currentPage: 1,
-                hasNextPage: false,
-                hasPrevPage: false,
-              }
-            }
-            totals={data?.totals ?? { grandTotal: 0, dueAmount: 0, paidAmount: 0 }}
-          />
+  columns={salesColumns}
+  data={(result?.sales ?? []) as any}
+  metadata={
+    result?.metadata ?? {
+      totalPages: 0,
+      totalCount: 0,
+      currentPage: 1,
+      hasNextPage: false,
+      hasPrevPage: false,
+    }
+  }
+  totals={
+    result?.totals ?? {
+      grandTotal: 0,
+      dueAmount: 0,
+      paidAmount: 0,
+    }
+  }
+/>
         </div>
       </div>
     </div>

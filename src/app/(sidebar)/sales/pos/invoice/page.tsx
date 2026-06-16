@@ -88,8 +88,8 @@ export default function InvoicesPage() {
       const result = await getSalesList({
         page,
         limit: LIMIT,
-        from:  dateFrom || undefined,
-        to:    dateTo   || undefined,
+        // from:  dateFrom || undefined,
+        // to:    dateTo   || undefined,
       });
 
       // next-safe-action wraps return value under result.data

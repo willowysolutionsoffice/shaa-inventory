@@ -76,14 +76,12 @@ export function SalesReturnTable<TValue>({
       columnFilters,
     },
     globalFilterFn: (row, _columnId, filterValue) => {
-      const ref = row.getValue("invoiceNo") as string;
-      const customer = row.original?.customer.name || "";
-      const filter = String(filterValue || "").toLowerCase();
-      return (
-        ref?.toLowerCase().includes(filter) ||
-        customer?.toLowerCase().includes(filter)
-      );
-    },
+  const ref      = String(row.getValue("returnNo")          ?? "").toLowerCase();
+  const invoice  = String(row.original.sale?.invoiceNo      ?? "").toLowerCase();
+  const customer = String(row.original.customer?.name       ?? "").toLowerCase();
+  const q        = String(filterValue ?? "").toLowerCase();
+  return ref.includes(q) || invoice.includes(q) || customer.includes(q);
+},
     manualPagination: true,
     pageCount: metadata.totalPages,
   });

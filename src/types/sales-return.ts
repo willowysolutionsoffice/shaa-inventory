@@ -1,18 +1,28 @@
-import {
-  SalesReturnItem as PrismaSalesReturnItem
-  , SalesReturn as PrismaSalesReturn
-} from "@prisma/client";
-import { ColumnDef } from "@tanstack/react-table";
-
-export interface SalesReturnItem extends PrismaSalesReturnItem {
-  product?: {
-    product_name: string;
-  };
+export interface SalesReturnItem {
+  id:           string;
+  productId:    string;
+  quantity:     number;
+  unitPrice:    number;
+  subtotal:     number;
+  total:        number;
+  product_name: string;
+  product:      { id: string; productName: string; sku: string } | null;
 }
 
-export interface SalesReturn extends PrismaSalesReturn {
-  customer: { name: string };
-  salesReturnItem: SalesReturnItem[];
+export interface SalesReturn {
+  id:           string;
+  returnNo:     string;
+  returnDate:   string | Date | null;
+  saleId:       string;
+  customerId:   string;
+  branchId:     string;
+  refundMethod: string;
+  reason:       string | null;
+  grandTotal:   number;
+  sale:         { id: string; invoiceNo: string } | null;
+  customer:     { id: string; name: string; phone?: string } | null;
+  branch:       { id: string; name: string } | null;
+  items:        SalesReturnItem[];
 }
 
 export interface SalesReturnFormProps {
@@ -21,22 +31,4 @@ export interface SalesReturnFormProps {
   openChange?: (open: boolean) => void;
 }
 
-export interface SalesReturnTableProps<TValue> {
-  columns: ColumnDef<SalesReturn, TValue>[];
-  data: SalesReturn[];
-}
-
-export type RawSalesReturnItem = {
-  productId: string;
-  product_name?: string;
-  quantity: number;
-  unitPrice: number;
-  subtotal: number;
-  total: number;
-};
-
-export type SalesReturnItemField =
-  | "quantity"
-  | "unitPrice"
-  | "subtotal"
-  | "total";
+export type SalesReturnItemField = 'quantity' | 'unitPrice' | 'subtotal' | 'total';

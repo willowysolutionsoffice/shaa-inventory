@@ -1,8 +1,8 @@
 // src/app/(sidebar)/admin/customers/[id]/page.tsx
 export const dynamic = "force-dynamic";
 
-import { notFound } from "next/navigation";
-import { getCustomerById } from "@/actions/customer-action";
+import { notFound }              from "next/navigation";
+import { getCustomerById }       from "@/actions/customer-action";
 import { CustomerHistoryClient } from "@/components/customers/customer-history-client";
 
 interface Props {
@@ -11,29 +11,17 @@ interface Props {
 
 export default async function CustomerHistoryPage({ params }: Props) {
   const { id } = await params;
-
   const result = await getCustomerById({ id });
 
-  // actionClient wraps: result.data = { customer, sales, ... } | { error }
   if (!result?.data || "error" in result.data) notFound();
 
-  const {
-    customer,
-    sales,
-    returns,
-    balancePayments,
-    loyaltyPoints,
-    loyaltyTier,
-    totalSpent,
-    totalReturned,
-  } = result.data;
+  const { customer, sales, returns, loyaltyPoints, loyaltyTier, totalSpent, totalReturned } = result.data;
 
   return (
     <CustomerHistoryClient
-      customer={customer as any}
-      sales={sales as any}
-      returns={returns as any}
-      balancePayments={balancePayments as any}
+      customer={customer   as any}
+      sales={sales         as any}
+      returns={returns     as any}
       loyaltyPoints={loyaltyPoints}
       loyaltyTier={loyaltyTier as any}
       totalSpent={totalSpent}

@@ -1,16 +1,15 @@
+// src/app/(sidebar)/admin/customers/page.tsx
 export const dynamic = "force-dynamic";
 
-import { customersColumns } from "@/components/customers/customer-columns";
-import { CustomerTable } from "@/components/customers/customer-table";
+import { customersColumns }   from "@/components/customers/customer-columns";
+import { CustomerTable }      from "@/components/customers/customer-table";
 import { CustomerFormDialog } from "@/components/customers/customer-form";
-import { getCustomerList } from "@/actions/customer-action";
 import { getBranchListForDropdown } from "@/actions/branch-action";
-
-
+import { fetchCustomers } from "@/actions/customer-action";
 
 export default async function CustomerPage() {
-  const [{ data }, branches] = await Promise.all([
-    getCustomerList(),
+  const [{ customers }, branches] = await Promise.all([
+    fetchCustomers(),
     getBranchListForDropdown(),
   ]);
 
@@ -21,15 +20,14 @@ export default async function CustomerPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Customers</h1>
-              <p className="text-muted-foreground">Manage your Customers</p>
+              <p className="text-muted-foreground">Manage your customers</p>
             </div>
             <CustomerFormDialog branches={branches} />
           </div>
 
           <CustomerTable
             columns={customersColumns}
-            data={data?.customers ?? []}
-            totals={data?.totals ?? { openingBalance: 0, outstandingPayments: 0, salesDue: 0, salesReturnDue: 0 }}
+            data={customers as any}
             branches={branches}
           />
         </div>

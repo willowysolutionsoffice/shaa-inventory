@@ -1,23 +1,19 @@
+// src/schemas/customer-schema.ts
 import { z } from 'zod';
 
 export const customerSchema = z.object({
-  CustomerID:z.string().min(2),
-  branchId: z.string().min(1, "Branch is required"),
-  name: z.string().min(2),
-  email: z.string().optional(),
-  phone: z.string().optional(),
-  openingBalance: z.coerce.number(),
-  address: z.string().optional(),
-  salesDue:z.coerce.number().optional(),
-  salesReturnDue:z.coerce.number().optional()
+  name:     z.string().min(2, 'Name must be at least 2 characters'),
+  email:    z.string().email('Invalid email').optional().or(z.literal('')),
+  phone:    z.string().optional(),
+  branchId: z.string().min(1, 'Branch is required'),
 });
 
 export const updateCustomerSchema = customerSchema.extend({
-  id: z.string(),
+  id: z.string().min(1),
 });
 
 export const deleteCustomerSchema = z.object({
-  id: z.string(),
+  id: z.string().min(1),
 });
 
 export type CustomerInput = z.infer<typeof customerSchema>;

@@ -1,6 +1,6 @@
 "use client";
 
-import { SalesReturn } from "@/types/sales-return"; // adjust if needed
+import { SalesReturn } from "@/types/sales-return";
 import { ColumnDef } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown, Edit2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,51 +11,50 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 
 export const salesReturnColumns: ColumnDef<SalesReturn>[] = [
   {
-    accessorKey: "invoiceNo",
+    accessorKey: "returnNo",
     header: ({ column }) => {
       const sort = column.getIsSorted();
       return (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(sort === "asc")}
-        >
-          Invoice No{" "}
-          {sort === "asc" ? (
-            <ArrowUp />
-          ) : sort === "desc" ? (
-            <ArrowDown />
-          ) : (
-            <ArrowUpDown />
-          )}
+        <Button variant="ghost" onClick={() => column.toggleSorting(sort === "asc")}>
+          Return No{" "}
+          {sort === "asc" ? <ArrowUp /> : sort === "desc" ? <ArrowDown /> : <ArrowUpDown />}
         </Button>
       );
     },
   },
   {
-    accessorKey: "salesReturnDate",
+    id: "invoiceNo",
+    header: "Sale Invoice",
+    cell: ({ row }) => <span>{row.original.sale?.invoiceNo ?? "—"}</span>,
+  },
+  {
+    accessorKey: "returnDate",
     header: "Return Date",
     cell: ({ row }) => {
-      const date = row.getValue("salesReturnDate") as string | Date;
-      return <div>{date ? formatDate(date) : "-"}</div>;
+      const date = row.getValue("returnDate") as string | Date | null;
+      return <div>{date ? formatDate(date) : "—"}</div>;
     },
   },
   {
-    accessorKey: "customerId",
+    id: "customer",
     header: "Customer",
-    cell: ({ row }) => {
-      const customer = row.original.customer?.name ?? "-";
-      return <span>{customer}</span>;
-    },
+    cell: ({ row }) => <span>{row.original.customer?.name ?? "—"}</span>,
+  },
+  {
+    id: "refundMethod",
+    header: "Refund Method",
+    cell: ({ row }) => (
+      <span className="capitalize">{row.original.refundMethod}</span>
+    ),
   },
   {
     accessorKey: "grandTotal",
     header: () => <div className="px-3 text-center">Total Amount</div>,
-    cell: ({ row }) => {
-      const amount = row.getValue("grandTotal") as number;
-      return (
-        <div className="text-center font-medium">{formatCurrency(amount)}</div>
-      );
-    },
+    cell: ({ row }) => (
+      <div className="text-center font-medium">
+        {formatCurrency(row.getValue("grandTotal"))}
+      </div>
+    ),
   },
   {
     id: "actions",
@@ -69,38 +68,20 @@ export const salesReturnColumns: ColumnDef<SalesReturn>[] = [
 ];
 
 const SalesReturnActions = ({ returnData }: { returnData: SalesReturn }) => {
-  const [openEdit, setOpenEdit] = useState(false);
+  const [openEdit,   setOpenEdit]   = useState(false);
   const [openDelete, setOpenDelete] = useState(false);
 
   return (
     <div className="flex items-center gap-2">
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setOpenEdit(true)}
-        className="h-8 w-8 p-0"
-      >
+      <Button variant="ghost" size="sm" onClick={() => setOpenEdit(true)} className="h-8 w-8 p0">
         <Edit2 className="h-4 w-4" />
       </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setOpenDelete(true)}
-        className="text-destructive hover:text-destructive h-8 w-8 p-0"
-      >
+      <Button variant="ghost" size="sm" onClick={() => setOpenDelete(true)}
+        className="text-destructive hover:text-destructive h-8 w-8 p-0">
         <Trash2 className="h-4 w-4" />
       </Button>
-
-      <SalesReturnFormSheet
-        open={openEdit}
-        openChange={setOpenEdit}
-        salesReturn={returnData}
-      />
-      <SalesReturnDeleteDialog
-        open={openDelete}
-        setOpen={setOpenDelete}
-        salesReturn={returnData}
-      />
+      <SalesReturnFormSheet open={openEdit} openChange={setOpenEdit} salesReturn={returnData} />
+      <SalesReturnDeleteDialog open={openDelete} setOpen={setOpenDelete} salesReturn={returnData} />
     </div>
   );
 };

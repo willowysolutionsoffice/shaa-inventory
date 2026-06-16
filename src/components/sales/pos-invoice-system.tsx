@@ -9,7 +9,7 @@ import {
   CreditCard, Wallet, IndianRupee, AlertTriangle, FileText,
 } from "lucide-react";
 import { toast } from "sonner";
-import { posRefund } from "@/actions/pos-refund-action";
+import { posRefund } from "@/actions/sales-return-action";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -654,14 +654,14 @@ function RefundScreen({ invoice, onClose, onComplete }: RefundScreenProps) {
 
   const handleRefundConfirm = () => {
   executeRefund({
-    saleId: invoice.saleId,
-    refundMethod,
-    reason,
-    items: refundItems.map((r) => ({
-      productId: r.productId,
-      qty: r.refundQty,
-    })),
-  });
+  saleId:       invoice.saleId,
+  refundMethod,
+  reason,
+  items: refundItems.map((r) => ({
+    productId: r.productId,
+    quantity:  r.refundQty,   // was: qty
+  })),
+});
 };
 
   // ── Step: done ──────────────────────────────────────────────────────────────

@@ -68,8 +68,7 @@ export async function apiRequest<T>(
 
   const json = await res.json();
   // Express controllers always return { success: true, data: ... }
-  return json.data as T;
-}
+return (json.data ?? json) as T;}
 
 // Convenience aliases — same surface as auth-client.ts's apiFetch but typed.
 export const api = {

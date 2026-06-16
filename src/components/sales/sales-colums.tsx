@@ -26,9 +26,8 @@ import { toast }               from "sonner";
  *  the paymentStatus field when the backend maps them. */
 function resolveOrderStatus(sale: Sale): string {
   const raw = (sale as any).status ?? (sale as any).paymentStatus ?? "";
-  // Map Prisma PaymentStatus → display string
   if (raw === "PENDING")  return "Ordered";
-  if (raw === "PAID")     return "Dispatched";
+  if (raw === "PAID")     return "Dispatched"; // PAID → Dispatched ✅
   if (raw === "PARTIAL")  return "Ordered";
   return raw || "Ordered";
 }

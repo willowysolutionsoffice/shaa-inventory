@@ -82,11 +82,18 @@ export const getSalesList = actionClient
         ...(to       && { to }),
         ...(branchId && { branchId }),
       });
-
+console.log("SALES PARAMS:", {
+  page,
+  limit,
+  from,
+  to,
+});
       const raw = await api.get<any>(`/sales?${params}`);
       // backend: { success, data: { sales, metadata, totals } }
-      const payload = raw?.data ?? raw;
+      console.log("SALES RAW:", raw);
 
+      const payload = raw?.data ?? raw;
+console.log("SALES PAYLOAD:", payload);
       return {
         sales:    (payload.sales    ?? []).map(normalizeSale),
         metadata: payload.metadata  ?? {
@@ -99,6 +106,30 @@ export const getSalesList = actionClient
       return { error: error.message ?? 'Something went wrong' };
     }
   });
+
+export async function fetchSales(params: {
+  page?: number;
+  limit?: number;
+  from?: string;
+  to?: string;
+  branchId?: string;
+}) {
+  const query = new URLSearchParams({
+    page: String(params.page ?? 1),
+    limit: String(params.limit ?? 20),
+    ...(params.from && { from: params.from }),
+    ...(params.to && { to: params.to }),
+    ...(params.branchId && { branchId: params.branchId }),
+  });
+
+  const raw = await api.get<any>(`/sales?${query}`);
+
+  return {
+    sales: (raw.sales ?? []).map(normalizeSale),
+    metadata: raw.metadata,
+    totals: raw.totals,
+  };
+}
 
 // ── Get by ID ──────────────────────────────────────────────────────────────────
 

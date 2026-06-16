@@ -42,7 +42,6 @@ import { useAction } from "next-safe-action/hooks";
 import { getCustomerListForDropdown } from "@/actions/customer-action";
 import { Card } from "../ui/card";
 import { ProductOption } from "@/types/product";
-import { SaleItemField } from "@/types/sales";
 import { fullSalesSchema } from "@/schemas/sales-item-schema";
 import { getProductDropdown } from "@/actions/product-actions";
 import {
@@ -58,6 +57,12 @@ import { useRouter } from "next/navigation";
 import { CustomerFormDialog } from "@/components/customers/customer-form";
 import { SalesStatusEnum } from "@/schemas/sales-schema";
 
+// ── Helper: safely convert any value to a finite number ───────────────────────
+const toNum = (v: unknown, fallback = 0): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+
 interface SalesFormPageProps {
   customers: { id: string; name: string; openingBalance: number }[];
   branches:  { name: string; id: string }[];
@@ -65,6 +70,7 @@ interface SalesFormPageProps {
 
 export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
   const router = useRouter();
+
   const { execute: create, isExecuting: isCreating } = useAction(createSale, {
     onSuccess: ({ data }) => {
       if ((data as any)?.error) {
@@ -113,21 +119,21 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
     name: "items",
   });
 
-  // Generate invoice number once on mount
   useEffect(() => {
     form.setValue("invoiceNo", `INV-${year}-${nanoid(4).toUpperCase()}`);
   }, [form, year]);
 
-  // Debounced product search
   useEffect(() => {
-      const debounce = setTimeout(async () => {
-        if (productSearch.length > 1) {
-          const res = await getProductDropdown({ query: productSearch });
-          setProductOptions(res);
-        }
-      }, 300);
-      return () => clearTimeout(debounce);
-    }, [productSearch]);
+    const debounce = setTimeout(async () => {
+      if (productSearch.length > 1) {
+        const res = await getProductDropdown({ query: productSearch });
+        setProductOptions(res ?? []);
+      } else {
+        setProductOptions([]);
+      }
+    }, 300);
+    return () => clearTimeout(debounce);
+  }, [productSearch]);
 
   const handleCustomerAdded = async () => {
     const res = await getCustomerListForDropdown();
@@ -135,20 +141,19 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
   };
 
   const handleSubmit = (data: z.infer<typeof fullSalesSchema>) => {
-    const grandTotal = data.items.reduce((sum, item) => sum + (item.total || 0), 0);
-    const paidAmount = data.salesPayment.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const grandTotal = data.items.reduce((sum, item) => sum + toNum(item.total), 0);
+    const paidAmount = data.salesPayment.reduce((sum, p) => sum + toNum(p.amount), 0);
     const dueAmount  = grandTotal - paidAmount;
-
     create({ ...data, grandTotal, paidAmount, dueAmount });
   };
 
+  // unitPrice, discount, subtotal, total — quantity handled separately
   const itemFieldKeys = ["unitPrice", "discount", "subtotal", "total"] as const;
 
-  // ── Computed totals for display ──────────────────────────────────────────────
   const watchedItems    = form.watch("items");
   const watchedPayments = form.watch("salesPayment");
-  const displayTotal    = watchedItems.reduce((s, i) => s + (Number(i.total) || 0), 0);
-  const displayPaid     = watchedPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const displayTotal    = watchedItems.reduce((s, i) => s + toNum(i.total), 0);
+  const displayPaid     = watchedPayments.reduce((s, p) => s + toNum(p.amount), 0);
   const displayDue      = displayTotal - displayPaid;
 
   return (
@@ -161,7 +166,7 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
       <FormProvider {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
 
-          {/* ── Sale Details ────────────────────────────────────────────────── */}
+          {/* ── Sale Details ─────────────────────────────────────────────── */}
           <Card className="p-6">
             <h2 className="text-xl font-semibold mb-4">Sale Details</h2>
             <div className="grid md:grid-cols-2 gap-4">
@@ -206,7 +211,7 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                                       onSelect={() => {
                                         field.onChange(customer.id);
                                         setSelectedCustomerOpeningBalance(
-                                          customer.openingBalance
+                                          toNum(customer.openingBalance)
                                         );
                                         setShowCustomerSuggestions(false);
                                       }}
@@ -277,7 +282,7 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                   <FormItem>
                     <FormLabel>Invoice No</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <Input {...field} value={field.value ?? ""} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -343,11 +348,10 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
             </div>
           </Card>
 
-          {/* ── Products ────────────────────────────────────────────────────── */}
+          {/* ── Products ─────────────────────────────────────────────────── */}
           <Card className="p-6">
             <h2 className="text-xl font-semibold mb-4">Add Products</h2>
 
-            {/* Product search */}
             <FormItem className="relative max-w-sm mb-4">
               <FormLabel className="mb-1">Add Product</FormLabel>
               <Popover
@@ -380,17 +384,25 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                             key={p.id}
                             value={p.product_name}
                             onSelect={() => {
-                              const unitPrice = p.sellingPrice ?? p.purchasePrice ?? 0;
+                              // ── FIX: coerce every numeric field with toNum()
+                              // so no NaN ever reaches an <input value>
+                              const purchasePrice = toNum(p.purchasePrice);
+                              const sellingPrice  = toNum(p.sellingPrice ?? p.purchasePrice);
+                              const stock         = toNum(p.stock);
+                              const unitPrice     = sellingPrice;
+                              const subtotal      = unitPrice;   // qty 1
+                              const total         = unitPrice;
+
                               append({
                                 productId:     p.id,
-                                quantity:      1,
                                 product_name:  p.product_name,
-                                stock:         p.stock,
-                                discount:      0,
-                                purchasePrice: p.purchasePrice,
-                                subtotal:      unitPrice,
-                                total:         unitPrice,
+                                stock,
+                                quantity:      1,
+                                purchasePrice,
                                 unitPrice,
+                                discount:      0,
+                                subtotal,
+                                total,
                               });
                               setProductSearch("");
                               setProductOptions([]);
@@ -433,10 +445,12 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                         .filter((f) => f.productId && f.product_name)
                         .map((f, idx) => (
                           <TableRow key={f.id}>
-                            <TableCell className="font-medium">
+                            <TableCell className="font-medium min-w-[140px]">
                               {f.product_name || "—"}
                             </TableCell>
-                            <TableCell>{f.stock}</TableCell>
+
+                            {/* Stock (display only) */}
+                            <TableCell>{toNum(f.stock)}</TableCell>
 
                             {/* Quantity */}
                             <TableCell>
@@ -447,16 +461,21 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                                   <FormControl>
                                     <Input
                                       type="number"
+                                      min={1}
                                       className="w-20"
-                                      {...field}
-                                      value={field.value ?? ""}
+                                      // ── FIX: never pass NaN/undefined to value
+                                      value={
+                                        field.value == null || Number.isNaN(Number(field.value))
+                                          ? ""
+                                          : field.value
+                                      }
                                       onChange={(e) => {
-                                        const value = Number(e.target.value);
-                                        field.onChange(value);
+                                        const qty = toNum(e.target.value, 1);
+                                        field.onChange(qty);
                                         const { unitPrice, discount } =
                                           form.getValues(`items.${idx}`);
-                                        const subtotal = value * Number(unitPrice);
-                                        const total    = subtotal - Number(discount || 0);
+                                        const subtotal = qty * toNum(unitPrice);
+                                        const total    = subtotal - toNum(discount);
                                         form.setValue(`items.${idx}.subtotal`, subtotal);
                                         form.setValue(`items.${idx}.total`, total);
                                       }}
@@ -466,17 +485,18 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                               />
                             </TableCell>
 
-                            {/* Buy price (read-only) */}
+                            {/* Buy Price (read-only display) */}
                             <TableCell>
+                              {/* ── FIX: toNum() so disabled Input never gets NaN */}
                               <Input
-                                value={f.purchasePrice ?? 0}
+                                value={toNum(f.purchasePrice)}
                                 disabled
                                 readOnly
                                 className="w-24"
                               />
                             </TableCell>
 
-                            {/* unitPrice, discount, subtotal, total */}
+                            {/* unitPrice | discount | subtotal | total */}
                             {itemFieldKeys.map((key) => (
                               <TableCell key={key}>
                                 <FormField
@@ -487,33 +507,25 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                                       <Input
                                         type="number"
                                         className="w-24"
-                                        {...field}
+                                        // ── FIX: coerce field.value before rendering
                                         value={
-                                          field.value == null || Number.isNaN(field.value)
+                                          field.value == null || Number.isNaN(Number(field.value))
                                             ? ""
                                             : field.value
                                         }
-                                        readOnly={
-                                          key === "subtotal" || key === "total"
-                                        }
-                                        disabled={
-                                          key === "subtotal" || key === "total"
-                                        }
+                                        readOnly={key === "subtotal" || key === "total"}
+                                        disabled={key === "subtotal" || key === "total"}
                                         onChange={(e) => {
-                                          const value = Number(e.target.value);
+                                          const value = toNum(e.target.value);
                                           field.onChange(value);
-                                          const current = form.getValues(`items.${idx}`);
-                                          const qty      = Number(current.quantity);
-                                          const discount = Number(current.discount);
-                                          const unitPrice =
-                                            key === "unitPrice"
-                                              ? value
-                                              : Number(current.unitPrice);
-                                          const subtotal = qty * unitPrice;
-                                          const total    =
-                                            key === "discount"
-                                              ? subtotal - value
-                                              : subtotal - discount;
+
+                                          const current   = form.getValues(`items.${idx}`);
+                                          const qty       = toNum(current.quantity);
+                                          const discount  = key === "discount" ? value : toNum(current.discount);
+                                          const unitPrice = key === "unitPrice" ? value : toNum(current.unitPrice);
+                                          const subtotal  = qty * unitPrice;
+                                          const total     = subtotal - discount;
+
                                           form.setValue(`items.${idx}.subtotal`, subtotal);
                                           form.setValue(`items.${idx}.total`, total);
                                         }}
@@ -557,14 +569,14 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
             )}
           </Card>
 
-          {/* ── Payment ─────────────────────────────────────────────────────── */}
+          {/* ── Payment ──────────────────────────────────────────────────── */}
           <Card className="p-6">
             <h2 className="text-xl font-semibold mb-4">Add Payment</h2>
 
             {selectedCustomerOpeningBalance !== null && (
               <p className="text-sm text-muted-foreground mb-4">
                 Opening Balance: {CURRENCY_SYMBOL}{" "}
-                {Number(selectedCustomerOpeningBalance).toFixed(2)}
+                {toNum(selectedCustomerOpeningBalance).toFixed(2)}
               </p>
             )}
 
@@ -578,9 +590,13 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
                     <FormControl>
                       <Input
                         type="number"
-                        {...field}
-                        value={field.value ?? ""}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
+                        min={0}
+                        value={
+                          field.value == null || Number.isNaN(Number(field.value))
+                            ? ""
+                            : field.value
+                        }
+                        onChange={(e) => field.onChange(toNum(e.target.value))}
                       />
                     </FormControl>
                     <FormMessage />
@@ -659,7 +675,12 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
             <div className="flex justify-end pr-4 mt-4">
               <div className="text-right">
                 <div className="text-muted-foreground text-sm">Due Amount:</div>
-                <div className={cn("text-xl font-semibold", displayDue > 0 && "text-destructive")}>
+                <div
+                  className={cn(
+                    "text-xl font-semibold",
+                    displayDue > 0 && "text-destructive"
+                  )}
+                >
                   {CURRENCY_SYMBOL} {displayDue.toFixed(2)}
                 </div>
               </div>
@@ -698,7 +719,7 @@ export const SalesFormPage = ({ customers, branches }: SalesFormPageProps) => {
             )}
           </Card>
 
-          {/* ── Actions ─────────────────────────────────────────────────────── */}
+          {/* ── Actions ──────────────────────────────────────────────────── */}
           <div className="flex justify-end gap-4">
             <Button
               type="button"

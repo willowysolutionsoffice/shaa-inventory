@@ -1,15 +1,12 @@
-import { CustomerInput } from "@/schemas/customer-schema";
-import { Customer } from "@prisma/client";
-import { ReactNode } from "react";
+// src/types/customer.ts
+import { Customer as PrismaCustomer } from '@prisma/client';
 
-export type CustomerModalProps = {
-  isEdit?: boolean;
-  initialData?: CustomerInput & { id: string };
-  triggerLabel?: ReactNode;
-};
+export interface Customer extends Omit<PrismaCustomer, 'openingBalance'> {
+  branch?: { id: string; name: string } | null;
+}
 
 export interface CustomerFormProps {
   customer?: Customer;
-  open?: boolean;
+  open?:     boolean;
   openChange?: (open: boolean) => void;
 }
