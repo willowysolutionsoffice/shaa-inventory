@@ -1,150 +1,105 @@
 "use client";
 
 import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-  getFilteredRowModel,
-  SortingState,
-  getSortedRowModel,
+  flexRender, getCoreRowModel, getFilteredRowModel,
+  getSortedRowModel, SortingState, useReactTable, ColumnDef,
 } from "@tanstack/react-table";
-
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ExpenseCategory } from "@prisma/client";
-import { useState } from "react";
 import { Search } from "lucide-react";
+import { useState } from "react";
+import { ExpenseCategory } from "@/types/expense";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 
 interface ExpenseCategoryTableProps<TValue> {
-  columns: ColumnDef<ExpenseCategory, TValue>[];
-  data: ExpenseCategory[];
+  columns:  ColumnDef<ExpenseCategory, TValue>[];
+  data:     ExpenseCategory[];
+  metadata: {
+    totalPages:  number;
+    totalCount:  number;
+    currentPage: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+  };
 }
 
-export function ExpenseTable<TValue>({ columns, data }: ExpenseCategoryTableProps<TValue>) {
-  const [sorting, setSorting] = useState<SortingState>([]);
+export function ExpenseCategoryTable<TValue>({ columns, data, metadata }: ExpenseCategoryTableProps<TValue>) {
+  const [sorting,      setSorting]      = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
 
   const table = useReactTable({
     data,
     columns,
-    onSortingChange: setSorting,
+    onSortingChange:      setSorting,
     onGlobalFilterChange: setGlobalFilter,
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    globalFilterFn: (row, columnId, filterValue) => {
-      const name = row.getValue('name') as string;
-      const filter = String(filterValue || '').toLowerCase();
-      return name.toLowerCase().includes(filter);
+    getCoreRowModel:      getCoreRowModel(),
+    getFilteredRowModel:  getFilteredRowModel(),
+    getSortedRowModel:    getSortedRowModel(),
+    globalFilterFn: (row, _colId, filterValue) => {
+      const name = String(row.getValue("name") ?? "").toLowerCase();
+      return name.includes(String(filterValue ?? "").toLowerCase());
     },
-    state: {
-      sorting,
-      globalFilter,
-    },
+    state: { sorting, globalFilter },
+    manualPagination: true,
+    pageCount: metadata.totalPages,
   });
 
   return (
-    <div className="flex flex-col gap-5">
-      {/* <Card>
-        <CardHeader>
-          <div className="space-y-2">
-            <CardTitle>Filters</CardTitle>
-            <CardDescription>Filter expense category by name</CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent>
-        <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search Expense Category..."
-              value={globalFilter}
-              onChange={(e) => setGlobalFilter(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-        </CardContent>
-      </Card> */}
-      <Card>
+    <Card>
       <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div>
-          <CardTitle>Expense Category</CardTitle>
-          <CardDescription>A list of all Expense Category</CardDescription>
-          </div>
-
-          <div className="relative w-full sm:w-1/2 md:w-1/4">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-          <Input
-            placeholder="Search by Ref no or supplier"
-            value={globalFilter}
-            onChange={(e) => setGlobalFilter(e.target.value)}
-            className="pl-9"
-          />
+        <div>
+          <CardTitle>Expense Categories</CardTitle>
+          <CardDescription>A list of all expense categories</CardDescription>
         </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id}
-                    className="bg-primary text-primary-foreground">
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
-                    </TableHead>
+        <div className="relative w-full sm:w-1/2 md:w-1/4">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
+          <Input placeholder="Search by name" value={globalFilter}
+            onChange={(e) => setGlobalFilter(e.target.value)} className="pl-9" />
+        </div>
+      </CardHeader>
+
+      <CardContent>
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((hg) => (
+              <TableRow key={hg.id}>
+                {hg.headers.map((header) => (
+                  <TableHead key={header.id} className="bg-primary text-primary-foreground">
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.length ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id}>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
                   ))}
                 </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows.length ? (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow key={row.id}>
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id}>
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={columns.length}
-                    className="h-24 text-center"
-                  >
-                    No results.
-    
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                  No categories found.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
+
+      <PaginationControls
+        totalPages={metadata.totalPages}
+        hasNextPage={metadata.hasNextPage}
+        hasPrevPage={metadata.hasPrevPage}
+        totalCount={metadata.totalCount}
+      />
+    </Card>
   );
 }

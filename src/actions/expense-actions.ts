@@ -1,137 +1,109 @@
 // src/actions/expense-actions.ts
 'use server';
 
-import { db } from "@/lib/mock-db";
-import { actionClient } from "@/lib/safeAction";
-import {
-  expenseSchema,
-  getExpenseByList,
-  updateExpenseSchema,
-} from "@/schemas/expense-schema";
-import { revalidatePath } from "next/cache";
-import { z } from "zod";
+import { actionClient } from '@/lib/safeAction';
+import { api } from '@/lib/api';
+import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
+
+// ── Schemas ───────────────────────────────────────────────────────────────────
+
+const expenseItemSchema = z.object({
+  title:       z.string().min(1, 'Title is required'),
+  amount:      z.coerce.number().min(0, 'Amount is required'),
+  expenseDate: z.string().min(1, 'Date is required'),
+  description: z.string().optional(),
+  categoryId:  z.string().min(1, 'Category is required'),
+  branchId:    z.string().min(1, 'Branch is required'),
+});
+
+const updateExpenseItemSchema = expenseItemSchema.partial().extend({
+  id: z.string().min(1),
+});
+
+const getByIdSchema = z.object({ id: z.string().min(1) });
+
+const listExpensesSchema = z.object({
+  page:       z.number().default(1),
+  limit:      z.number().default(10),
+  from:       z.string().optional(),
+  to:         z.string().optional(),
+  branchId:   z.string().optional(),
+  categoryId: z.string().optional(),
+});
+
+// ── Normalize ─────────────────────────────────────────────────────────────────
+
+function normalizeExpense(e: any) {
+  return {
+    id:          e?.id          ?? '',
+    title:       e?.title       ?? '',
+    amount:      Number(e?.amount ?? 0),
+    expenseDate: e?.expenseDate ?? null,
+    description: e?.description ?? null,
+    categoryId:  e?.categoryId  ?? '',
+    branchId:    e?.branchId    ?? '',
+    createdAt:   e?.createdAt   ?? null,
+    updatedAt:   e?.updatedAt   ?? null,
+    category:    e?.category    ?? null,
+    branch:      e?.branch      ?? null,
+  };
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────────
 
 export const createExpense = actionClient
-  .inputSchema(expenseSchema)
-  .action(async (values) => {
-    try {
-      const { date, ...otherValues } = values.parsedInput;
-      const newExpense = {
-        id: `exp-${Date.now()}`,
-        ...otherValues,
-        expenseDate: date ? new Date(date) : new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      db.expenses.push(newExpense);
-      revalidatePath("/expenses");
-      return { data: newExpense };
-    } catch (error) {
-      console.error("Created expense Error :", error);
-      return { error: "Something went wrong" };
-    }
+  .inputSchema(expenseItemSchema)
+  .action(async ({ parsedInput }) => {
+    const raw = await api.post<any>('/expenses', parsedInput);
+    revalidatePath('/expenses');
+    return normalizeExpense(raw?.data ?? raw);
   });
 
 export const getExpenseList = actionClient
-  .inputSchema(
-    z.object({
-      page: z.number().default(1),
-      limit: z.number().default(10),
-      from: z.string().optional(),
-      to: z.string().optional(),
-    })
-  )
-  .action(async (values) => {
-    try {
-      const { page, limit, from, to } = values.parsedInput;
-      
-      let filtered = [...db.expenses];
+  .inputSchema(listExpensesSchema)
+  .action(async ({ parsedInput }) => {
+    const { page, limit, from, to, branchId, categoryId } = parsedInput;
+    const params = new URLSearchParams({
+      page:  String(page),
+      limit: String(limit),
+      ...(from       && { from }),
+      ...(to         && { to }),
+      ...(branchId   && { branchId }),
+      ...(categoryId && { categoryId }),
+    });
+    const raw     = await api.get<any>(`/expenses?${params}`);
+    const payload = raw?.data ?? raw;
+    return {
+      expense:  (payload.expenses ?? []).map(normalizeExpense),
+      metadata: payload.metadata ?? {
+        totalPages: 0, totalCount: 0, currentPage: 1,
+        hasNextPage: false, hasPrevPage: false,
+      },
+      totals: { amount: Number(payload.totals?.amount ?? 0) },
+    };
+  });
 
-      if (from || to) {
-        const fromDate = from ? new Date(from) : null;
-        const toDate = to ? new Date(to) : null;
-
-        filtered = filtered.filter((exp) => {
-          const d = new Date(exp.expenseDate);
-          if (fromDate && d < fromDate) return false;
-          if (toDate && d > toDate) return false;
-          return true;
-        });
-      }
-
-      // Sort by amount desc
-      filtered.sort((a, b) => b.amount - a.amount);
-
-      const totalCount = filtered.length;
-      const skip = (page - 1) * limit;
-      const paginated = filtered.slice(skip, skip + limit);
-
-      const expense = paginated.map((exp) => ({
-        ...exp,
-        category: db.categories.find((c) => c.id === exp.categoryId) || { name: "Unknown" },
-      }));
-
-      const totalPages = Math.ceil(totalCount / limit);
-      const totalAmount = filtered.reduce((sum, exp) => sum + exp.amount, 0);
-
-      return {
-        expense,
-        metadata: {
-          totalPages,
-          totalCount,
-          currentPage: page,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1,
-        },
-        totals: {
-          amount: totalAmount,
-        },
-      };
-    } catch (error) {
-      console.error("Get expense Error :", error);
-      return { error: "Something went wrong" };
-    }
+export const getExpenseById = actionClient
+  .inputSchema(getByIdSchema)
+  .action(async ({ parsedInput }) => {
+    const raw = await api.get<any>(`/expenses/${parsedInput.id}`);
+    return normalizeExpense(raw?.data ?? raw);
   });
 
 export const updateExpense = actionClient
-  .inputSchema(updateExpenseSchema)
-  .action(async (values) => {
-    try {
-      const { id, date, ...otherData } = values.parsedInput;
-      const idx = db.expenses.findIndex((exp) => exp.id === id);
-      if (idx !== -1) {
-        const updated = {
-          ...db.expenses[idx],
-          ...otherData,
-          expenseDate: date ? new Date(date) : db.expenses[idx].expenseDate,
-          updatedAt: new Date(),
-        };
-        db.expenses[idx] = updated;
-        revalidatePath("/expenses");
-        return { data: updated };
-      }
-      return { error: "Expense not found" };
-    } catch (error) {
-      console.error("Error on expense Updating :", error);
-      return { error: "Something went wrong" };
-    }
+  .inputSchema(updateExpenseItemSchema)
+  .action(async ({ parsedInput }) => {
+    const { id, ...data } = parsedInput;
+    const raw = await api.patch<any>(`/expenses/${id}`, data);
+    revalidatePath('/expenses');
+    return normalizeExpense(raw?.data ?? raw);
   });
 
 export const deleteExpense = actionClient
-  .inputSchema(getExpenseByList)
-  .action(async (values) => {
-    const { id } = values.parsedInput;
-    try {
-      const idx = db.expenses.findIndex((exp) => exp.id === id);
-      if (idx !== -1) {
-        const deleted = db.expenses[idx];
-        db.expenses.splice(idx, 1);
-        revalidatePath("/expenses");
-        return deleted;
-      }
-      return null;
-    } catch (error) {
-      console.error("Delete Expense Error:", error);
-      return null;
-    }
+  .inputSchema(getByIdSchema)
+  .action(async ({ parsedInput }) => {
+    const raw = await api.delete<any>(`/expenses/${parsedInput.id}`);
+    revalidatePath('/expenses');
+    return normalizeExpense(raw?.data ?? raw);
   });

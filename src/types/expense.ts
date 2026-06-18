@@ -1,28 +1,46 @@
-import { Expense as PrismaExpense } from "@prisma/client";
-import { ColumnDef } from "@tanstack/react-table";
+export interface ExpenseCategory {
+  id:          string;
+  name:        string;
+  description: string | null;
+  createdAt:   string | Date | null;
+  updatedAt:   string | Date | null;
+}
 
-
-export interface Expense extends PrismaExpense {
-  category: { name: string };
+export interface Expense {
+  id:          string;
+  title:       string;
+  amount:      number;
+  expenseDate: string | Date | null;
+  description: string | null;
+  categoryId:  string;
+  branchId:    string;
+  createdAt:   string | Date | null;
+  updatedAt:   string | Date | null;
+  category:    { id: string; name: string } | null;
+  branch:      { id: string; name: string } | null;
 }
 
 export interface ExpenseFormProps {
-  expense?: Expense;
-  open?: boolean;
+  expense?:    Expense;
+  open?:       boolean;
   openChange?: (open: boolean) => void;
 }
 
+export interface ExpenseCategoryFormProps {
+  expenseCategory?: ExpenseCategory;
+  open?:            boolean;
+  openChange?:      (open: boolean) => void;
+}
+
 export interface ExpenseTableProps<TValue> {
-  columns: ColumnDef<Expense, TValue>[];
-  data: Expense[];
+  columns:  import("@tanstack/react-table").ColumnDef<Expense, TValue>[];
+  data:     Expense[];
   metadata: {
-    totalPages: number;
-    totalCount: number;
+    totalPages:  number;
+    totalCount:  number;
     currentPage: number;
     hasNextPage: boolean;
     hasPrevPage: boolean;
   };
-  totals: {
-    amount: number;
-  };
+  totals: { amount: number };
 }

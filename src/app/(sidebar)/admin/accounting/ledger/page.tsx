@@ -1,17 +1,7 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
-import { 
-  History, 
-  Search, 
-  ArrowUpRight, 
-  ArrowDownLeft, 
-  Filter, 
-  Download, 
-  Printer, 
-  RefreshCw,
-  TrendingUp
-} from "lucide-react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { History, Search, ArrowUpRight, ArrowDownLeft, Download, Printer, RefreshCw, TrendingUp, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,109 +10,91 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
+// Adjust this import to wherever the reports actions file actually lives in your project.
+import { getLedger } from "@/actions/reports.action";
 
-// Comprehensive mock data for ledgers
-const LEDGER_ACCOUNTS = [
-  { code: "1010", name: "Main Cash Reserve Account", category: "Assets" },
-  { code: "1020", name: "Accounts Receivable (Customers)", category: "Assets" },
-  { code: "2010", name: "Accounts Payable (Suppliers)", category: "Liabilities" },
-  { code: "4010", name: "Sales Revenues Account", category: "Revenue" },
-  { code: "5010", name: "Cost of Goods Sold (COGS)", category: "Expenses" },
-  { code: "5020", name: "Office Expenses & Categories", category: "Expenses" },
+// These are the only account codes the ledger report currently understands —
+// extend the accountMap in src/services/reports.service.ts before adding more
+// entries here, otherwise they'll silently fall back to the 4010 (Sales Revenue) results.
+const ACCOUNT_OPTIONS = [
+  { code: "1010", name: "Cash & Bank", category: "Assets" },
+  { code: "1020", name: "Accounts Receivable", category: "Assets" },
+  { code: "4010", name: "Sales Revenue", category: "Revenue" },
+  { code: "5020", name: "Operating Expenses", category: "Expenses" },
 ];
 
-const TRANSACTIONS_MOCK: Record<string, Array<{ id: string; date: string; ref: string; narration: string; debit: number; credit: number }>> = {
-  "1010": [
-    { id: "TX-901", date: "2026-05-01", ref: "SAL-01", narration: "Cash received from retail client checkout", debit: 1250.00, credit: 0 },
-    { id: "TX-902", date: "2026-05-02", ref: "PUR-22", narration: "Paid supplier for inventory restocking", debit: 0, credit: 620.00 },
-    { id: "TX-905", date: "2026-05-04", ref: "EXP-88", narration: "Office electricity bill payment", debit: 0, credit: 150.00 },
-    { id: "TX-906", date: "2026-05-08", ref: "SAL-04", narration: "Received online card payment clearance", debit: 2450.00, credit: 0 },
-    { id: "TX-909", date: "2026-05-15", ref: "EXP-90", narration: "Office high-speed internet subscription", debit: 0, credit: 80.00 },
-    { id: "TX-910", date: "2026-05-18", ref: "SAL-09", narration: "Bulk orders partial payments", debit: 950.00, credit: 0 },
-  ],
-  "1020": [
-    { id: "TX-901", date: "2026-05-01", ref: "SAL-01", narration: "Invoice generated for Elena", debit: 450.00, credit: 0 },
-    { id: "TX-903", date: "2026-05-02", ref: "PAY-01", narration: "Partial balance cleared by Michael", debit: 0, credit: 200.00 },
-    { id: "TX-904", date: "2026-05-03", ref: "SAL-02", narration: "Corporate credit terms invoice dispatched", debit: 1800.00, credit: 0 },
-    { id: "TX-907", date: "2026-05-10", ref: "PAY-02", narration: "Outstanding invoice fully cleared", debit: 0, credit: 450.00 },
-  ],
-  "2010": [
-    { id: "TX-902", date: "2026-05-02", ref: "PUR-22", narration: "Purchased raw materials from supplier", debit: 0, debit: 620.00, credit: 620.00 },
-    { id: "TX-908", date: "2026-05-12", ref: "PAY-SUP-01", narration: "Cleared balance to supplier", debit: 350.00, credit: 0 },
-  ],
-  "4010": [
-    { id: "TX-901", date: "2026-05-01", ref: "SAL-01", narration: "Product retail checkout revenues", debit: 0, credit: 1250.00 },
-    { id: "TX-906", date: "2026-05-08", ref: "SAL-04", narration: "B2B client custom sales revenue", debit: 0, credit: 2450.00 },
-    { id: "TX-910", date: "2026-05-18", ref: "SAL-09", narration: "Bulk corporate order revenues", debit: 0, credit: 950.00 },
-  ],
-  "5010": [
-    { id: "TX-902", date: "2026-05-02", ref: "PUR-22", narration: "Procurement cost recognized for stock items", debit: 620.00, credit: 0 },
-  ],
-  "5020": [
-    { id: "TX-905", date: "2026-05-04", ref: "EXP-88", narration: "Standard power/electricity utility bill", debit: 150.00, credit: 0 },
-    { id: "TX-909", date: "2026-05-15", ref: "EXP-90", narration: "Internet fiber bandwidth connection costs", debit: 80.00, credit: 0 },
-  ],
-};
+interface LedgerLine {
+  id: string;
+  date: string;
+  ref: string;
+  narration: string;
+  debit: number;
+  credit: number;
+  runningBalance: number;
+}
+
+interface LedgerData {
+  lines: LedgerLine[];
+  totals: { debit: number; credit: number };
+}
+
+function extract<T>(result: { data?: { data?: T; error?: string } } | undefined): { data?: T; error?: string } {
+  return { data: result?.data?.data, error: result?.data?.error };
+}
 
 export default function LedgerPage() {
-  const [selectedCode, setSelectedCode] = useState("1010");
+  const [selectedCode, setSelectedCode] = useState(ACCOUNT_OPTIONS[0].code);
   const [searchTerm, setSearchTerm] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [branchId, setBranchId] = useState("");
 
-  const activeAccount = useMemo(() => {
-    return LEDGER_ACCOUNTS.find((a) => a.code === selectedCode) || LEDGER_ACCOUNTS[0];
-  }, [selectedCode]);
+  const [lines, setLines] = useState<LedgerLine[]>([]);
+  const [totals, setTotals] = useState({ debit: 0, credit: 0 });
+  const [loading, setLoading] = useState(true);
 
-  // Compute ledger lines with running balance
-  const ledgerLines = useMemo(() => {
-    const rawLines = TRANSACTIONS_MOCK[selectedCode] || [];
-    let currentBalance = 0;
-    
-    // Sort transactions chronologically
-    const sortedLines = [...rawLines].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const activeAccount = useMemo(
+    () => ACCOUNT_OPTIONS.find((a) => a.code === selectedCode) ?? ACCOUNT_OPTIONS[0],
+    [selectedCode]
+  );
 
-    return sortedLines.map((line) => {
-      // Net change calculation depends on Account type (Assets/Expenses Debit increases balance; Liabilities/Equity Credit increases)
-      const isDebitIncrease = activeAccount.category === "Assets" || activeAccount.category === "Expenses";
-      if (isDebitIncrease) {
-        currentBalance += (line.debit - line.credit);
-      } else {
-        currentBalance += (line.credit - line.debit);
+  const loadLedger = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await getLedger({
+        accountCode: selectedCode,
+        from: startDate || undefined,
+        to: endDate || undefined,
+        branchId: branchId || undefined,
+      });
+      const { data, error } = extract<LedgerData>(result);
+      if (error) {
+        toast.error(error);
+        return;
       }
+      setLines(data?.lines ?? []);
+      setTotals(data?.totals ?? { debit: 0, credit: 0 });
+    } catch {
+      toast.error("Failed to load ledger");
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedCode, startDate, endDate, branchId]);
 
-      return {
-        ...line,
-        runningBalance: currentBalance,
-      };
-    });
-  }, [selectedCode, activeAccount]);
+  useEffect(() => {
+    loadLedger();
+  }, [loadLedger]);
 
-  // Filtered lines list
+  // Search is client-side only — the ledger action has no free-text param.
   const filteredLines = useMemo(() => {
-    return ledgerLines.filter((l) => {
-      const matchesSearch = l.narration.toLowerCase().includes(searchTerm.toLowerCase()) || l.ref.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesStart = !startDate || new Date(l.date) >= new Date(startDate);
-      const matchesEnd = !endDate || new Date(l.date) <= new Date(endDate);
-      return matchesSearch && matchesStart && matchesEnd;
-    });
-  }, [ledgerLines, searchTerm, startDate, endDate]);
+    return lines.filter(
+      (l) =>
+        l.narration.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        l.ref.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [lines, searchTerm]);
 
-  const aggregates = useMemo(() => {
-    let totalDebit = 0;
-    let totalCredit = 0;
-    filteredLines.forEach((l) => {
-      totalDebit += l.debit;
-      totalCredit += l.credit;
-    });
-    return {
-      totalDebit,
-      totalCredit,
-      netChange: activeAccount.category === "Assets" || activeAccount.category === "Expenses" 
-        ? totalDebit - totalCredit 
-        : totalCredit - totalDebit
-    };
-  }, [filteredLines, activeAccount]);
+  const netChange = lines.length > 0 ? lines[lines.length - 1].runningBalance : 0;
 
   const handleExport = () => {
     toast.success("Ledger statement successfully exported as XLSX format.");
@@ -150,16 +122,16 @@ export default function LedgerPage() {
         </div>
       </div>
 
-      {/* KPI Cards section */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="bg-gradient-to-br from-indigo-50/50 to-white dark:from-indigo-950/10 border-border">
           <CardContent className="p-6 flex items-center justify-between">
             <div className="space-y-1">
               <p className="text-xs font-semibold text-muted-foreground uppercase">Total Account Debits</p>
-              <h3 className="text-2xl font-bold text-indigo-700 dark:text-indigo-400">{formatCurrency(aggregates.totalDebit)}</h3>
+              <h3 className="text-2xl font-bold text-indigo-700 dark:text-indigo-400">{formatCurrency(totals.debit)}</h3>
             </div>
             <div className="p-3 bg-indigo-100/60 dark:bg-indigo-900/30 rounded-2xl text-indigo-600">
-              <ArrowDownLeft className="h-6 w-6 animate-pulse" />
+              <ArrowDownLeft className="h-6 w-6" />
             </div>
           </CardContent>
         </Card>
@@ -168,7 +140,7 @@ export default function LedgerPage() {
           <CardContent className="p-6 flex items-center justify-between">
             <div className="space-y-1">
               <p className="text-xs font-semibold text-muted-foreground uppercase">Total Account Credits</p>
-              <h3 className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(aggregates.totalCredit)}</h3>
+              <h3 className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(totals.credit)}</h3>
             </div>
             <div className="p-3 bg-emerald-100/60 dark:bg-emerald-900/30 rounded-2xl text-emerald-600">
               <ArrowUpRight className="h-6 w-6" />
@@ -180,7 +152,7 @@ export default function LedgerPage() {
           <CardContent className="p-6 flex items-center justify-between">
             <div className="space-y-1">
               <p className="text-xs font-semibold text-muted-foreground uppercase">Net Account Balance Change</p>
-              <h3 className="text-2xl font-bold text-purple-700 dark:text-purple-400">{formatCurrency(aggregates.netChange)}</h3>
+              <h3 className="text-2xl font-bold text-purple-700 dark:text-purple-400">{formatCurrency(netChange)}</h3>
             </div>
             <div className="p-3 bg-purple-100/60 dark:bg-purple-900/30 rounded-2xl text-purple-600">
               <TrendingUp className="h-6 w-6" />
@@ -200,7 +172,7 @@ export default function LedgerPage() {
                   <SelectValue placeholder="Select General Ledger Account" />
                 </SelectTrigger>
                 <SelectContent>
-                  {LEDGER_ACCOUNTS.map((acc) => (
+                  {ACCOUNT_OPTIONS.map((acc) => (
                     <SelectItem key={acc.code} value={acc.code}>
                       ({acc.code}) {acc.name}
                     </SelectItem>
@@ -221,8 +193,17 @@ export default function LedgerPage() {
             </div>
           </div>
 
-          {/* Date range selection */}
+          {/* Branch + date range selection */}
           <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto items-center">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <span className="text-xs font-semibold text-muted-foreground">Branch:</span>
+              <Input
+                placeholder="(optional)"
+                value={branchId}
+                onChange={(e) => setBranchId(e.target.value)}
+                className="h-9 text-xs bg-background border-border font-mono w-32"
+              />
+            </div>
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <span className="text-xs font-semibold text-muted-foreground">From:</span>
               <Input
@@ -241,7 +222,7 @@ export default function LedgerPage() {
                 className="h-9 text-xs bg-background border-border"
               />
             </div>
-            <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" onClick={() => { setStartDate(""); setEndDate(""); setSearchTerm(""); }}>
+            <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" onClick={() => { setStartDate(""); setEndDate(""); setSearchTerm(""); setBranchId(""); }}>
               <RefreshCw className="h-4 w-4" />
             </Button>
           </div>
@@ -264,52 +245,60 @@ export default function LedgerPage() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader className="bg-muted/50">
-              <TableRow>
-                <TableHead className="w-[100px]">Posting Date</TableHead>
-                <TableHead className="w-[120px]">Journal Voucher</TableHead>
-                <TableHead className="w-[100px]">Reference</TableHead>
-                <TableHead>Narration / Explanation</TableHead>
-                <TableHead className="text-right w-[150px]">Debit (Dr)</TableHead>
-                <TableHead className="text-right w-[150px]">Credit (Cr)</TableHead>
-                <TableHead className="text-right w-[180px]">Balance</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredLines.length === 0 ? (
+          {loading ? (
+            <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
+              <Loader2 className="h-5 w-5 animate-spin" /> Loading ledger...
+            </div>
+          ) : (
+            <Table>
+              <TableHeader className="bg-muted/50">
                 <TableRow>
-                  <TableCell colSpan={7} className="h-40 text-center text-muted-foreground">
-                    No matching general ledger entries found for selected account.
-                  </TableCell>
+                  <TableHead className="w-[100px]">Posting Date</TableHead>
+                  <TableHead className="w-[140px]">Record ID</TableHead>
+                  <TableHead className="w-[100px]">Reference</TableHead>
+                  <TableHead>Narration / Explanation</TableHead>
+                  <TableHead className="text-right w-[150px]">Debit (Dr)</TableHead>
+                  <TableHead className="text-right w-[150px]">Credit (Cr)</TableHead>
+                  <TableHead className="text-right w-[180px]">Balance</TableHead>
                 </TableRow>
-              ) : (
-                filteredLines.map((line) => (
-                  <TableRow key={line.id} className="hover:bg-muted/30">
-                    <TableCell className="font-medium text-xs whitespace-nowrap">
-                      {formatDate(new Date(line.date))}
-                    </TableCell>
-                    <TableCell className="text-xs font-mono">{line.id}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-[10px] bg-slate-50 dark:bg-slate-950 font-normal">
-                        {line.ref}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs">{line.narration}</TableCell>
-                    <TableCell className="text-right text-xs font-mono font-semibold">
-                      {line.debit > 0 ? formatCurrency(line.debit) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right text-xs font-mono font-semibold">
-                      {line.credit > 0 ? formatCurrency(line.credit) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right text-xs font-mono font-bold text-indigo-600">
-                      {formatCurrency(line.runningBalance)}
+              </TableHeader>
+              <TableBody>
+                {filteredLines.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="h-40 text-center text-muted-foreground">
+                      No matching general ledger entries found for selected account.
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : (
+                  filteredLines.map((line) => (
+                    <TableRow key={line.id} className="hover:bg-muted/30">
+                      <TableCell className="font-medium text-xs whitespace-nowrap">
+                        {formatDate(new Date(line.date))}
+                      </TableCell>
+                      <TableCell className="text-xs font-mono truncate max-w-[140px]" title={line.id}>
+                        {line.id}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[10px] bg-slate-50 dark:bg-slate-950 font-normal">
+                          {line.ref}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs">{line.narration}</TableCell>
+                      <TableCell className="text-right text-xs font-mono font-semibold">
+                        {line.debit > 0 ? formatCurrency(line.debit) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right text-xs font-mono font-semibold">
+                        {line.credit > 0 ? formatCurrency(line.credit) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right text-xs font-mono font-bold text-indigo-600">
+                        {formatCurrency(line.runningBalance)}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -1,93 +1,89 @@
 "use client";
 
-import React, { useMemo } from "react";
-import { 
-  FileSpreadsheet, 
-  Download, 
-  Printer, 
-  TrendingUp, 
-  TrendingDown, 
-  Activity,
-  Layers,
-  Scale
-} from "lucide-react";
+import React, { useEffect, useState, useCallback } from "react";
+import { Download, Printer, Activity, Layers, Scale, Loader2, AlertTriangle, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
+// Adjust this import to wherever the reports actions file actually lives in your project.
+import { getBalanceSheet } from "@/actions/reports.action";
 
-// Balance Sheet detailed items
-const ASSETS_MOCK = {
-  currentAssets: [
-    { name: "Cash and Cash Equivalents", amount: 18560.00 },
-    { name: "Accounts Receivable (Net of doubtful debts)", amount: 4500.00 },
-    { name: "Merchandise Inventory Stocks", amount: 25400.00 },
-    { name: "Prepaid Insurances & Leases", amount: 1200.00 },
-  ],
-  nonCurrentAssets: [
-    { name: "Property, Plant & Equipments (net of depreciation)", amount: 35000.00 },
-    { name: "Office Infrastructures & Fixtures", amount: 8500.00 },
-  ]
-};
+interface LineItem {
+  name: string;
+  amount: number;
+}
 
-const LIABILITIES_EQUITY_MOCK = {
-  currentLiabilities: [
-    { name: "Accounts Payable (Creditors)", amount: 6250.00 },
-    { name: "Accrued GST / VAT Taxes", amount: 1540.00 },
-    { name: "Deferred Utility accrued obligations", amount: 370.00 },
-  ],
-  nonCurrentLiabilities: [
-    { name: "Long-term banking commercial lease lines", amount: 12000.00 },
-  ],
-  equity: [
-    { name: "Owner Capital Contribution", amount: 35000.00 },
-    { name: "Retained Earnings & Reserves", amount: 38000.00 },
-  ]
-};
+interface BalanceSheetData {
+  assets: { current: LineItem[]; nonCurrent: LineItem[]; totals: { current: number; nonCurrent: number; total: number } };
+  liabilities: { current: LineItem[]; nonCurrent: LineItem[]; totals: { current: number; nonCurrent: number; total: number } };
+  equity: LineItem[];
+  equityTotal: number;
+  grandTotal: number;
+}
+
+function extract<T>(result: { data?: { data?: T; error?: string } } | undefined): { data?: T; error?: string } {
+  return { data: result?.data?.data, error: result?.data?.error };
+}
+
+function ratioLabel(ratio: number, threshold: number) {
+  if (!isFinite(ratio)) return "N/A";
+  if (ratio >= threshold) return "Healthy";
+  if (ratio >= threshold * 0.7) return "Watch";
+  return "At Risk";
+}
 
 export default function BalanceSheetPage() {
+  const [data, setData] = useState<BalanceSheetData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [branchId, setBranchId] = useState("");
+  const [appliedBranchId, setAppliedBranchId] = useState("");
 
-  // Sums calculations
-  const assetTotals = useMemo(() => {
-    const current = ASSETS_MOCK.currentAssets.reduce((sum, item) => sum + item.amount, 0);
-    const nonCurrent = ASSETS_MOCK.nonCurrentAssets.reduce((sum, item) => sum + item.amount, 0);
-    return {
-      current,
-      nonCurrent,
-      total: current + nonCurrent
-    };
-  }, []);
+  const loadReport = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await getBalanceSheet({ branchId: appliedBranchId || undefined });
+      const { data: report, error } = extract<BalanceSheetData>(result);
+      if (error) {
+        toast.error(error);
+        return;
+      }
+      setData(report ?? null);
+    } catch {
+      toast.error("Failed to load balance sheet");
+    } finally {
+      setLoading(false);
+    }
+  }, [appliedBranchId]);
 
-  const liabilitiesEquityTotals = useMemo(() => {
-    const currentLiab = LIABILITIES_EQUITY_MOCK.currentLiabilities.reduce((sum, item) => sum + item.amount, 0);
-    const nonCurrentLiab = LIABILITIES_EQUITY_MOCK.nonCurrentLiabilities.reduce((sum, item) => sum + item.amount, 0);
-    const equitySum = LIABILITIES_EQUITY_MOCK.equity.reduce((sum, item) => sum + item.amount, 0);
-    return {
-      currentLiabilities: currentLiab,
-      nonCurrentLiabilities: nonCurrentLiab,
-      totalLiabilities: currentLiab + nonCurrentLiab,
-      equity: equitySum,
-      total: currentLiab + nonCurrentLiab + equitySum
-    };
-  }, []);
-
-  // Ratios
-  const currentRatio = useMemo(() => {
-    return assetTotals.current / liabilitiesEquityTotals.currentLiabilities;
-  }, [assetTotals, liabilitiesEquityTotals]);
-
-  const quickRatio = useMemo(() => {
-    // Quick assets = Current Assets - Inventory
-    const quickAssets = assetTotals.current - (ASSETS_MOCK.currentAssets.find(a => a.name.includes("Inventory"))?.amount || 0);
-    return quickAssets / liabilitiesEquityTotals.currentLiabilities;
-  }, [assetTotals, liabilitiesEquityTotals]);
+  useEffect(() => {
+    loadReport();
+  }, [loadReport]);
 
   const handleExport = () => {
     toast.success("Balance Sheet successfully exported in XLSX ledger audit format.");
   };
+
+  if (loading || !data) {
+    return (
+      <div className="flex items-center justify-center py-24 text-muted-foreground gap-2">
+        <Loader2 className="h-5 w-5 animate-spin" /> Loading balance sheet...
+      </div>
+    );
+  }
+
+  const currentLiab = data.liabilities.totals.current;
+  const currentRatio = currentLiab > 0 ? data.assets.totals.current / currentLiab : Infinity;
+  const inventoryLine = data.assets.current.find((a) => a.name.toLowerCase().includes("inventory"));
+  const quickAssets = data.assets.totals.current - (inventoryLine?.amount ?? 0);
+  const quickRatio = currentLiab > 0 ? quickAssets / currentLiab : Infinity;
+
+  const liabPlusEquityTotal = data.liabilities.totals.total + data.equityTotal;
+  const balanceVariance = Math.abs(data.assets.totals.total - liabPlusEquityTotal);
+  const isBalanced = balanceVariance < 0.01;
 
   return (
     <div className="flex flex-col gap-6">
@@ -111,19 +107,40 @@ export default function BalanceSheetPage() {
         </div>
       </div>
 
+      {/* Branch filter */}
+      <Card className="border border-border bg-card">
+        <CardContent className="p-4 flex flex-col sm:flex-row gap-3 items-end">
+          <div className="flex items-center gap-2 flex-1">
+            <span className="text-xs font-semibold text-muted-foreground">Branch ID:</span>
+            <Input
+              placeholder="(optional) filter by branch"
+              value={branchId}
+              onChange={(e) => setBranchId(e.target.value)}
+              className="h-9 text-xs bg-background border-border font-mono"
+            />
+          </div>
+          <Button size="sm" variant="outline" className="h-9 text-xs gap-1" onClick={() => setAppliedBranchId(branchId)}>
+            <RefreshCw className="h-3 w-3" /> Apply
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Ratios & Integrity Indicators */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="bg-gradient-to-br from-purple-50/50 to-white dark:from-purple-950/10 border-border">
+        <Card className={isBalanced ? "bg-gradient-to-br from-purple-50/50 to-white dark:from-purple-950/10 border-border" : "bg-gradient-to-br from-red-50/50 to-white dark:from-red-950/10 border-red-200"}>
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
               <span className="text-[10px] font-bold text-muted-foreground uppercase">Mathematical Check</span>
-              <div className="text-sm font-extrabold text-purple-800 dark:text-purple-300 flex items-center gap-1">
+              <div className={`text-sm font-extrabold flex items-center gap-1 ${isBalanced ? "text-purple-800 dark:text-purple-300" : "text-red-800 dark:text-red-300"}`}>
                 Assets = Liab + Equity
               </div>
-              <p className="text-xs text-muted-foreground">Balanced: {formatCurrency(assetTotals.total)}</p>
+              <p className="text-xs text-muted-foreground">
+                {formatCurrency(data.assets.totals.total)} vs {formatCurrency(liabPlusEquityTotal)}
+                {!isBalanced && ` (off by ${formatCurrency(balanceVariance)})`}
+              </p>
             </div>
-            <div className="p-3 bg-purple-100 dark:bg-purple-900/30 text-purple-600 rounded-full shrink-0">
-              <Scale className="h-5 w-5" />
+            <div className={`p-3 rounded-full shrink-0 ${isBalanced ? "bg-purple-100 dark:bg-purple-900/30 text-purple-600" : "bg-red-100 dark:bg-red-900/30 text-red-600"}`}>
+              {isBalanced ? <Scale className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
             </div>
           </CardContent>
         </Card>
@@ -133,8 +150,8 @@ export default function BalanceSheetPage() {
             <div className="space-y-1">
               <span className="text-[10px] font-bold text-muted-foreground uppercase">Liquidity Current Ratio</span>
               <div className="text-sm font-extrabold text-blue-800 dark:text-blue-300 flex items-center gap-1.5">
-                {currentRatio.toFixed(2)}x
-                <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 text-[10px] py-0">Healthy</Badge>
+                {isFinite(currentRatio) ? `${currentRatio.toFixed(2)}x` : "N/A"}
+                <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 text-[10px] py-0">{ratioLabel(currentRatio, 1.5)}</Badge>
               </div>
               <p className="text-xs text-muted-foreground">Target: &gt; 1.50x</p>
             </div>
@@ -149,8 +166,8 @@ export default function BalanceSheetPage() {
             <div className="space-y-1">
               <span className="text-[10px] font-bold text-muted-foreground uppercase">Acid-Test Quick Ratio</span>
               <div className="text-sm font-extrabold text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
-                {quickRatio.toFixed(2)}x
-                <Badge className="bg-teal-100 text-teal-800 hover:bg-teal-100 text-[10px] py-0">Optimum</Badge>
+                {isFinite(quickRatio) ? `${quickRatio.toFixed(2)}x` : "N/A"}
+                <Badge className="bg-teal-100 text-teal-800 hover:bg-teal-100 text-[10px] py-0">{ratioLabel(quickRatio, 1.0)}</Badge>
               </div>
               <p className="text-xs text-muted-foreground">Target: &gt; 1.00x</p>
             </div>
@@ -177,7 +194,7 @@ export default function BalanceSheetPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {ASSETS_MOCK.currentAssets.map((item, idx) => (
+                {data.assets.current.map((item, idx) => (
                   <TableRow key={idx} className="hover:bg-muted/10">
                     <TableCell className="text-xs font-semibold text-foreground pl-6">{item.name}</TableCell>
                     <TableCell className="text-right font-mono text-xs font-bold">{formatCurrency(item.amount)}</TableCell>
@@ -186,7 +203,7 @@ export default function BalanceSheetPage() {
                 <TableRow className="bg-muted/10 font-bold hover:bg-muted/10">
                   <TableCell className="text-xs uppercase tracking-wider text-muted-foreground pl-6">Total Current Assets</TableCell>
                   <TableCell className="text-right font-mono text-xs text-foreground font-extrabold border-t border-border">
-                    {formatCurrency(assetTotals.current)}
+                    {formatCurrency(data.assets.totals.current)}
                   </TableCell>
                 </TableRow>
 
@@ -195,16 +212,23 @@ export default function BalanceSheetPage() {
                   <TableCell className="text-xs py-3">Non-Current / Fixed Assets</TableCell>
                   <TableCell></TableCell>
                 </TableRow>
-                {ASSETS_MOCK.nonCurrentAssets.map((item, idx) => (
-                  <TableRow key={idx} className="hover:bg-muted/10">
-                    <TableCell className="text-xs font-semibold text-foreground pl-6">{item.name}</TableCell>
-                    <TableCell className="text-right font-mono text-xs font-bold">{formatCurrency(item.amount)}</TableCell>
+                {data.assets.nonCurrent.length === 0 ? (
+                  <TableRow>
+                    <TableCell className="text-xs text-muted-foreground pl-6 py-2">No non-current assets tracked yet</TableCell>
+                    <TableCell></TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  data.assets.nonCurrent.map((item, idx) => (
+                    <TableRow key={idx} className="hover:bg-muted/10">
+                      <TableCell className="text-xs font-semibold text-foreground pl-6">{item.name}</TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold">{formatCurrency(item.amount)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
                 <TableRow className="bg-muted/10 font-bold hover:bg-muted/10">
                   <TableCell className="text-xs uppercase tracking-wider text-muted-foreground pl-6">Total Non-Current Assets</TableCell>
                   <TableCell className="text-right font-mono text-xs text-foreground font-extrabold border-t border-border">
-                    {formatCurrency(assetTotals.nonCurrent)}
+                    {formatCurrency(data.assets.totals.nonCurrent)}
                   </TableCell>
                 </TableRow>
 
@@ -212,7 +236,7 @@ export default function BalanceSheetPage() {
                 <TableRow className="bg-purple-500/10 font-extrabold hover:bg-purple-500/10">
                   <TableCell className="text-xs py-3.5 uppercase tracking-wider text-purple-700 dark:text-purple-400">Total Assets Balance</TableCell>
                   <TableCell className="text-right font-mono text-sm text-purple-700 dark:text-purple-400 font-extrabold border-t-2 border-double border-purple-500">
-                    {formatCurrency(assetTotals.total)}
+                    {formatCurrency(data.assets.totals.total)}
                   </TableCell>
                 </TableRow>
               </TableBody>
@@ -235,7 +259,7 @@ export default function BalanceSheetPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {LIABILITIES_EQUITY_MOCK.currentLiabilities.map((item, idx) => (
+                {data.liabilities.current.map((item, idx) => (
                   <TableRow key={idx} className="hover:bg-muted/10">
                     <TableCell className="text-xs font-semibold text-foreground pl-6">{item.name}</TableCell>
                     <TableCell className="text-right font-mono text-xs font-bold">{formatCurrency(item.amount)}</TableCell>
@@ -244,7 +268,7 @@ export default function BalanceSheetPage() {
                 <TableRow className="bg-muted/10 font-bold hover:bg-muted/10">
                   <TableCell className="text-xs uppercase tracking-wider text-muted-foreground pl-6">Total Current Liabilities</TableCell>
                   <TableCell className="text-right font-mono text-xs text-foreground font-extrabold border-t border-border">
-                    {formatCurrency(liabilitiesEquityTotals.currentLiabilities)}
+                    {formatCurrency(data.liabilities.totals.current)}
                   </TableCell>
                 </TableRow>
 
@@ -253,16 +277,23 @@ export default function BalanceSheetPage() {
                   <TableCell className="text-xs py-3">Non-Current / Long-Term Liabilities</TableCell>
                   <TableCell></TableCell>
                 </TableRow>
-                {LIABILITIES_EQUITY_MOCK.nonCurrentLiabilities.map((item, idx) => (
-                  <TableRow key={idx} className="hover:bg-muted/10">
-                    <TableCell className="text-xs font-semibold text-foreground pl-6">{item.name}</TableCell>
-                    <TableCell className="text-right font-mono text-xs font-bold">{formatCurrency(item.amount)}</TableCell>
+                {data.liabilities.nonCurrent.length === 0 ? (
+                  <TableRow>
+                    <TableCell className="text-xs text-muted-foreground pl-6 py-2">No long-term liabilities tracked yet</TableCell>
+                    <TableCell></TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  data.liabilities.nonCurrent.map((item, idx) => (
+                    <TableRow key={idx} className="hover:bg-muted/10">
+                      <TableCell className="text-xs font-semibold text-foreground pl-6">{item.name}</TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold">{formatCurrency(item.amount)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
                 <TableRow className="bg-muted/10 font-bold hover:bg-muted/10">
                   <TableCell className="text-xs uppercase tracking-wider text-muted-foreground pl-6">Total Non-Current Liabilities</TableCell>
                   <TableCell className="text-right font-mono text-xs text-foreground font-extrabold border-t border-border">
-                    {formatCurrency(liabilitiesEquityTotals.nonCurrentLiabilities)}
+                    {formatCurrency(data.liabilities.totals.nonCurrent)}
                   </TableCell>
                 </TableRow>
 
@@ -271,7 +302,7 @@ export default function BalanceSheetPage() {
                   <TableCell className="text-xs py-3">Owners Equity Account Shares</TableCell>
                   <TableCell></TableCell>
                 </TableRow>
-                {LIABILITIES_EQUITY_MOCK.equity.map((item, idx) => (
+                {data.equity.map((item, idx) => (
                   <TableRow key={idx} className="hover:bg-muted/10">
                     <TableCell className="text-xs font-semibold text-foreground pl-6">{item.name}</TableCell>
                     <TableCell className="text-right font-mono text-xs font-bold">{formatCurrency(item.amount)}</TableCell>
@@ -280,7 +311,7 @@ export default function BalanceSheetPage() {
                 <TableRow className="bg-muted/10 font-bold hover:bg-muted/10">
                   <TableCell className="text-xs uppercase tracking-wider text-muted-foreground pl-6">Total Shareholder Equity</TableCell>
                   <TableCell className="text-right font-mono text-xs text-foreground font-extrabold border-t border-border">
-                    {formatCurrency(liabilitiesEquityTotals.equity)}
+                    {formatCurrency(data.equityTotal)}
                   </TableCell>
                 </TableRow>
 
@@ -288,7 +319,7 @@ export default function BalanceSheetPage() {
                 <TableRow className="bg-purple-500/10 font-extrabold hover:bg-purple-500/10">
                   <TableCell className="text-xs py-3.5 uppercase tracking-wider text-purple-700 dark:text-purple-400">Total Liab & Equity</TableCell>
                   <TableCell className="text-right font-mono text-sm text-purple-700 dark:text-purple-400 font-extrabold border-t-2 border-double border-purple-500">
-                    {formatCurrency(liabilitiesEquityTotals.total)}
+                    {formatCurrency(liabPlusEquityTotal)}
                   </TableCell>
                 </TableRow>
               </TableBody>

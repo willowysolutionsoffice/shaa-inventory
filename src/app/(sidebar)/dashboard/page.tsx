@@ -1,8 +1,6 @@
 // src/app/(sidebar)/dashboard/page.tsx
 // Single dashboard page — renders the full admin view OR the role-scoped
 // staff view depending on the logged-in user's role.
-// Fixes: "two parallel pages that resolve to the same path" by eliminating
-// the /(dashboard)/dashboard duplicate entirely.
 
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
@@ -17,7 +15,7 @@ import DashboardCharts from "@/components/graphs/sales-purchase-graph";
 import { getMonthlyData } from "@/lib/actions/getMonthlyData";
 import { getPermissionsForRole, PERMISSIONS } from "@/constants/permissions";
 import type { Permission } from "@/constants/permissions";
-import { db } from "@/lib/mock-db";
+import { getDashboardData } from "@/lib/actions/dashboard";
 import { cookies } from "next/headers";
 
 import {
@@ -30,34 +28,6 @@ import {
   IconArrowUp,
   IconArrowDown,
 } from "@tabler/icons-react";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Shared helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-function groupSalesByMonth(records: any[]) {
-  const map = new Map<string, number>();
-  records.forEach((r) => {
-    const key = new Date(r.salesdate).toLocaleString("default", {
-      month: "short",
-      year: "numeric",
-    });
-    map.set(key, (map.get(key) || 0) + (r._sum?.grandTotal || 0));
-  });
-  return Array.from(map.entries()).map(([month, value]) => ({ month, value }));
-}
-
-function groupPurchasesByMonth(records: any[]) {
-  const map = new Map<string, number>();
-  records.forEach((r) => {
-    const key = new Date(r.purchaseDate).toLocaleString("default", {
-      month: "short",
-      year: "numeric",
-    });
-    map.set(key, (map.get(key) || 0) + (r._sum?.totalAmount || 0));
-  });
-  return Array.from(map.entries()).map(([month, value]) => ({ month, value }));
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Staff (non-admin) dashboard — permission-gated widgets
@@ -98,30 +68,81 @@ function StatCard({
   );
 }
 
+// ── Types for StaffDashboard props ────────────────────────────────────────────
+
+type StaffStats = {
+  totalSaleAmount:           number;
+  totalPurchaseAmount:       number;
+  totalExpenseAmount:        number;
+  totalOutstanding:          number;
+  totalProducts:             number;
+  lowStockItems:             number;
+  totalCustomers:            number;
+  totalSuppliers:            number;
+};
+
+type RecentSale = {
+  id: string;
+  invoiceNo: string;
+  salesDate: string | Date;
+  grandTotal: number;
+  paymentStatus: string;
+  paymentDue: number;
+  customer: { name: string } | null;
+};
+
+type RecentPurchase = {
+  id: string;
+  purchaseNo: string;
+  purchaseDate: string | Date;
+  totalAmount: number;
+  paymentStatus: string;
+  paymentDue: number;
+  supplier: { name: string } | null;
+};
+
+type RecentExpense = {
+  id: string;
+  title: string;
+  amount: number;
+  category: { name: string } | null;
+};
+
+type LowStockProduct = {
+  id: string;
+  productName: string;
+  stock: number;
+};
+
 function StaffDashboard({
   userName,
   roleLabel,
   can,
+  stats,
+  recentSales,
+  recentPurchases,
+  recentExpenses,
+  lowStock,
 }: {
   userName: string;
   roleLabel: string;
   can: (p: Permission) => boolean;
+  stats: StaffStats;
+  recentSales: RecentSale[];
+  recentPurchases: RecentPurchase[];
+  recentExpenses: RecentExpense[];
+  lowStock: LowStockProduct[];
 }) {
-  // Compute stats from mock-db
-  const totalSalesAmount     = db.sales.reduce((s, x) => s + x.grandTotal, 0);
-  const totalPurchasesAmount = db.purchases.reduce((s, x) => s + x.totalAmount, 0);
-  const totalExpensesAmount  = db.expenses.reduce((s, x) => s + x.amount, 0);
-  const totalDue             = db.sales.reduce((s, x) => s + x.paymentDue, 0);
-  const totalPurchaseDue     = db.purchases.reduce((s, x) => s + x.paymentDue, 0);
-  const totalProducts        = db.products.length;
-  const lowStockCount        = db.products.filter((p) => p.stock < 15).length;
-  const totalCustomers       = db.customers.length;
-  const totalSuppliers       = db.suppliers.length;
-
-  const recentSales     = db.sales.slice(-5).reverse();
-  const recentPurchases = db.purchases.slice(-4).reverse();
-  const recentExpenses  = db.expenses.slice(-4).reverse();
-  const lowStock        = db.products.filter((p) => p.stock < 15).slice(0, 5);
+  const {
+    totalSaleAmount,
+    totalPurchaseAmount,
+    totalExpenseAmount,
+    totalOutstanding,
+    totalProducts,
+    lowStockItems,
+    totalCustomers,
+    totalSuppliers,
+  } = stats;
 
   const noWidgets =
     !can(PERMISSIONS.MANAGE_SALES) &&
@@ -156,16 +177,16 @@ function StaffDashboard({
         {can(PERMISSIONS.MANAGE_SALES) && (
           <StatCard
             title="Total Sales"
-            value={`₹${totalSalesAmount.toLocaleString("en-IN")}`}
-            sub={`${db.sales.length} invoices`}
+            value={`₹${totalSaleAmount.toLocaleString("en-IN")}`}
+            sub={`${recentSales.length} recent invoices`}
             icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>}
             color="blue"
           />
         )}
-        {can(PERMISSIONS.MANAGE_SALES) && totalDue > 0 && (
+        {can(PERMISSIONS.MANAGE_SALES) && totalOutstanding > 0 && (
           <StatCard
-            title="Sales Due"
-            value={`₹${totalDue.toLocaleString("en-IN")}`}
+            title="Sales Outstanding"
+            value={`₹${totalOutstanding.toLocaleString("en-IN")}`}
             sub="Pending collections"
             icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
             color="orange"
@@ -174,26 +195,17 @@ function StaffDashboard({
         {can(PERMISSIONS.MANAGE_PURCHASES) && (
           <StatCard
             title="Total Purchases"
-            value={`₹${totalPurchasesAmount.toLocaleString("en-IN")}`}
-            sub={`${db.purchases.length} orders`}
+            value={`₹${totalPurchaseAmount.toLocaleString("en-IN")}`}
+            sub={`${recentPurchases.length} recent orders`}
             icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>}
             color="teal"
-          />
-        )}
-        {can(PERMISSIONS.MANAGE_PURCHASES) && totalPurchaseDue > 0 && (
-          <StatCard
-            title="Purchase Due"
-            value={`₹${totalPurchaseDue.toLocaleString("en-IN")}`}
-            sub="Payable to suppliers"
-            icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" /></svg>}
-            color="red"
           />
         )}
         {can(PERMISSIONS.MANAGE_EXPENSES) && (
           <StatCard
             title="Total Expenses"
-            value={`₹${totalExpensesAmount.toLocaleString("en-IN")}`}
-            sub={`${db.expenses.length} entries`}
+            value={`₹${totalExpenseAmount.toLocaleString("en-IN")}`}
+            sub={`${recentExpenses.length} recent entries`}
             icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>}
             color="purple"
           />
@@ -202,7 +214,7 @@ function StaffDashboard({
           <StatCard
             title="Products"
             value={totalProducts}
-            sub={lowStockCount > 0 ? `${lowStockCount} low stock` : "All stocked"}
+            sub={lowStockItems > 0 ? `${lowStockItems} low stock` : "All stocked"}
             icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>}
             color="green"
           />
@@ -236,25 +248,22 @@ function StaffDashboard({
               <p className="text-xs text-muted-foreground mt-0.5">Last 5 invoices</p>
             </div>
             <div className="divide-y divide-border">
-              {recentSales.map((sale) => {
-                const customer = db.customers.find((c) => c.id === sale.customerId);
-                return (
+              {recentSales.map((sale) => (
                   <div key={sale.id} className="px-5 py-3 flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">{sale.invoiceNo}</p>
-                      <p className="text-xs text-muted-foreground">{customer?.name ?? "—"}</p>
+                      <p className="text-xs text-muted-foreground">{sale.customer?.name ?? "—"}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-semibold">₹{sale.grandTotal.toLocaleString("en-IN")}</p>
+                      <p className="text-sm font-semibold">₹{Number(sale.grandTotal).toLocaleString("en-IN")}</p>
                       <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
-                        sale.paymentStatus === "paid" ? "bg-green-50 text-green-700" : "bg-orange-50 text-orange-700"
+                        sale.paymentStatus === "PAID" ? "bg-green-50 text-green-700" : "bg-orange-50 text-orange-700"
                       }`}>
                         {sale.paymentStatus}
                       </span>
                     </div>
                   </div>
-                );
-              })}
+              ))}
             </div>
           </div>
         )}
@@ -266,25 +275,22 @@ function StaffDashboard({
               <p className="text-xs text-muted-foreground mt-0.5">Last 4 purchase orders</p>
             </div>
             <div className="divide-y divide-border">
-              {recentPurchases.map((pur) => {
-                const supplier = db.suppliers.find((s) => s.id === pur.supplierId);
-                return (
+              {recentPurchases.map((pur) => (
                   <div key={pur.id} className="px-5 py-3 flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">{pur.purchaseNo}</p>
-                      <p className="text-xs text-muted-foreground">{supplier?.name ?? "—"}</p>
+                      <p className="text-xs text-muted-foreground">{pur.supplier?.name ?? "—"}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-semibold">₹{pur.totalAmount.toLocaleString("en-IN")}</p>
+                      <p className="text-sm font-semibold">₹{Number(pur.totalAmount).toLocaleString("en-IN")}</p>
                       <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
-                        pur.paymentStatus === "paid" ? "bg-green-50 text-green-700" : "bg-orange-50 text-orange-700"
+                        pur.paymentStatus === "PAID" ? "bg-green-50 text-green-700" : "bg-orange-50 text-orange-700"
                       }`}>
                         {pur.paymentStatus}
                       </span>
                     </div>
                   </div>
-                );
-              })}
+              ))}
             </div>
           </div>
         )}
@@ -295,23 +301,20 @@ function StaffDashboard({
               <div>
                 <h3 className="font-semibold text-sm">Recent Expenses</h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Total: ₹{db.expenses.reduce((s, e) => s + e.amount, 0).toLocaleString("en-IN")}
+                  Total: ₹{totalExpenseAmount.toLocaleString("en-IN")}
                 </p>
               </div>
             </div>
             <div className="divide-y divide-border">
-              {recentExpenses.map((exp) => {
-                const cat = db.categories.find((c) => c.id === exp.categoryId);
-                return (
+              {recentExpenses.map((exp) => (
                   <div key={exp.id} className="px-5 py-3 flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium truncate max-w-[200px]">{exp.title}</p>
-                      <p className="text-xs text-muted-foreground">{cat?.name ?? "—"}</p>
+                      <p className="text-xs text-muted-foreground">{exp.category?.name ?? "—"}</p>
                     </div>
-                    <p className="text-sm font-semibold text-red-600">−₹{exp.amount.toLocaleString("en-IN")}</p>
+                    <p className="text-sm font-semibold text-red-600">−₹{Number(exp.amount).toLocaleString("en-IN")}</p>
                   </div>
-                );
-              })}
+              ))}
             </div>
           </div>
         )}
@@ -328,7 +331,7 @@ function StaffDashboard({
               ) : (
                 lowStock.map((p) => (
                   <div key={p.id} className="px-5 py-3 flex items-center justify-between">
-                    <p className="text-sm font-medium truncate max-w-[220px]">{p.product_name}</p>
+                    <p className="text-sm font-medium truncate max-w-[220px]">{p.productName}</p>
                     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                       p.stock <= 5 ? "bg-red-50 text-red-700" : "bg-orange-50 text-orange-700"
                     }`}>
@@ -354,8 +357,20 @@ function StaffDashboard({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Admin dashboard — full enterprise view (original document 1)
+// Admin dashboard
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ── helpers used only inside AdminDashboard ───────────────────────────────────
+
+function timeAgo(date: Date): string {
+  const diffMs  = Date.now() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1)  return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr  < 24) return `${diffHr}h ago`;
+  return `${Math.floor(diffHr / 24)}d ago`;
+}
 
 async function AdminDashboard({
   session,
@@ -364,13 +379,135 @@ async function AdminDashboard({
   session: any;
   displayBranch: string;
 }) {
-  const isAdmin = true;
-  const branchFilter = undefined; // admin sees all branches
+  const now        = new Date();
+  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+  const weekAgo    = new Date(now); weekAgo.setDate(now.getDate() - 7);
+  const twoWeekAgo = new Date(now); twoWeekAgo.setDate(now.getDate() - 14);
 
-  const [dashboardData, chartData] = await Promise.all([
-    getOptimizedDashboardData(branchFilter),
+  const [
+    dashboardData,
+    chartData,
+    // Branch performance: sales per branch for last 7 days
+    branchSalesThisWeek,
+    branchSalesLastWeek,
+    allBranches,
+    // Pending POs (PENDING or PARTIAL)
+    pendingPOs,
+    // Notifications sources
+    recentCustomers,
+    recentPaidSales,
+    lowStockProducts,
+  ] = await Promise.all([
+    getOptimizedDashboardData(),
     getMonthlyData(),
+
+    prisma.sale.groupBy({
+      by:      ["branchId"],
+      where:   { salesDate: { gte: weekAgo } },
+      _sum:    { grandTotal: true },
+    }),
+    prisma.sale.groupBy({
+      by:      ["branchId"],
+      where:   { salesDate: { gte: twoWeekAgo, lt: weekAgo } },
+      _sum:    { grandTotal: true },
+    }),
+    prisma.branch.findMany({ select: { id: true, name: true } }),
+
+    prisma.purchase.findMany({
+      where:   { paymentStatus: { in: ["PENDING", "PARTIAL"] } },
+      orderBy: { purchaseDate: "desc" },
+      take:    5,
+      select: {
+        id:           true,
+        purchaseNo:   true,
+        totalAmount:  true,
+        paymentDue:   true,
+        paymentStatus: true,
+        supplier:     { select: { name: true } },
+      },
+    }),
+
+    // New customers in last 48h
+    prisma.customer.findMany({
+      where:   { createdAt: { gte: new Date(Date.now() - 172800000) } },
+      orderBy: { createdAt: "desc" },
+      take:    3,
+      select:  { id: true, name: true, createdAt: true },
+    }),
+    // Recently fully-paid sales (PAID, grandTotal > 1000)
+    prisma.sale.findMany({
+      where:   { paymentStatus: "PAID", grandTotal: { gte: 1000 }, salesDate: { gte: weekAgo } },
+      orderBy: { salesDate: "desc" },
+      take:    3,
+      select: {
+        id:         true,
+        invoiceNo:  true,
+        grandTotal: true,
+        salesDate:  true,
+        payments:   { orderBy: { paidOn: "desc" }, take: 1, select: { paymentMethod: true } },
+      },
+    }),
+    // Low stock items (≤ 10)
+    prisma.product.findMany({
+      where:   { stock: { lte: 10 } },
+      orderBy: { stock: "asc" },
+      take:    3,
+      select:  { id: true, productName: true, stock: true, updatedAt: true },
+    }),
   ]);
+
+  // ── Branch performance %: this week vs last week ───────────────────────────
+  const lastWeekMap = new Map(
+    branchSalesLastWeek.map((r) => [r.branchId, Number(r._sum.grandTotal ?? 0)])
+  );
+  const branchPerf = allBranches.map((branch) => {
+    const thisWeek = branchSalesThisWeek.find((r) => r.branchId === branch.id);
+    const curr  = Number(thisWeek?._sum?.grandTotal ?? 0);
+    const prev  = lastWeekMap.get(branch.id) ?? 0;
+    // % of target: use prev week as baseline; if no prior data show curr > 0 as 100%
+    const pct   = prev > 0 ? Math.min(Math.round((curr / prev) * 100), 150) : (curr > 0 ? 100 : 0);
+    return { id: branch.id, name: branch.name, pct, curr, prev };
+  })
+  .filter((b) => b.curr > 0 || b.prev > 0)  // hide completely inactive branches
+  .sort((a, b) => b.pct - a.pct)
+  .slice(0, 4);
+
+  const overallStatus = branchPerf.length === 0
+    ? "No Data"
+    : branchPerf.every((b) => b.pct >= 80)
+    ? "Optimal"
+    : branchPerf.some((b) => b.pct < 50)
+    ? "Needs Attention"
+    : "On Track";
+
+  // ── Synthesised notifications ──────────────────────────────────────────────
+  type Notif = { id: string; icon: "user" | "dollar" | "package"; color: string; title: string; body: string; time: string };
+  const notifications: Notif[] = [
+    ...recentCustomers.map((c) => ({
+      id:    `cust-${c.id}`,
+      icon:  "user" as const,
+      color: "blue",
+      title: "New Customer Registered",
+      body:  `${c.name} was onboarded.`,
+      time:  timeAgo(new Date(c.createdAt)),
+    })),
+    ...recentPaidSales.map((s) => ({
+      id:    `sale-${s.id}`,
+      icon:  "dollar" as const,
+      color: "green",
+      title: "Large Payment Cleared",
+      body:  `Invoice #${s.invoiceNo} fully paid (${formatCurrency(Number(s.grandTotal))}) via ${s.payments[0]?.paymentMethod ?? "—"}.`,
+      time:  timeAgo(new Date(s.salesDate)),
+    })),
+    ...lowStockProducts.map((p) => ({
+      id:    `stock-${p.id}`,
+      icon:  "package" as const,
+      color: "red",
+      title: "Low Stock Alert",
+      body:  `${p.productName} has only ${p.stock} units left.`,
+      time:  timeAgo(new Date(p.updatedAt)),
+    })),
+  ].slice(0, 5);
 
   const {
     totalCustomers,
@@ -379,17 +516,12 @@ async function AdminDashboard({
     todaysSalesCount,
     todaysPurchases,
     todaysPurchasesCount,
-    monthlySales,
-    monthlyPurchases,
     recentSales,
     topProducts,
     stockLevels,
     totalOutstanding,
     outstandingCount,
   } = dashboardData;
-
-  const salesData    = groupSalesByMonth(monthlySales);
-  const purchaseData = groupPurchasesByMonth(monthlyPurchases);
 
   return (
     <div className="bg-background min-h-screen flex flex-col">
@@ -510,13 +642,14 @@ async function AdminDashboard({
               <ChartAreaInteractive data={chartData} />
             </div>
             <div className="w-full overflow-hidden rounded-xl shadow-sm border border-border">
-              <DashboardCharts salesData={salesData} purchaseData={purchaseData} />
+              {/* DashboardCharts now takes a single `data` prop */}
+              <DashboardCharts data={chartData} />
             </div>
           </div>
 
           {/* Financial Summary */}
           <div>
-            <h2 className="text-foreground text-lg font-bold uppercase tracking-wider mb-4 border-b border-border pb-2">Financial Records & Accruals</h2>
+            <h2 className="text-foreground text-lg font-bold uppercase tracking-wider mb-4 border-b border-border pb-2">Financial Records &amp; Accruals</h2>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <Card className="border-l-4 border-l-green-500 bg-card shadow-sm hover:shadow-md transition-shadow">
                 <CardContent className="p-5">
@@ -563,12 +696,12 @@ async function AdminDashboard({
                       <IconPackage className="h-4 w-4 text-muted-foreground group-hover:text-purple-600 transition-colors" />
                     </div>
                     <div className="mb-3 font-bold text-sm line-clamp-2 h-10 text-foreground group-hover:text-purple-700 transition-colors">
-                      {product.product?.product_name || "Unknown"}
+                      {product.product?.productName ?? "Unknown"}
                     </div>
                     <div className="flex items-end justify-between border-t border-border pt-3">
                       <div>
                         <p className="text-[10px] text-muted-foreground uppercase font-semibold">Stock</p>
-                        <p className="text-xs font-bold">{product.product?.stock || 0}</p>
+                        <p className="text-xs font-bold">{product.product?.stock ?? 0}</p>
                       </div>
                       <div className="text-right">
                         <p className="text-[10px] text-muted-foreground uppercase font-semibold">Sold Units</p>
@@ -665,15 +798,15 @@ async function AdminDashboard({
             </CardHeader>
             <CardContent className="p-4">
               <div className="space-y-4">
-                {recentSales.slice(0, 5).map((sale) => (
+                {recentSales.slice(0, 5).map((sale: any) => (
                   <div key={sale.id} className="flex items-center justify-between group">
                     <div className="flex items-center gap-3">
                       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted group-hover:bg-purple-100 transition-colors">
                         <IconCurrencyDollar className="h-4 w-4 text-muted-foreground group-hover:text-purple-600" />
                       </div>
                       <div>
-                        <p className="text-foreground text-xs font-bold line-clamp-1">{sale.customer.name}</p>
-                        <p className="text-muted-foreground text-[10px]">{formatDate(sale.salesdate)}</p>
+                        <p className="text-foreground text-xs font-bold line-clamp-1">{sale.customer?.name ?? "—"}</p>
+                        <p className="text-muted-foreground text-[10px]">{formatDate(sale.salesDate)}</p>
                       </div>
                     </div>
                     <div className="text-right">
@@ -698,11 +831,11 @@ async function AdminDashboard({
             </CardHeader>
             <CardContent className="p-0">
               <div className="divide-y divide-border">
-                {stockLevels.slice(0, 5).map((product) => (
+                {stockLevels.slice(0, 5).map((product: any) => (
                   <div key={product.id} className="flex items-center justify-between p-3 hover:bg-muted/30 transition-colors">
                     <div className="flex items-center gap-3">
                       <div className="bg-red-50 text-red-600 p-1.5 rounded-md"><IconPackage className="h-3 w-3" /></div>
-                      <p className="text-foreground text-xs font-semibold line-clamp-1 pr-2">{product.product_name}</p>
+                      <p className="text-foreground text-xs font-semibold line-clamp-1 pr-2">{product.productName}</p>
                     </div>
                     <Badge variant="destructive" className="text-[10px] h-5 px-1.5">{product.stock} left</Badge>
                   </div>
@@ -727,18 +860,20 @@ async function AdminDashboard({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Page entry point — single route, branches by role
+// Page entry point
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default async function DashboardPage() {
   const session = await auth.api.getSession({ headers: await headers() });
 
   if (!session) redirect("/login");
- const cookieStore = await cookies();
+
+  const cookieStore = await cookies();
   const mockRole = process.env.NODE_ENV === "development"
     ? cookieStore.get("shaa_mock_role")?.value
     : undefined;
-     const MOCK_NAMES: Record<string, string> = {
+
+  const MOCK_NAMES: Record<string, string> = {
     admin:            "Arjun Menon",
     store_manager:    "Faisal Ibrahim",
     purchase_manager: "Suresh Nair",
@@ -746,23 +881,21 @@ export default async function DashboardPage() {
     accountant:       "Priya Krishnan",
     user:             "Demo Staff",
   };
-    const role = (mockRole ?? session.user.role ?? "user").toLowerCase();
-const userName = (mockRole ? MOCK_NAMES[role] : session.user.name) ?? "User";
-  const isAdmin   = role === "admin";
-  
 
-  // Branch display name for non-admins
+  const role     = (mockRole ?? session.user.role ?? "user").toLowerCase();
+  const userName = (mockRole ? MOCK_NAMES[role] : session.user.name) ?? "User";
+  const isAdmin  = role === "admin";
+
   let branchName: string | undefined;
-if (!isAdmin && session.user.branchId) {
+  if (!isAdmin && session.user.branchId) {
     const branch = await prisma.branch.findUnique({
-    where: { id: session.user.branchId },  // ← was session.user.branch
+      where:  { id: session.user.branchId },
       select: { name: true },
     });
     branchName = branch?.name;
   }
   const displayBranch = branchName ? ` — ${branchName}` : "";
 
-  // Role label for staff banner
   const roleLabels: Record<string, string> = {
     admin:            "Administrator",
     store_manager:    "Store Manager",
@@ -773,19 +906,59 @@ if (!isAdmin && session.user.branchId) {
   };
   const roleLabel = roleLabels[role] ?? role;
 
-  // Permission helper for staff dashboard
   const userPermissions = getPermissionsForRole(role);
   const can = (p: Permission) => userPermissions.includes(p);
 
-  // Admins get the full enterprise dashboard; everyone else gets the
-  // permission-scoped staff dashboard.
   if (isAdmin) {
     return <AdminDashboard session={session} displayBranch={displayBranch} />;
   }
 
+  // ── Staff: fetch real data scoped to the user's branch ──────────────────────
+  const branchId = session.user.branchId as string | undefined;
+
+  const [staffDashboard, recentExpensesRaw] = await Promise.all([
+    getOptimizedDashboardData(branchId),
+    prisma.expense.findMany({
+      where:   branchId ? { branchId } : {},
+      orderBy: { expenseDate: "desc" },
+      take:    5,
+      select: {
+        id:          true,
+        title:       true,
+        amount:      true,
+        category:    { select: { name: true } },
+      },
+    }),
+  ]);
+
+  const staffStats = {
+    totalSaleAmount:     staffDashboard.todaysSales,          // scoped totals via optimized
+    totalPurchaseAmount: staffDashboard.todaysPurchases,
+    totalExpenseAmount:  recentExpensesRaw.reduce((s: number, e: any) => s + Number(e.amount), 0),
+    totalOutstanding:    staffDashboard.totalOutstanding,
+    totalProducts:       staffDashboard.totalProducts,
+    lowStockItems:       staffDashboard.lowStockItems,
+    totalCustomers:      staffDashboard.totalCustomers,
+    totalSuppliers:      staffDashboard.totalSuppliers,
+  };
+
+  const recentExpenses = recentExpensesRaw.map((e: any) => ({
+    ...e,
+    amount: Number(e.amount),
+  }));
+
   return (
     <div className="p-4 md:p-6">
-      <StaffDashboard userName={userName} roleLabel={roleLabel} can={can} />
+      <StaffDashboard
+        userName={userName}
+        roleLabel={roleLabel}
+        can={can}
+        stats={staffStats}
+        recentSales={staffDashboard.recentSales as any}
+        recentPurchases={staffDashboard.recentPurchases as any}
+        recentExpenses={recentExpenses}
+        lowStock={staffDashboard.stockLevels as any}
+      />
     </div>
   );
 }

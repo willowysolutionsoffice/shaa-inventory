@@ -1,79 +1,96 @@
 // src/actions/expense-category-action.ts
 'use server';
 
-import { db } from "@/lib/mock-db";
-import { actionClient } from "@/lib/safeAction";
-import {
-  expenseCategorySchema,
-  deleteExpenseCategorySchema,
-  updateExpenseCategorySchema,
-} from "@/schemas/expense-category-schema";
-import { revalidatePath } from "next/cache";
+import { actionClient } from '@/lib/safeAction';
+import { api } from '@/lib/api';
+import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 
-export const createExpenseCategory = actionClient.inputSchema(expenseCategorySchema)
-  .action(async (values) => {
-    try {
-      const newCategory = {
-        id: `cat-${Date.now()}`,
-        ...values.parsedInput,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      db.categories.push(newCategory);
-      revalidatePath("/expense-categories");
-      return { data: newCategory };
-    } catch (error) {
-      console.error("Create ExpenseCategory Error:", error);
-      return { error: "Something went wrong" };
-    }
-  });
+// ── Schemas ───────────────────────────────────────────────────────────────────
 
-export const getExpenseCategoryList = actionClient.action(async () => {
-  try {
-    revalidatePath("/expense-categories");
-    return { data: db.categories };
-  } catch (error) {
-    console.error("Get ExpenseCategory Error:", error);
-    return { error: "Something went wrong" };
-  }
+const categorySchema = z.object({
+  name:        z.string().min(1, 'Name is required'),
+  description: z.string().optional(),
 });
 
-export const getExpenseCategoryDropdown = async () => {
-  return db.categories.map(c => ({ id: c.id, name: c.name }));
-};
+const updateCategorySchema = categorySchema.partial().extend({
+  id: z.string().min(1),
+});
 
-export const updateExpenseCategory = actionClient.inputSchema(updateExpenseCategorySchema)
-  .action(async (values) => {
-    const { id, ...data } = values.parsedInput;
-    try {
-      const category = db.categories.find(c => c.id === id);
-      if (category) {
-        Object.assign(category, data);
-        category.updatedAt = new Date();
-        revalidatePath("/expense-categories");
-        return { data: category };
-      }
-      return { error: "Category not found" };
-    } catch (error) {
-      console.error("Update ExpenseCategory Error:", error);
-      return { error: "Something went wrong" };
-    }
+const getByIdSchema = z.object({ id: z.string().min(1) });
+
+// ── Normalize ─────────────────────────────────────────────────────────────────
+
+function normalizeCategory(c: any) {
+  return {
+    id:          c?.id          ?? '',
+    name:        c?.name        ?? '',
+    description: c?.description ?? null,
+    createdAt:   c?.createdAt   ?? null,
+    updatedAt:   c?.updatedAt   ?? null,
+  };
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+
+export const createExpenseCategory = actionClient
+  .inputSchema(categorySchema)
+  .action(async ({ parsedInput }) => {
+    const raw = await api.post<any>('/expense-categories', parsedInput);
+    revalidatePath('/expense-categories');
+    return normalizeCategory(raw?.data ?? raw);
   });
 
-export const deleteExpenseCategory = actionClient.inputSchema(deleteExpenseCategorySchema)
-  .action(async (values) => {
-    const { id } = values.parsedInput;
-    try {
-      const idx = db.categories.findIndex(c => c.id === id);
-      if (idx !== -1) {
-        const deleted = db.categories[idx];
-        db.categories.splice(idx, 1);
-        revalidatePath("/expense-categories");
-        return deleted;
-      }
-      return null;
-    } catch (error) {
-      console.error("Delete ExpenseCategory Error:", error);
-      return null;
-    }
+export const getExpenseCategoryList = actionClient
+  .inputSchema(z.object({
+    page:  z.number().default(1),
+    limit: z.number().default(10),
+  }))
+  .action(async ({ parsedInput }) => {
+    const params = new URLSearchParams({
+      page:  String(parsedInput.page),
+      limit: String(parsedInput.limit),
+    });
+    const raw     = await api.get<any>(`/expense-categories?${params}`);
+    const payload = raw?.data ?? raw;
+    // backend returns flat array
+    const list    = Array.isArray(payload) ? payload : (payload.data ?? []);
+    return {
+      categories: list.map(normalizeCategory),
+      // backend doesn't paginate categories, compute locally
+      metadata: {
+        totalCount:  list.length,
+        totalPages:  Math.ceil(list.length / parsedInput.limit),
+        currentPage: parsedInput.page,
+        hasNextPage: parsedInput.page < Math.ceil(list.length / parsedInput.limit),
+        hasPrevPage: parsedInput.page > 1,
+      },
+    };
+  });
+
+export const getExpenseCategoryDropdown = async (): Promise<{ id: string; name: string }[]> => {
+  try {
+    const raw  = await api.get<any>('/expense-categories');
+    const list = Array.isArray(raw) ? raw : (raw?.data ?? []);
+    return list.map((c: any) => ({ id: c.id, name: c.name }));
+  } catch {
+    return [];
+  }
+};
+
+export const updateExpenseCategory = actionClient
+  .inputSchema(updateCategorySchema)
+  .action(async ({ parsedInput }) => {
+    const { id, ...data } = parsedInput;
+    const raw = await api.patch<any>(`/expense-categories/${id}`, data);
+    revalidatePath('/expense-categories');
+    return normalizeCategory(raw?.data ?? raw);
+  });
+
+export const deleteExpenseCategory = actionClient
+  .inputSchema(getByIdSchema)
+  .action(async ({ parsedInput }) => {
+    const raw = await api.delete<any>(`/expense-categories/${parsedInput.id}`);
+    revalidatePath('/expense-categories');
+    return normalizeCategory(raw?.data ?? raw);
   });

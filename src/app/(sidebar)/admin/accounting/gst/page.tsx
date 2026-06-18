@@ -1,61 +1,81 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
-import { 
-  FileSpreadsheet, 
-  Download, 
-  Printer, 
-  TrendingUp, 
-  FileCheck, 
-  Layers, 
-  ChevronRight,
-  ShieldCheck
-} from "lucide-react";
+import React, { useEffect, useState, useCallback } from "react";
+import { Download, Printer, TrendingUp, FileCheck, Layers, ShieldCheck, Loader2, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
+// Adjust this import to wherever the reports actions file actually lives in your project.
+import { getGstReport } from "@/actions/reports.action";
 
-// GST Summary Mock
-const GST_TAX_BREAKDOWN = [
-  { taxCode: "GST-5", description: "Standard essentials (5%)", rate: 5, purchasesAmt: 12400.00, purchaseTaxPaid: 620.00, salesAmt: 15400.00, salesTaxCollected: 770.00 },
-  { taxCode: "GST-12", description: "General business supplies (12%)", rate: 12, purchasesAmt: 8500.00, purchaseTaxPaid: 1020.00, salesAmt: 11200.00, salesTaxCollected: 1344.00 },
-  { taxCode: "GST-18", description: "Electronics and luxury (18%)", rate: 18, purchasesAmt: 15200.00, purchaseTaxPaid: 2736.00, salesAmt: 22450.00, salesTaxCollected: 4041.00 },
-];
+interface GstBreakdownItem {
+  taxCode: string;
+  description: string;
+  rate: number;
+  purchasesAmt: number;
+  purchaseTaxPaid: number;
+  salesAmt: number;
+  salesTaxCollected: number;
+}
+
+interface GstReportData {
+  breakdown: GstBreakdownItem[];
+  totals: {
+    totalPurchasesAmt: number;
+    totalInputTaxCredit: number;
+    totalSalesAmt: number;
+    totalOutputTax: number;
+    netTaxPayable: number;
+  };
+}
+
+function extract<T>(result: { data?: { data?: T; error?: string } } | undefined): { data?: T; error?: string } {
+  return { data: result?.data?.data, error: result?.data?.error };
+}
 
 export default function GstVatReportPage() {
-  const [selectedQuarter, setSelectedQuarter] = useState("Q1-2026");
+  const [data, setData] = useState<GstReportData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Sum aggregates
-  const aggregates = useMemo(() => {
-    let totalPurchasesAmt = 0;
-    let totalInputTaxCredit = 0;
-    let totalSalesAmt = 0;
-    let totalOutputTax = 0;
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [branchId, setBranchId] = useState("");
+  const [applied, setApplied] = useState({ from: "", to: "", branchId: "" });
 
-    GST_TAX_BREAKDOWN.forEach((item) => {
-      totalPurchasesAmt += item.purchasesAmt;
-      totalInputTaxCredit += item.purchaseTaxPaid;
-      totalSalesAmt += item.salesAmt;
-      totalOutputTax += item.salesTaxCollected;
-    });
+  const loadReport = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await getGstReport({
+        from: applied.from || undefined,
+        to: applied.to || undefined,
+        branchId: applied.branchId || undefined,
+      });
+      const { data: report, error } = extract<GstReportData>(result);
+      if (error) {
+        toast.error(error);
+        return;
+      }
+      setData(report ?? null);
+    } catch {
+      toast.error("Failed to load GST report");
+    } finally {
+      setLoading(false);
+    }
+  }, [applied]);
 
-    const netTaxPayable = totalOutputTax - totalInputTaxCredit;
-
-    return {
-      totalPurchasesAmt,
-      totalInputTaxCredit,
-      totalSalesAmt,
-      totalOutputTax,
-      netTaxPayable
-    };
-  }, []);
+  useEffect(() => {
+    loadReport();
+  }, [loadReport]);
 
   const handleExport = () => {
     toast.success("GST/VAT Audit log sheet exported as CSV successfully.");
   };
+
+  const totals = data?.totals ?? { totalPurchasesAmt: 0, totalInputTaxCredit: 0, totalSalesAmt: 0, totalOutputTax: 0, netTaxPayable: 0 };
 
   return (
     <div className="flex flex-col gap-6">
@@ -79,13 +99,39 @@ export default function GstVatReportPage() {
         </div>
       </div>
 
+      {/* Date / branch filters */}
+      <Card className="border border-border bg-card">
+        <CardContent className="p-4 flex flex-col sm:flex-row gap-3 items-end">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground">From:</span>
+            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 text-xs bg-background border-border" />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground">To:</span>
+            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 text-xs bg-background border-border" />
+          </div>
+          <div className="flex items-center gap-2 flex-1">
+            <span className="text-xs font-semibold text-muted-foreground">Branch ID:</span>
+            <Input
+              placeholder="(optional) filter by branch"
+              value={branchId}
+              onChange={(e) => setBranchId(e.target.value)}
+              className="h-9 text-xs bg-background border-border font-mono"
+            />
+          </div>
+          <Button size="sm" variant="outline" className="h-9 text-xs gap-1" onClick={() => setApplied({ from, to, branchId })}>
+            <RefreshCw className="h-3 w-3" /> Apply
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Tax Aggregates KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="bg-gradient-to-br from-indigo-50/50 to-white dark:from-indigo-950/10 border-border">
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
               <span className="text-[10px] font-bold text-muted-foreground uppercase">Input Tax Credit (ITC)</span>
-              <h3 className="text-2xl font-bold text-indigo-700 dark:text-indigo-400">{formatCurrency(aggregates.totalInputTaxCredit)}</h3>
+              <h3 className="text-2xl font-bold text-indigo-700 dark:text-indigo-400">{formatCurrency(totals.totalInputTaxCredit)}</h3>
               <p className="text-[10px] text-muted-foreground">GST paid on Inward Supplier Goods</p>
             </div>
             <div className="p-3 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 rounded-full shrink-0">
@@ -98,7 +144,7 @@ export default function GstVatReportPage() {
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
               <span className="text-[10px] font-bold text-muted-foreground uppercase">Output Tax Liability</span>
-              <h3 className="text-2xl font-bold text-amber-700 dark:text-amber-400">{formatCurrency(aggregates.totalOutputTax)}</h3>
+              <h3 className="text-2xl font-bold text-amber-700 dark:text-amber-400">{formatCurrency(totals.totalOutputTax)}</h3>
               <p className="text-[10px] text-muted-foreground">GST collected on Outward Customer Invoices</p>
             </div>
             <div className="p-3 bg-amber-100 dark:bg-amber-900/30 text-amber-600 rounded-full shrink-0">
@@ -111,11 +157,11 @@ export default function GstVatReportPage() {
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
               <span className="text-[10px] font-bold text-muted-foreground uppercase">Net Tax Payable (LTD)</span>
-              <h3 className={`text-2xl font-bold ${aggregates.netTaxPayable >= 0 ? "text-purple-700 dark:text-purple-400" : "text-green-700"}`}>
-                {formatCurrency(aggregates.netTaxPayable)}
+              <h3 className={`text-2xl font-bold ${totals.netTaxPayable >= 0 ? "text-purple-700 dark:text-purple-400" : "text-green-700"}`}>
+                {formatCurrency(totals.netTaxPayable)}
               </h3>
               <p className="text-[10px] text-muted-foreground">
-                {aggregates.netTaxPayable >= 0 ? "Balance payable to Authority" : "Tax credit offset carry forward"}
+                {totals.netTaxPayable >= 0 ? "Balance payable to Authority" : "Tax credit offset carry forward"}
               </p>
             </div>
             <div className="p-3 bg-purple-100 dark:bg-purple-900/30 text-purple-600 rounded-full shrink-0">
@@ -136,67 +182,73 @@ export default function GstVatReportPage() {
               </CardDescription>
             </div>
             <Badge variant="outline" className="bg-slate-100 dark:bg-slate-900">
-              Period: {selectedQuarter}
+              {applied.from || applied.to ? `Period: ${applied.from || "start"} → ${applied.to || "today"}` : "Period: All time"}
             </Badge>
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader className="bg-muted/50">
-              <TableRow>
-                <TableHead className="w-[120px]">Tax Code</TableHead>
-                <TableHead>Brackets / Description</TableHead>
-                <TableHead className="text-right w-[150px]">Inward Supplies (A)</TableHead>
-                <TableHead className="text-right w-[150px]">ITC Paid (Dr)</TableHead>
-                <TableHead className="text-right w-[150px]">Outward Supplies (B)</TableHead>
-                <TableHead className="text-right w-[150px]">Collected (Cr)</TableHead>
-                <TableHead className="text-right w-[150px]">Net Payable</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {GST_TAX_BREAKDOWN.map((item) => {
-                const net = item.salesTaxCollected - item.purchaseTaxPaid;
-                return (
-                  <TableRow key={item.taxCode} className="hover:bg-muted/20">
-                    <TableCell className="font-mono text-xs font-semibold text-purple-600">{item.taxCode}</TableCell>
-                    <TableCell>
-                      <div className="text-xs font-bold">{item.description}</div>
-                      <div className="text-[10px] text-muted-foreground">Rate: {item.rate}% VAT/GST</div>
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-xs">{formatCurrency(item.purchasesAmt)}</TableCell>
-                    <TableCell className="text-right font-mono text-xs text-indigo-600 font-bold">{formatCurrency(item.purchaseTaxPaid)}</TableCell>
-                    <TableCell className="text-right font-mono text-xs">{formatCurrency(item.salesAmt)}</TableCell>
-                    <TableCell className="text-right font-mono text-xs text-amber-600 font-bold">{formatCurrency(item.salesTaxCollected)}</TableCell>
-                    <TableCell className={`text-right font-mono text-xs font-bold ${net >= 0 ? "text-purple-600" : "text-green-600"}`}>
-                      {formatCurrency(net)}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+          {loading ? (
+            <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
+              <Loader2 className="h-5 w-5 animate-spin" /> Loading GST report...
+            </div>
+          ) : (
+            <Table>
+              <TableHeader className="bg-muted/50">
+                <TableRow>
+                  <TableHead className="w-[120px]">Tax Code</TableHead>
+                  <TableHead>Brackets / Description</TableHead>
+                  <TableHead className="text-right w-[150px]">Inward Supplies (A)</TableHead>
+                  <TableHead className="text-right w-[150px]">ITC Paid (Dr)</TableHead>
+                  <TableHead className="text-right w-[150px]">Outward Supplies (B)</TableHead>
+                  <TableHead className="text-right w-[150px]">Collected (Cr)</TableHead>
+                  <TableHead className="text-right w-[150px]">Net Payable</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(data?.breakdown ?? []).map((item) => {
+                  const net = item.salesTaxCollected - item.purchaseTaxPaid;
+                  return (
+                    <TableRow key={item.taxCode} className="hover:bg-muted/20">
+                      <TableCell className="font-mono text-xs font-semibold text-purple-600">{item.taxCode}</TableCell>
+                      <TableCell>
+                        <div className="text-xs font-bold">{item.description}</div>
+                        <div className="text-[10px] text-muted-foreground">Rate: {item.rate}% VAT/GST</div>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs">{formatCurrency(item.purchasesAmt)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs text-indigo-600 font-bold">{formatCurrency(item.purchaseTaxPaid)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs">{formatCurrency(item.salesAmt)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs text-amber-600 font-bold">{formatCurrency(item.salesTaxCollected)}</TableCell>
+                      <TableCell className={`text-right font-mono text-xs font-bold ${net >= 0 ? "text-purple-600" : "text-green-600"}`}>
+                        {formatCurrency(net)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
 
-              {/* Total Aggregate Row */}
-              <TableRow className="bg-muted/30 font-extrabold hover:bg-muted/30">
-                <TableCell colSpan={2} className="text-xs text-foreground uppercase tracking-wider text-right">
-                  Audited Totals
-                </TableCell>
-                <TableCell className="text-right font-mono text-xs text-foreground font-extrabold border-t border-border">
-                  {formatCurrency(aggregates.totalPurchasesAmt)}
-                </TableCell>
-                <TableCell className="text-right font-mono text-xs text-indigo-600 font-extrabold border-t border-border">
-                  {formatCurrency(aggregates.totalInputTaxCredit)}
-                </TableCell>
-                <TableCell className="text-right font-mono text-xs text-foreground font-extrabold border-t border-border">
-                  {formatCurrency(aggregates.totalSalesAmt)}
-                </TableCell>
-                <TableCell className="text-right font-mono text-xs text-amber-600 font-extrabold border-t border-border">
-                  {formatCurrency(aggregates.totalOutputTax)}
-                </TableCell>
-                <TableCell className={`text-right font-mono text-xs font-extrabold border-t-2 border-double border-purple-500 ${aggregates.netTaxPayable >= 0 ? "text-purple-600" : "text-green-600"}`}>
-                  {formatCurrency(aggregates.netTaxPayable)}
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
+                {/* Total Aggregate Row */}
+                <TableRow className="bg-muted/30 font-extrabold hover:bg-muted/30">
+                  <TableCell colSpan={2} className="text-xs text-foreground uppercase tracking-wider text-right">
+                    Audited Totals
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-xs text-foreground font-extrabold border-t border-border">
+                    {formatCurrency(totals.totalPurchasesAmt)}
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-xs text-indigo-600 font-extrabold border-t border-border">
+                    {formatCurrency(totals.totalInputTaxCredit)}
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-xs text-foreground font-extrabold border-t border-border">
+                    {formatCurrency(totals.totalSalesAmt)}
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-xs text-amber-600 font-extrabold border-t border-border">
+                    {formatCurrency(totals.totalOutputTax)}
+                  </TableCell>
+                  <TableCell className={`text-right font-mono text-xs font-extrabold border-t-2 border-double border-purple-500 ${totals.netTaxPayable >= 0 ? "text-purple-600" : "text-green-600"}`}>
+                    {formatCurrency(totals.netTaxPayable)}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

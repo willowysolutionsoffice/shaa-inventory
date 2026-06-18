@@ -1,15 +1,10 @@
-import { z } from "zod";
+import { z } from 'zod';
 
 export const expenseCategorySchema = z.object({
-  name: z.string().min(1, "Name is required"),
+  name:        z.string().min(1, 'Name is required'),
+  description: z.string().optional(),
 });
 
-export const updateExpenseCategorySchema = expenseCategorySchema.extend({
+export const updateExpenseCategorySchema = expenseCategorySchema.partial().extend({
   id: z.string().min(1),
 });
-
-export const deleteExpenseCategorySchema = z.object({
-  id: z.string().min(1),
-});
-
-export type ExpenseCategoryInput = z.infer<typeof expenseCategorySchema>;
