@@ -34,11 +34,7 @@ const ALL_PERMISSIONS: { key: Permission; label: string; group: string }[] = [
   { key: PERMISSIONS.VIEW_DASHBOARD,   label: "View Dashboard",   group: "General"      },
   { key: PERMISSIONS.VIEW_REPORTS,     label: "View Reports",     group: "General"      },
   { key: PERMISSIONS.MANAGE_PRODUCTS,  label: "Manage Products",  group: "Inventory"    },
-  {
-  key: PERMISSIONS.MANAGE_BRANDS,
-  label: "Manage Brands",
-  group: "Inventory",
-},
+  { key: PERMISSIONS.MANAGE_BRANDS,    label: "Manage Brands",    group: "Inventory"    },
   { key: PERMISSIONS.MANAGE_BRANCHES,  label: "Manage Branches",  group: "Inventory"    },
   { key: PERMISSIONS.MANAGE_CUSTOMERS, label: "Manage Customers", group: "Parties"      },
   { key: PERMISSIONS.MANAGE_SUPPLIERS, label: "Manage Suppliers", group: "Parties"      },
@@ -154,7 +150,7 @@ function RoleModal({ role, onClose, onSaved }: ModalProps) {
           color,
           permissions: permissionNames,
         });
-        if (res?.error) throw new Error(res.error);
+        if (res?.data?.error) throw new Error(res.data.error);
         toast.success("Role updated successfully");
       } else {
         const res = await createRole({
@@ -163,7 +159,7 @@ function RoleModal({ role, onClose, onSaved }: ModalProps) {
           color,
           permissions: permissionNames,
         });
-        if (res?.error) throw new Error(res.error);
+        if (res?.data?.error) throw new Error(res.data.error);
         toast.success("Role created successfully");
       }
 
@@ -340,10 +336,9 @@ export default function RolesPage() {
   const fetchRoles = async () => {
     setLoading(true);
     const res = await getRoleList();
-    // getRoleList returns the array directly so actionClient puts it at
-    // res.data. Always guard with Array.isArray before setting state.
-    if (Array.isArray(res?.data)) setRoles(res.data as Role[]);
-    else toast.error(res?.serverError ?? "Failed to load roles");
+    if (Array.isArray(res?.data?.data)) setRoles(res.data.data);
+    else if (res?.data?.error) toast.error(res.data.error);
+    else toast.error("Failed to load roles");
     setLoading(false);
   };
 
@@ -353,8 +348,7 @@ export default function RolesPage() {
     setDeleting(true);
     try {
       const res = await deleteRole({ id: role.id });
-      const deleteErr = res?.data?.error ?? res?.serverError;
-      if (deleteErr) { toast.error(deleteErr); return; }
+      if (res?.data?.error) { toast.error(res.data.error); return; }
       toast.success(`Role "${role.name}" deleted`);
       setDeletingRole(null);
       fetchRoles();
@@ -365,8 +359,7 @@ export default function RolesPage() {
 
   const handleToggleStatus = async (role: Role) => {
     const res = await toggleRoleStatus({ id: role.id });
-    const toggleErr = res?.data?.error ?? res?.serverError;
-    if (toggleErr) { toast.error(toggleErr); return; }
+    if (res?.data?.error) { toast.error(res.data.error); return; }
     const updatedStatus = res?.data?.data?.status;
     toast.success(`Role "${role.name}" ${updatedStatus === 'ACTIVE' ? 'activated' : 'deactivated'}`);
     fetchRoles();
