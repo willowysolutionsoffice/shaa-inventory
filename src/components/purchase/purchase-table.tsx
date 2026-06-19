@@ -9,34 +9,17 @@ import {
   useReactTable,
   type ColumnFiltersState,
 } from "@tanstack/react-table";
-
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableFooter,
+  Table, TableBody, TableCell, TableHead,
+  TableHeader, TableRow, TableFooter,
 } from "@/components/ui/table";
-
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
+  Card, CardContent, CardDescription, CardHeader, CardTitle,
 } from "@/components/ui/card";
-
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-
 import { Search } from "lucide-react";
 import { useState } from "react";
 import { PurchaseTableProps as PurchaseTablePropsType } from "@/types/purchase";
@@ -64,8 +47,8 @@ export function PurchaseTable<TValue>({
   metadata,
   totals,
 }: PurchaseTableProps<TValue>) {
-  const [sorting, setSorting]           = useState<SortingState>([]);
-  const [globalFilter, setGlobalFilter] = useState("");
+  const [sorting,       setSorting]       = useState<SortingState>([]);
+  const [globalFilter,  setGlobalFilter]  = useState("");
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
   const table = useReactTable({
@@ -78,7 +61,6 @@ export function PurchaseTable<TValue>({
     getFilteredRowModel:   getFilteredRowModel(),
     getSortedRowModel:     getSortedRowModel(),
     state: { sorting, globalFilter, columnFilters },
-    // Search by purchaseNo or supplier name
     globalFilterFn: (row, _columnId, filterValue) => {
       const purchaseNo = (row.getValue("purchaseNo") as string) ?? "";
       const supplier   = (row.original as any)?.supplier?.name ?? "";
@@ -91,6 +73,9 @@ export function PurchaseTable<TValue>({
     manualPagination: true,
     pageCount: metadata.totalPages,
   });
+
+  // FIX: derive column count dynamically so footer colSpans never misalign
+  const colCount = columns.length;
 
   return (
     <div className="flex flex-col gap-5">
@@ -114,17 +99,17 @@ export function PurchaseTable<TValue>({
               />
             </div>
 
-            {/* Filter by backend PaymentStatus enum */}
             <Select
-              onValueChange={(value) =>
-                table.setColumnFilters((prev) => [
-                  ...prev.filter((f) => f.id !== "paymentStatus"),
-                  {
-                    id:    "paymentStatus",
-                    value: value === "all" ? undefined : value,
-                  },
-                ])
-              }
+              onValueChange={(value) => {
+                setColumnFilters((prev) => {
+                  const rest = prev.filter((f) => f.id !== "paymentStatus");
+                  // FIX: when "all" is selected, remove the filter entirely
+                  // instead of setting value to undefined (which TanStack
+                  // treats differently from a missing filter in some versions)
+                  if (value === "all") return rest;
+                  return [...rest, { id: "paymentStatus", value }];
+                });
+              }}
               defaultValue="all"
             >
               <SelectTrigger className="w-full sm:w-36">
@@ -146,16 +131,10 @@ export function PurchaseTable<TValue>({
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
-                    <TableHead
-                      key={header.id}
-                      className="bg-primary text-primary-foreground"
-                    >
+                    <TableHead key={header.id} className="bg-primary text-primary-foreground">
                       {header.isPlaceholder
                         ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
+                        : flexRender(header.column.columnDef.header, header.getContext())}
                     </TableHead>
                   ))}
                 </TableRow>
@@ -168,40 +147,42 @@ export function PurchaseTable<TValue>({
                   <TableRow key={row.id}>
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id}>
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </TableCell>
                     ))}
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell
-                    colSpan={columns.length}
-                    className="h-24 text-center"
-                  >
+                  <TableCell colSpan={colCount} className="h-24 text-center">
                     No results.
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
 
+            {/* FIX: use colCount so footer never misaligns if columns are added */}
             <TableFooter className="bg-muted/50 border-t text-sm font-medium">
-              <TableRow>
-                <TableCell colSpan={5} />
-                <TableCell className="border-r-2 text-center font-semibold">
-                  Totals
-                </TableCell>
-                <TableCell className="border-r-2 text-center">
-                  Due: {formatCurrency(totals?.dueAmount ?? 0)}
-                </TableCell>
-                <TableCell colSpan={2}>
-                  Grand Total: {formatCurrency(totals?.totalAmount ?? 0)}
-                </TableCell>
-              </TableRow>
-            </TableFooter>
+  <TableRow>
+    <TableCell colSpan={colCount - 3} />
+    <TableCell className="border-r-2 text-center font-semibold">
+      Totals
+    </TableCell>
+    <TableCell className="border-r-2 text-center">
+      Paid: {formatCurrency(totals?.paidAmount ?? 0)}
+    </TableCell>
+    <TableCell className="border-r-2 text-center text-destructive">
+      Due: {formatCurrency(totals?.dueAmount ?? 0)}
+    </TableCell>
+    {/* FIX: totalAmount from service is merchandise-only.
+        True "grand total" across rows = paidAmount + dueAmount
+        because: paymentDue = totalPayable - paid, so
+        totalPayable = paid + due */}
+    <TableCell>
+      Grand Total: {formatCurrency((totals?.paidAmount ?? 0) + (totals?.dueAmount ?? 0))}
+    </TableCell>
+  </TableRow>
+</TableFooter>
           </Table>
         </CardContent>
       </Card>

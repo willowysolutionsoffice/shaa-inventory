@@ -11,36 +11,36 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 // ── Normalize a purchase coming from the API ───────────────────────────────────
-// Prisma fields:  purchaseNo, paymentStatus (PENDING|PARTIAL|PAID), paymentDue, totalAmount
-// Frontend needs: referenceNo (alias), dueAmount (alias), paidAmount (derived)
 
 function normalizePurchase(p: any) {
   const paymentDue  = Number(p.paymentDue  ?? 0);
   const totalAmount = Number(p.totalAmount ?? 0);
   const paidAmount  = totalAmount - paymentDue;
 
+  // Opening balance lives on the supplier relation
+  const supplierOpeningBalance = Number(p.supplier?.openingBalance ?? 0);
+
   return {
     ...p,
-    // canonical Prisma fields
     purchaseNo:    p.purchaseNo,
-    paymentStatus: p.paymentStatus,   // 'PENDING' | 'PARTIAL' | 'PAID'
+    paymentStatus: p.paymentStatus,
     paymentDue,
     totalAmount,
-    // frontend aliases
-    referenceNo: p.purchaseNo,
-    dueAmount:   paymentDue,
     paidAmount,
-    // normalise items  (PurchaseItem has no discount/subtotal in DB)
+    // Surface opening balance so the frontend can rebuild the summary row
+    supplierOpeningBalance,
+    // totalPayable = openingBalance + merchandise total
+    totalPayable:  supplierOpeningBalance + totalAmount,
+    referenceNo:   p.purchaseNo,
+    dueAmount:     paymentDue,
     items: (p.items ?? []).map((item: any) => ({
       ...item,
       product_name: item.product?.productName ?? '',
       unitPrice:    Number(item.unitPrice),
       total:        Number(item.total),
-      // provide zeros for form fields that don't exist on the model
-      discount: 0,
-      subtotal: Number(item.total),
+      discount:     0,
+      subtotal:     Number(item.total),
     })),
-    // normalise payments
     payments: (p.payments ?? []).map((pay: any) => ({
       ...pay,
       amount: Number(pay.amount),
@@ -56,16 +56,21 @@ export const createPurchase = actionClient
     try {
       const { items, payments, purchaseDate, supplierId, branchId } = parsedInput;
 
+      // totalPayable is passed through so the backend can store the correct
+      // paymentDue (openingBalance + grandTotal − amountPaid).
+      // It lives in parsedInput if the schema includes it; fall back gracefully.
+      const totalPayable = (parsedInput as any).totalPayable ?? undefined;
+
       const raw = await api.post<any>('/purchases', {
         purchaseDate,
         supplierId,
         branchId,
+        totalPayable,
         items: items.map(i => ({
           productId: i.productId,
           quantity:  i.quantity,
           unitPrice: i.unitPrice,
-          // backend calculates total as quantity * unitPrice; discount not stored
-          total: i.quantity * i.unitPrice,
+          total:     i.quantity * i.unitPrice,
         })),
         payments: payments.map(p => ({
           amount:        p.amount,
@@ -76,7 +81,6 @@ export const createPurchase = actionClient
         })),
       });
 
-      // backend wraps: { success, data }
       const purchase = raw?.data ?? raw;
 
       revalidatePath('/purchase');
@@ -108,7 +112,6 @@ export const getPurchaseList = actionClient
         ...(to   && { to }),
       });
 
-      // backend: { success: true, data: { purchases, metadata, totals } }
       const raw     = await api.get<any>(`/purchases?${params}`);
       const payload = raw?.data ?? raw;
 
@@ -134,7 +137,6 @@ export const getPurchaseById = actionClient
   .inputSchema(getPurchaseByIdSchema)
   .action(async ({ parsedInput }) => {
     try {
-      // backend: { success: true, data: purchase }
       const raw      = await api.get<any>(`/purchases/${parsedInput.id}`);
       const purchase = raw?.data ?? raw;
       return { data: normalizePurchase(purchase) };
@@ -151,10 +153,13 @@ export const updatePurchase = actionClient
     try {
       const { id, items, payments, purchaseDate, supplierId, branchId } = parsedInput;
 
+      const totalPayable = (parsedInput as any).totalPayable ?? undefined;
+
       const raw = await api.patch<any>(`/purchases/${id}`, {
         purchaseDate,
         supplierId,
         branchId,
+        totalPayable,
         items: items?.map(i => ({
           productId: i.productId,
           quantity:  i.quantity,

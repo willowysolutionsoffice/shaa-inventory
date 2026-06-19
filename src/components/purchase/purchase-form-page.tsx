@@ -23,8 +23,9 @@ import { fullPurchaseSchema } from "@/schemas/purchase-item-schema";
 import { createPurchase } from "@/actions/purchase-actions";
 import { getSupplierListForDropdown } from "@/actions/supplier-action";
 import { getProductDropdown } from "@/actions/product-actions";
-import { useAction } from "next-safe-action/hooks";
-import { useEffect, useState } from "react";
+import { useWatch } from "react-hook-form";
+
+import { useEffect, useState, memo, useCallback } from "react";
 import {
   Table,
   TableBody,
@@ -57,7 +58,10 @@ import { nanoid } from "nanoid";
 import { SupplierFormDialog } from "@/components/suppliers/supplier-form";
 import { useRouter } from "next/navigation";
 
-// Backend PaymentMethod enum — lowercase values mapped to enum in the service
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
 const PAYMENT_METHODS = [
   { value: "cash", label: "Cash" },
   { value: "card", label: "Card" },
@@ -67,17 +71,205 @@ const PAYMENT_METHODS = [
   { value: "other", label: "Other" },
 ] as const;
 
-const ITEM_FIELD_KEYS: PurchaseItemField[] = [
-  "quantity",
-  "unitPrice",
-  "discount",
+const ITEM_FIELD_KEYS: PurchaseItemField[] = ["quantity", "unitPrice", "discount"];
 
-];
+// ---------------------------------------------------------------------------
+// Helpers — always produce a safe finite number for display / calculation
+// ---------------------------------------------------------------------------
+const UnitPriceInput = ({ idx, form }: { idx: number; form: any }) => {
+  return (
+    <FormField
+      control={form.control}
+      name={`items.${idx}.unitPrice`}
+      render={({ field: inputField }) => (
+        <FormControl>
+          <Input
+            type="number"
+            min={0}
+            className="min-w-[5rem]"
+            value={safeVal(inputField.value)}
+            onChange={(e) => {
+              const value = e.target.value === "" ? 0 : safeNum(e.target.value);
+              inputField.onChange(value);
+              const row = form.getValues(`items.${idx}`);
+              const qty = safeNum(row.quantity);
+              const discount = safeNum(row.discount);
+              const subtotal = qty * value;
+              const total = Math.max(0, subtotal - discount);
+              form.setValue(`items.${idx}.subtotal`, subtotal, { shouldDirty: true });
+              form.setValue(`items.${idx}.total`, total, { shouldDirty: true });
+            }}
+          />
+        </FormControl>
+      )}
+    />
+  );
+};
+/** Returns 0 for NaN / null / undefined / Infinity */
+const safeNum = (v: unknown): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+/** Safe value prop for <Input type="number"> — never passes NaN to React */
+const safeVal = (v: unknown): number | "" => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : "";
+};
+
+// ---------------------------------------------------------------------------
+// Props
+// ---------------------------------------------------------------------------
 
 interface PurchaseFormPageProps {
   suppliers: { name: string; id: string; openingBalance: number }[];
   branches: { name: string; id: string }[];
 }
+// ── OUTSIDE PurchaseFormPage, after helpers ──────────────────────────────────
+
+interface ItemRowProps {
+  f: any;
+  idx: number;
+  form: any;
+  onRemove: (idx: number) => void;
+}
+
+const ItemRow = memo(({ f, idx, form, onRemove }: ItemRowProps) => {
+
+  const subtotal = useWatch({ control: form.control, name: `items.${idx}.subtotal` });
+  const total = useWatch({ control: form.control, name: `items.${idx}.total` });
+
+  return (
+    <TableRow key={f.id}>
+      <TableCell>{f.product_name || "—"}</TableCell>
+      <TableCell>{safeNum(f.stock)}</TableCell>
+
+      {/* Quantity */}
+      <TableCell>
+        <FormField
+          control={form.control}
+          name={`items.${idx}.quantity`}
+          render={({ field: inputField }) => (
+            <FormControl>
+              <Input
+                type="number"
+                min={1}
+                className="min-w-[5rem]"
+                value={safeVal(inputField.value)}
+                onChange={(e) => {
+                  const value = e.target.value === "" ? 1 : safeNum(e.target.value);
+                  inputField.onChange(value);
+                  const row = form.getValues(`items.${idx}`);
+                  const price = safeNum(row.unitPrice);
+                  const discount = safeNum(row.discount);
+                  const subtotal = value * price;
+                  const total = Math.max(0, subtotal - discount);
+                  form.setValue(`items.${idx}.subtotal`, subtotal, { shouldDirty: true });
+                  form.setValue(`items.${idx}.total`, total, { shouldDirty: true });
+                }}
+              />
+            </FormControl>
+          )}
+        />
+      </TableCell>
+
+      {/* Purchase Price */}
+      <TableCell>
+        <FormField
+          control={form.control}
+          name={`items.${idx}.unitPrice`}
+          render={({ field: inputField }) => (
+            <FormControl>
+              <Input
+                type="number"
+                min={0}
+                className="min-w-[5rem]"
+                value={safeVal(inputField.value)}
+                onChange={(e) => {
+                  const value = e.target.value === "" ? 0 : safeNum(e.target.value);
+                  inputField.onChange(value);
+                  const row = form.getValues(`items.${idx}`);
+                  const qty = safeNum(row.quantity);
+                  const discount = safeNum(row.discount);
+                  const subtotal = qty * value;
+                  const total = Math.max(0, subtotal - discount);
+                  form.setValue(`items.${idx}.subtotal`, subtotal, { shouldDirty: true });
+                  form.setValue(`items.${idx}.total`, total, { shouldDirty: true });
+                }}
+              />
+            </FormControl>
+          )}
+        />
+      </TableCell>
+
+      {/* Selling Price */}
+      <TableCell>
+        <FormField
+          control={form.control}
+          name={`items.${idx}.sellingPrice` as any}
+          render={({ field: inputField }) => (
+            <FormControl>
+              <Input
+                type="number"
+                min={0}
+                className="min-w-[5rem] bg-muted/30"
+                value={safeVal(inputField.value)}
+                onChange={(e) => {
+                  inputField.onChange(e.target.value === "" ? 0 : safeNum(e.target.value));
+                }}
+              />
+            </FormControl>
+          )}
+        />
+      </TableCell>
+
+      {/* Discount */}
+      <TableCell>
+        <FormField
+          control={form.control}
+          name={`items.${idx}.discount`}
+          render={({ field: inputField }) => (
+            <FormControl>
+              <Input
+                type="number"
+                min={0}
+                className="min-w-[5rem]"
+                value={safeVal(inputField.value)}
+                onChange={(e) => {
+                  const value = e.target.value === "" ? 0 : safeNum(e.target.value);
+                  inputField.onChange(value);
+                  const row = form.getValues(`items.${idx}`);
+                  const qty = safeNum(row.quantity);
+                  const price = safeNum(row.unitPrice);
+                  const subtotal = qty * price;
+                  const total = Math.max(0, subtotal - value);
+                  form.setValue(`items.${idx}.subtotal`, subtotal, { shouldDirty: true });
+                  form.setValue(`items.${idx}.total`, total, { shouldDirty: true });
+                }}
+              />
+            </FormControl>
+          )}
+        />
+      </TableCell>
+
+      <TableCell className="min-w-[5rem] text-right">
+        {safeNum(subtotal).toFixed(2)}
+      </TableCell>
+      <TableCell className="min-w-[5rem] text-right font-medium">
+        {safeNum(total).toFixed(2)}
+      </TableCell>
+
+      <TableCell>
+        <Button type="button" variant="destructive" size="sm" onClick={() => onRemove(idx)}>
+          Remove
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+});
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export const PurchaseFormPage = ({
   suppliers,
@@ -85,15 +277,16 @@ export const PurchaseFormPage = ({
 }: PurchaseFormPageProps) => {
   const router = useRouter();
 
-  const { execute: create, isExecuting: isCreating } =
-    useAction(createPurchase);
+  const [isCreating, setIsCreating] = useState(false);
 
   const [productSearch, setProductSearch] = useState("");
   const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
   const [supplierList, setSupplierList] = useState(suppliers);
   const [showSupplierSuggestions, setShowSupplierSuggestions] = useState(false);
-  const [selectedSupplierOpeningBalance, setSelectedSupplierOpeningBalance] =
-    useState<number | null>(null);
+
+  // Opening balance of the currently selected supplier (drives totalPayable)
+  const [openingBalance, setOpeningBalance] = useState<number>(0);
+
   const [branchList] = useState(branches);
   const [openSupplierForm, setOpenSupplierForm] = useState(false);
 
@@ -101,6 +294,7 @@ export const PurchaseFormPage = ({
     const res = await getSupplierListForDropdown();
     setSupplierList(res);
   };
+  // Add this OUTSIDE PurchaseFormPage component
 
   const form = useForm<z.infer<typeof fullPurchaseSchema>>({
     resolver: zodResolver(fullPurchaseSchema),
@@ -125,16 +319,18 @@ export const PurchaseFormPage = ({
     },
   });
 
-  // Set a local reference number (backend auto-generates purchaseNo from a counter)
   useEffect(() => {
     form.setValue("referenceNo", `REF-${nanoid(4).toUpperCase()}`);
   }, [form]);
 
-  const { fields, append, remove } = useFieldArray({
-    control: form.control,
-    name: "items",
-  });
+ const { fields, append, remove } = useFieldArray({
+  control: form.control,
+  name: "items",
+});
 
+const handleRemove = useCallback((idx: number) => remove(idx), [remove]);
+
+  // Product search with debounce
   useEffect(() => {
     const debounce = setTimeout(async () => {
       if (productSearch.length > 1) {
@@ -145,83 +341,112 @@ export const PurchaseFormPage = ({
     return () => clearTimeout(debounce);
   }, [productSearch]);
 
+  // ---------------------------------------------------------------------------
+  // Derived totals (watched live)
+  // ---------------------------------------------------------------------------
+
+  const itemTotals = useWatch({ control: form.control, name: "items" });
+  const watchedPayments = useWatch({ control: form.control, name: "payments" });
+
+  /** Grand total of all line items */
+  const grandTotal = (itemTotals ?? []).reduce(
+    (sum: number, item: any) => sum + safeNum(item?.total),
+    0,
+  );
+
+  /**
+   * Total Payable = Opening Balance + Grand Total
+   * This is the real amount the buyer owes before any payment.
+   */
+  const totalPayable = safeNum(openingBalance) + grandTotal;
+
+  /** Amount paid from the first payment entry */
+  const amountPaid = safeNum(watchedPayments[0]?.amount);
+
+  /**
+   * Due Amount = Total Payable − Amount Paid
+   * Clamped to 0 so it never goes negative in the display.
+   */
+  const dueDisplay = Math.max(0, totalPayable - amountPaid);
+
+  // ---------------------------------------------------------------------------
+  // Submit
+  // ---------------------------------------------------------------------------
+
   const handleSubmit = async (data: z.infer<typeof fullPurchaseSchema>) => {
-  if (!data.supplierId) { toast.error("Please select a supplier"); return; }
-  if (!data.branchId) { toast.error("Please select a business location"); return; }
-  if (!data.items || data.items.length === 0) { toast.error("Please add at least one product"); return; }
+    if (!data.supplierId) { toast.error("Please select a supplier"); return; }
+    if (!data.branchId) { toast.error("Please select a business location"); return; }
+    if (!data.items || data.items.length === 0) {
+      toast.error("Please add at least one product");
+      return;
+    }
 
-  const totalAmount = data.items.reduce((sum, item) => sum + (item.total || 0), 0);
-  const paidAmount  = data.payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-  const dueAmount   = totalAmount - paidAmount;
+    const computedGrandTotal = data.items.reduce((sum, item) => sum + safeNum(item.total), 0);
+    const computedTotalPayable = safeNum(openingBalance) + computedGrandTotal;
+    const computedPaid = data.payments.reduce((sum, p) => sum + safeNum(p.amount), 0);
+    const computedDue = Math.max(0, computedTotalPayable - computedPaid);
 
-  const payload = {
-    ...data,
-    totalAmount,
-    paidAmount,
-    dueAmount,
-    purchaseDate: data.purchaseDate instanceof Date
-      ? data.purchaseDate.toISOString()
-      : data.purchaseDate,
-    payments: data.payments.map(p => ({
-      ...p,
-      paidOn:  p.paidOn instanceof Date  ? p.paidOn.toISOString()  : p.paidOn,
-      dueDate: p.dueDate instanceof Date ? p.dueDate.toISOString() : (p.dueDate ?? null),
-    })),
+    const payload = {
+      ...data,
+      totalAmount: computedGrandTotal,
+      paidAmount: computedPaid,
+      dueAmount: computedDue,
+      // Pass totalPayable explicitly so the backend stores the correct paymentDue
+      // (supplierOpeningBalance + grandTotal − amountPaid).
+      totalPayable: computedTotalPayable,
+      purchaseDate: data.purchaseDate instanceof Date
+        ? data.purchaseDate.toISOString()
+        : data.purchaseDate,
+      payments: data.payments.map((p) => ({
+        ...p,
+        paidOn: p.paidOn instanceof Date ? p.paidOn.toISOString() : p.paidOn,
+        dueDate: p.dueDate instanceof Date ? p.dueDate.toISOString() : (p.dueDate ?? null),
+      })),
+    };
+
+    setIsCreating(true);
+    try {
+      const result = await createPurchase(payload as any);
+
+      if (result?.data) {
+        toast.success("Purchase created successfully");
+        router.push("/purchase");
+      } else if ((result as any)?.serverError) {
+        toast.error((result as any).serverError);
+      } else if ((result as any)?.validationErrors) {
+        console.error("Validation errors:", (result as any).validationErrors);
+        toast.error("Validation failed — check console");
+      } else if ((result?.data as any)?.error) {
+        toast.error((result?.data as any).error);
+      } else {
+        toast.error("Something went wrong");
+      }
+    } catch (err: any) {
+      toast.error(err?.message ?? "Something went wrong");
+    } finally {
+      setIsCreating(false);
+    }
   };
 
-  // ── Validate manually to see exactly what fails ──
-  const parsed = fullPurchaseSchema.safeParse(payload);
-  if (!parsed.success) {
-    console.error("❌ Schema validation failed:", JSON.stringify(parsed.error.format(), null, 2));
-    toast.error("Schema failed — check console");
-    return;
-  }
-  console.log("✅ Schema passed:", parsed.data);
-
-  const result = await create(payload as any);
-  console.log("Action result:", result);
-
-  if (result?.data) {
-    toast.success("Purchase created successfully");
-    router.push("/purchase");
-  } else if (result?.serverError) {
-    toast.error(result.serverError);
-  } else if (result?.validationErrors) {
-    console.error("Validation errors:", result.validationErrors);
-    toast.error("Validation failed — check console");
-  } else {
-    toast.error("Something went wrong");
-  }
-};
-
-  const grandTotal = form
-    .watch("items")
-    .reduce((sum, item) => sum + (Number(item.total) || 0), 0);
-
-  const totalPaid = form
-    .watch("payments")
-    .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-
-  const dueDisplay = grandTotal - totalPaid;
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <div className="container mx-auto p-6">
       <div className="mb-6">
         <h1 className="text-3xl font-bold">Add New Purchase</h1>
-        <p className="text-muted-foreground">
-          Fill out the purchase details below
-        </p>
+        <p className="text-muted-foreground">Fill out the purchase details below</p>
       </div>
 
       <FormProvider {...form}>
-        <form
-          onSubmit={form.handleSubmit(handleSubmit)}
-          className="space-y-6"
-        >
-          {/* ── Purchase Details ── */}
+        <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+
+          {/* ── Purchase Details ─────────────────────────────────────────── */}
           <Card className="p-6">
             <h2 className="text-xl font-semibold mb-4">Purchase Details</h2>
             <div className="grid md:grid-cols-2 gap-4">
+
               {/* Supplier */}
               <FormField
                 control={form.control}
@@ -237,6 +462,7 @@ export const PurchaseFormPage = ({
                         >
                           <PopoverTrigger asChild>
                             <Button
+                              type="button"
                               variant="outline"
                               role="combobox"
                               className={cn(
@@ -244,8 +470,8 @@ export const PurchaseFormPage = ({
                                 !field.value && "text-muted-foreground",
                               )}
                             >
-                              {supplierList.find((s) => s.id === field.value)
-                                ?.name || "Select supplier..."}
+                              {supplierList.find((s) => s.id === field.value)?.name
+                                || "Select supplier..."}
                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                             </Button>
                           </PopoverTrigger>
@@ -261,9 +487,8 @@ export const PurchaseFormPage = ({
                                       value={supplier.name}
                                       onSelect={() => {
                                         field.onChange(supplier.id);
-                                        setSelectedSupplierOpeningBalance(
-                                          supplier.openingBalance,
-                                        );
+                                        // Update opening balance whenever supplier changes
+                                        setOpeningBalance(safeNum(supplier.openingBalance));
                                         setShowSupplierSuggestions(false);
                                       }}
                                     >
@@ -351,21 +576,18 @@ export const PurchaseFormPage = ({
                       <PopoverTrigger asChild>
                         <FormControl>
                           <Button
+                            type="button"
                             variant="outline"
                             className="w-full text-left"
                           >
-                            {field.value
-                              ? formatDate(field.value)
-                              : "Pick date"}
+                            {field.value ? formatDate(field.value) : "Pick date"}
                           </Button>
                         </FormControl>
                       </PopoverTrigger>
                       <PopoverContent>
                         <Calendar
                           mode="single"
-                          selected={
-                            field.value ? new Date(field.value) : undefined
-                          }
+                          selected={field.value ? new Date(field.value) : undefined}
                           onSelect={field.onChange}
                           captionLayout="dropdown"
                         />
@@ -378,9 +600,11 @@ export const PurchaseFormPage = ({
             </div>
           </Card>
 
-          {/* ── Products ── */}
+          {/* ── Products ─────────────────────────────────────────────────── */}
           <Card className="p-6">
             <h2 className="text-xl font-semibold mb-4">Add Products</h2>
+
+            {/* Product search */}
             <FormItem className="relative max-w-sm mb-4">
               <FormLabel className="mb-1">Search Product</FormLabel>
               <Popover
@@ -413,15 +637,24 @@ export const PurchaseFormPage = ({
                             key={p.id}
                             value={p.product_name}
                             onSelect={() => {
+                              console.log('Product dropdown item:', p); // ← add this
+
+                              // FIX: safeNum on every field so no NaN reaches <Input>
+                              const purchasePrice = safeNum(p.purchasePrice);
+                              const sellingPrice = safeNum(p.sellingPrice ?? p.purchasePrice);
+
+                              const stock = safeNum(p.stock);
                               append({
                                 productId: p.id,
+                                product_name: p.product_name ?? "",
+                                stock,
                                 quantity: 1,
-                                product_name: p.product_name,
-                                stock: p.stock,
+                                unitPrice: purchasePrice,
+                                sellingPrice,
+
                                 discount: 0,
-                                unitPrice: p.purchasePrice,
-                                subtotal: p.purchasePrice,
-                                total: p.purchasePrice,
+                                subtotal: purchasePrice,        // qty(1) * price
+                                total: purchasePrice,        // subtotal - discount(0)
                               });
                               setProductSearch("");
                               setProductOptions([]);
@@ -437,92 +670,37 @@ export const PurchaseFormPage = ({
               </Popover>
             </FormItem>
 
+            {/* Items table */}
+            {/* Items table */}
             <div className="overflow-x-auto">
               {fields.length > 0 ? (
                 <>
-                  <Table className="min-w-[1200px]">
+                  <Table className="min-w-[1400px]">
                     <TableHeader>
                       <TableRow>
                         <TableHead>Product Name</TableHead>
                         <TableHead>Available Stock</TableHead>
                         <TableHead>Qty</TableHead>
-                        <TableHead>Unit Price</TableHead>
+                        <TableHead>Purchase Price</TableHead>
+                        <TableHead>Selling Price</TableHead>
                         <TableHead>Discount</TableHead>
-                        <TableHead>Subtotal</TableHead>
-                        <TableHead>Total</TableHead>
+                        <TableHead className="text-right">Subtotal</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
                         <TableHead />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {fields
-                        .filter((f) => f.productId && f.product_name)
-                        .map((f, idx) => (
-                          <TableRow key={f.id}>
-                            <TableCell>{f.product_name || "—"}</TableCell>
-                            <TableCell>{f.stock}</TableCell>
-
-                            {/* Editable fields only */}
-                            {ITEM_FIELD_KEYS.map((key) => (
-                              <TableCell key={key}>
-                                <FormField
-                                  control={form.control}
-                                  name={`items.${idx}.${key}`}
-                                  render={({ field: inputField }) => (
-                                    <FormControl>
-                                      <Input
-                                        type="number"
-                                        className="min-w-[5rem]"
-                                        {...inputField}
-                                        value={inputField.value ?? ""}
-                                        onChange={(e) => {
-                                          const raw = e.target.value;
-                                          const value = raw === "" ? 0 : Number(raw);
-                                          if (isNaN(value)) return;
-
-                                          inputField.onChange(value);
-
-                                          const allValues = form.getValues(`items.${idx}`);
-                                          const current = { ...allValues, [key]: value };
-
-                                          const qty = Number(current.quantity) || 0;
-                                          const price = Number(current.unitPrice) || 0;
-                                          const discount = Number(current.discount) || 0;
-                                          const subtotal = qty * price;
-                                          const total = subtotal - discount;
-
-                                          form.setValue(`items.${idx}.subtotal`, subtotal, { shouldDirty: true });
-                                          form.setValue(`items.${idx}.total`, total, { shouldDirty: true });
-                                        }}
-                                      />
-                                    </FormControl>
-                                  )}
-                                />
-                              </TableCell>
-                            ))}
-
-                            {/* Read-only computed cells — no Input, no NaN */}
-                            <TableCell className="min-w-[5rem] text-right">
-                              {(Number(form.watch(`items.${idx}.subtotal`)) || 0).toFixed(2)}
-                            </TableCell>
-                            <TableCell className="min-w-[5rem] text-right font-medium">
-                              {(Number(form.watch(`items.${idx}.total`)) || 0).toFixed(2)}
-                            </TableCell>
-
-                            <TableCell>
-                              <Button type="button" variant="destructive" size="sm" onClick={() => remove(idx)}>
-                                Remove
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                    </TableBody>
+  {fields.map((f, idx) => {
+    if (!f.productId || !f.product_name) return null;
+return <ItemRow key={f.id} f={f} idx={idx} form={form} onRemove={handleRemove} />;
+  })}
+</TableBody>
                   </Table>
 
+                  {/* Grand Total */}
                   <div className="flex justify-end pr-4 mt-4">
                     <div className="text-right space-y-1">
-                      <div className="text-muted-foreground text-sm">
-                        Grand Total:
-                      </div>
+                      <div className="text-muted-foreground text-sm">Grand Total</div>
                       <div className="text-xl font-semibold">
                         {CURRENCY_SYMBOL} {grandTotal.toFixed(2)}
                       </div>
@@ -532,27 +710,46 @@ export const PurchaseFormPage = ({
               ) : (
                 <div className="flex flex-col items-center justify-center py-10 text-center text-sm text-muted-foreground bg-muted/20 border-2 border-dashed rounded-lg">
                   <p>No products added yet.</p>
-                  <p>
-                    Search and select products above to add them to the
-                    purchase.
-                  </p>
+                  <p>Search and select products above to add them to the purchase.</p>
                 </div>
               )}
             </div>
           </Card>
 
-          {/* ── Payment ── */}
+          {/* ── Payment ──────────────────────────────────────────────────── */}
           <Card className="p-6">
             <h2 className="text-xl font-semibold mb-4">Add Payment</h2>
 
-            {selectedSupplierOpeningBalance !== null && (
-              <div className="text-sm text-muted-foreground mb-4">
-                Opening Balance: {CURRENCY_SYMBOL}{" "}
-                {selectedSupplierOpeningBalance.toFixed(2)}
+            {/* ── Summary row: Opening Balance / Grand Total / Total Payable ── */}
+            <div className="grid grid-cols-3 gap-4 mb-6 p-4 rounded-lg bg-muted/30 border">
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+                  Opening Balance
+                </p>
+                <p className="text-lg font-semibold">
+                  {CURRENCY_SYMBOL} {safeNum(openingBalance).toFixed(2)}
+                </p>
               </div>
-            )}
+              <div className="text-center border-x">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+                  Grand Total
+                </p>
+                <p className="text-lg font-semibold">
+                  {CURRENCY_SYMBOL} {grandTotal.toFixed(2)}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+                  Total Payable
+                </p>
+                <p className="text-xl font-bold text-primary">
+                  {CURRENCY_SYMBOL} {totalPayable.toFixed(2)}
+                </p>
+              </div>
+            </div>
 
             <div className="grid md:grid-cols-2 gap-4">
+              {/* Amount Paid */}
               <FormField
                 control={form.control}
                 name="payments.0.amount"
@@ -562,8 +759,13 @@ export const PurchaseFormPage = ({
                     <FormControl>
                       <Input
                         type="number"
-                        {...field}
-                        value={field.value ?? ""}
+                        min={0}
+                        // FIX: safeVal prevents NaN value attribute
+                        value={safeVal(field.value)}
+                        onChange={(e) => {
+                          const v = e.target.value === "" ? 0 : safeNum(e.target.value);
+                          field.onChange(v);
+                        }}
                       />
                     </FormControl>
                     <FormMessage />
@@ -571,6 +773,7 @@ export const PurchaseFormPage = ({
                 )}
               />
 
+              {/* Payment Date */}
               <FormField
                 control={form.control}
                 name="payments.0.paidOn"
@@ -581,21 +784,18 @@ export const PurchaseFormPage = ({
                       <PopoverTrigger asChild>
                         <FormControl>
                           <Button
+                            type="button"
                             variant="outline"
                             className="w-full text-left"
                           >
-                            {field.value
-                              ? formatDate(field.value)
-                              : formatDate(new Date())}
+                            {field.value ? formatDate(field.value) : formatDate(new Date())}
                           </Button>
                         </FormControl>
                       </PopoverTrigger>
                       <PopoverContent>
                         <Calendar
                           mode="single"
-                          selected={
-                            field.value ? new Date(field.value) : undefined
-                          }
+                          selected={field.value ? new Date(field.value) : undefined}
                           onSelect={field.onChange}
                           captionLayout="dropdown"
                         />
@@ -606,6 +806,7 @@ export const PurchaseFormPage = ({
                 )}
               />
 
+              {/* Payment Method */}
               <FormField
                 control={form.control}
                 name="payments.0.paymentMethod"
@@ -631,6 +832,7 @@ export const PurchaseFormPage = ({
                 )}
               />
 
+              {/* Payment Note */}
               <FormField
                 control={form.control}
                 name="payments.0.paymentNote"
@@ -646,15 +848,20 @@ export const PurchaseFormPage = ({
               />
             </div>
 
+            {/* Due Amount summary */}
             <div className="flex justify-end pr-4 mt-4">
               <div className="text-right space-y-1">
-                <div className="text-muted-foreground text-sm">Due Amount:</div>
-                <div className="text-xl font-semibold">
+                <div className="text-muted-foreground text-sm">Due Amount</div>
+                <div className={cn(
+                  "text-xl font-semibold",
+                  dueDisplay > 0 ? "text-destructive" : "text-green-600",
+                )}>
                   {CURRENCY_SYMBOL} {dueDisplay.toFixed(2)}
                 </div>
               </div>
             </div>
 
+            {/* Due Date — only shown when there is an outstanding amount */}
             {dueDisplay > 0 && (
               <div className="grid md:grid-cols-2 gap-4 mt-4">
                 <FormField
@@ -667,21 +874,18 @@ export const PurchaseFormPage = ({
                         <PopoverTrigger asChild>
                           <FormControl>
                             <Button
+                              type="button"
                               variant="outline"
                               className="w-full text-left"
                             >
-                              {field.value
-                                ? formatDate(field.value)
-                                : "Select date"}
+                              {field.value ? formatDate(field.value) : "Select date"}
                             </Button>
                           </FormControl>
                         </PopoverTrigger>
                         <PopoverContent>
                           <Calendar
                             mode="single"
-                            selected={
-                              field.value ? new Date(field.value) : undefined
-                            }
+                            selected={field.value ? new Date(field.value) : undefined}
                             onSelect={field.onChange}
                             captionLayout="dropdown"
                           />
@@ -695,12 +899,13 @@ export const PurchaseFormPage = ({
             )}
           </Card>
 
-          {/* ── Actions ── */}
+          {/* ── Actions ──────────────────────────────────────────────────── */}
           <div className="flex justify-end gap-4">
             <Button
               type="button"
               variant="outline"
               onClick={() => router.push("/purchase")}
+              disabled={isCreating}
             >
               Cancel
             </Button>

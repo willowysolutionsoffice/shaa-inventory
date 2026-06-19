@@ -21,8 +21,7 @@ export interface PageParamsProps {
   params: Promise<{ purchaseid: string }>
 }
 
-// ── Payment status display helpers ─────────────────────────────────────────────
-// Backend PaymentStatus enum: PENDING | PARTIAL | PAID
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 const PAYMENT_STATUS_STYLES: Record<string, string> = {
   PAID:    'bg-green-100 text-green-800',
@@ -36,6 +35,21 @@ const PAYMENT_STATUS_LABELS: Record<string, string> = {
   PENDING: 'Pending',
 }
 
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  CASH:          'Cash',
+  CARD:          'Card',
+  UPI:           'UPI',
+  CHEQUE:        'Cheque',
+  BANK_TRANSFER: 'Bank Transfer',
+  OTHER:         'Other',
+}
+
+function formatPaymentMethod(raw: string): string {
+  return PAYMENT_METHOD_LABELS[raw?.toUpperCase()] ?? raw ?? '—'
+}
+
+// ── Page ───────────────────────────────────────────────────────────────────────
+
 export default async function Page({ params }: PageParamsProps) {
   const { purchaseid } = await params
 
@@ -44,8 +58,12 @@ export default async function Page({ params }: PageParamsProps) {
 
   const purchase = result.data as any
 
-  const paymentStatus = (purchase.paymentStatus ?? '').toUpperCase()
-  const paymentDue    = Number(purchase.paymentDue ?? purchase.dueAmount ?? 0)
+  const paymentStatus  = (purchase.paymentStatus ?? '').toUpperCase()
+  const grandTotal     = Number(purchase.totalAmount ?? 0)
+  const paymentDue     = Number(purchase.paymentDue ?? purchase.dueAmount ?? 0)
+  const openingBalance = Number(purchase.supplier?.openingBalance ?? 0)
+  const totalPayable   = openingBalance + grandTotal
+  const totalPaid      = Math.max(0, totalPayable - paymentDue)
 
   return (
     <div className="max-h-screen overflow-y-auto p-6">
@@ -62,7 +80,8 @@ export default async function Page({ params }: PageParamsProps) {
       </p>
 
       <div className="mt-6 space-y-6">
-        {/* Transaction Info */}
+
+        {/* ── Transaction Info ──────────────────────────────────────────────── */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Transaction Information</CardTitle>
@@ -86,24 +105,45 @@ export default async function Page({ params }: PageParamsProps) {
               </div>
               <div className="flex items-center gap-2">
                 <CreditCard className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium">Total Amount:</span>
-                <span className="font-bold">
-                  {formatCurrency(Number(purchase.totalAmount) || 0)}
-                </span>
+                <span className="font-medium">Grand Total:</span>
+                <span className="font-bold">{formatCurrency(grandTotal)}</span>
+              </div>
+            </div>
+
+            {/* ── Payment summary row ───────────────────────────────────────── */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 rounded-lg bg-muted/30 border">
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+                  Opening Balance
+                </p>
+                <p className="text-base font-semibold">{formatCurrency(openingBalance)}</p>
+              </div>
+              <div className="text-center border-l">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+                  Total Payable
+                </p>
+                <p className="text-base font-bold text-primary">{formatCurrency(totalPayable)}</p>
+              </div>
+              <div className="text-center border-l">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+                  Amount Paid
+                </p>
+                <p className="text-base font-semibold text-green-700">{formatCurrency(totalPaid)}</p>
+              </div>
+              <div className="text-center border-l">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+                  Amount Due
+                </p>
+                <p className={`text-base font-semibold ${paymentDue > 0 ? 'text-destructive' : 'text-green-600'}`}>
+                  {formatCurrency(paymentDue)}
+                </p>
               </div>
             </div>
 
             <div className="flex gap-2 flex-wrap">
-              {/* Payment status from Prisma enum */}
-              <Badge
-                className={
-                  PAYMENT_STATUS_STYLES[paymentStatus] ??
-                  'bg-gray-100 text-gray-800'
-                }
-              >
+              <Badge className={PAYMENT_STATUS_STYLES[paymentStatus] ?? 'bg-gray-100 text-gray-800'}>
                 {PAYMENT_STATUS_LABELS[paymentStatus] ?? paymentStatus}
               </Badge>
-
               {paymentDue > 0 && (
                 <Badge className="bg-orange-100 text-orange-800">
                   Due: {formatCurrency(paymentDue)}
@@ -113,7 +153,7 @@ export default async function Page({ params }: PageParamsProps) {
           </CardContent>
         </Card>
 
-        {/* Supplier Info */}
+        {/* ── Supplier Info ─────────────────────────────────────────────────── */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
@@ -142,11 +182,20 @@ export default async function Page({ params }: PageParamsProps) {
                   <span>{purchase.supplier.email}</span>
                 </div>
               )}
+              {openingBalance > 0 && (
+                <div className="flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium">Opening Balance:</span>
+                  <span className="text-amber-700 font-semibold">
+                    {formatCurrency(openingBalance)}
+                  </span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Products */}
+        {/* ── Products ──────────────────────────────────────────────────────── */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
@@ -174,7 +223,6 @@ export default async function Page({ params }: PageParamsProps) {
                           <td className="p-2">{index + 1}</td>
                           <td className="p-2">
                             <div className="font-medium">
-                              {/* product_name is the normalized alias */}
                               {item.product_name ||
                                 item.product?.productName ||
                                 'Unknown Product'}
@@ -202,12 +250,25 @@ export default async function Page({ params }: PageParamsProps) {
 
                 <div className="flex justify-end">
                   <div className="text-right space-y-1">
-                    <div className="text-lg font-bold">
+                    <div className="text-base text-muted-foreground">
                       Grand Total:{' '}
-                      {formatCurrency(Number(purchase.totalAmount) || 0)}
+                      <span className="font-bold text-foreground">
+                        {formatCurrency(grandTotal)}
+                      </span>
+                    </div>
+                    {openingBalance > 0 && (
+                      <div className="text-base text-muted-foreground">
+                        + Opening Balance:{' '}
+                        <span className="font-semibold text-amber-700">
+                          {formatCurrency(openingBalance)}
+                        </span>
+                      </div>
+                    )}
+                    <div className="text-lg font-bold">
+                      Total Payable: {formatCurrency(totalPayable)}
                     </div>
                     {paymentDue > 0 && (
-                      <div className="text-sm text-muted-foreground">
+                      <div className="text-sm font-semibold text-destructive">
                         Amount Due: {formatCurrency(paymentDue)}
                       </div>
                     )}
@@ -222,7 +283,7 @@ export default async function Page({ params }: PageParamsProps) {
           </CardContent>
         </Card>
 
-        {/* Payments */}
+        {/* ── Payments ──────────────────────────────────────────────────────── */}
         {purchase.payments && purchase.payments.length > 0 && (
           <Card>
             <CardHeader>
@@ -243,8 +304,7 @@ export default async function Page({ params }: PageParamsProps) {
                         {formatCurrency(Number(payment.amount))}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        {/* paymentMethod stored as enum e.g. CASH, BANK_TRANSFER */}
-                        {payment.paymentMethod} •{' '}
+                        {formatPaymentMethod(payment.paymentMethod)} •{' '}
                         {payment.paidOn ? formatDate(payment.paidOn) : '—'}
                       </div>
                       {payment.dueDate && (
@@ -264,6 +324,7 @@ export default async function Page({ params }: PageParamsProps) {
             </CardContent>
           </Card>
         )}
+
       </div>
     </div>
   )

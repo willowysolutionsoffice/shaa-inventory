@@ -10,7 +10,7 @@ import z from 'zod';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
-import { Plus, Layers, Trash2, Pencil, Check, X } from 'lucide-react';
+import { Plus, Layers, Trash2, Check } from 'lucide-react';
 import {
   FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from '@/components/ui/form';
@@ -26,14 +26,12 @@ import {
   deleteVariant,
   updateVariant,
   getProductVariants,
-  ProductVariant,
 } from '@/actions/variant-actions';
-import { useAction } from 'next-safe-action/hooks';
 import { toast } from 'sonner';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Command, CommandEmpty, CommandGroup, CommandInput,
   CommandItem, CommandList,
@@ -191,7 +189,6 @@ function VariantRow({
 
   const update = (patch: Partial<DraftVariant>) => {
     const next = { ...draft, ...patch };
-    // Auto-derive name if not manually overridden
     if (!patch.variantName) {
       next.variantName = deriveVariantName(next.attributes, activeVariations);
     }
@@ -237,13 +234,13 @@ function VariantRow({
       {activeVariations.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-3">
           {activeVariations.map((variation) => (
-            <div key={variation.id}>
-              <p className="text-xs text-muted-foreground mb-1">{variation.name}</p>
+            <div key={variation.id} className="flex flex-col gap-1">
+              <p className="text-xs text-muted-foreground">{variation.name}</p>
               <Select
                 value={draft.attributes[variation.id] ?? ''}
                 onValueChange={(v) => setAttr(variation.id, v)}
               >
-                <SelectTrigger className="h-8 text-sm">
+                <SelectTrigger className="h-9 text-sm w-full">
                   <SelectValue placeholder={`Select ${variation.name}`} />
                 </SelectTrigger>
                 <SelectContent>
@@ -257,56 +254,73 @@ function VariantRow({
         </div>
       )}
 
-      {/* Core fields */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div>
-          <p className="text-xs text-muted-foreground mb-1">Variant Name</p>
-          <Input
-            className="h-8 text-sm"
-            placeholder="e.g. Red / Large"
-            value={draft.variantName}
-            onChange={(e) => update({ variantName: e.target.value })}
-          />
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground mb-1">SKU</p>
-          <Input
-            className="h-8 text-sm font-mono"
-            placeholder="SKU"
-            value={draft.sku}
-            onChange={(e) => update({ sku: e.target.value })}
-          />
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground mb-1">Stock</p>
-          <Input
-            className="h-8 text-sm"
-            type="number"
-            placeholder="0"
-            value={draft.stock}
-            onChange={(e) => update({ stock: Number(e.target.value) })}
-          />
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground mb-1">Purchase Price (₹)</p>
-          <Input
-            className="h-8 text-sm"
-            type="number"
-            placeholder="0"
-            value={draft.purchasePrice}
-            onChange={(e) => update({ purchasePrice: Number(e.target.value) })}
-          />
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground mb-1">Selling Price (₹)</p>
-          <Input
-            className="h-8 text-sm"
-            type="number"
-            placeholder="0"
-            value={draft.sellingPrice}
-            onChange={(e) => update({ sellingPrice: Number(e.target.value) })}
-          />
-        </div>
+      {/* Core fields — uniform h-9 height, consistent grid */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        {[
+          {
+            label: 'Variant Name',
+            node: (
+              <Input
+                className="h-9 text-sm w-full"
+                placeholder="e.g. Red / Large"
+                value={draft.variantName}
+                onChange={(e) => update({ variantName: e.target.value })}
+              />
+            ),
+          },
+          {
+            label: 'SKU',
+            node: (
+              <Input
+                className="h-9 text-sm font-mono w-full"
+                placeholder="SKU"
+                value={draft.sku}
+                onChange={(e) => update({ sku: e.target.value })}
+              />
+            ),
+          },
+          {
+            label: 'Stock',
+            node: (
+              <Input
+                className="h-9 text-sm w-full"
+                type="number"
+                placeholder="0"
+                value={draft.stock}
+                onChange={(e) => update({ stock: Number(e.target.value) })}
+              />
+            ),
+          },
+          {
+            label: 'Purchase Price (₹)',
+            node: (
+              <Input
+                className="h-9 text-sm w-full"
+                type="number"
+                placeholder="0"
+                value={draft.purchasePrice}
+                onChange={(e) => update({ purchasePrice: Number(e.target.value) })}
+              />
+            ),
+          },
+          {
+            label: 'Selling Price (₹)',
+            node: (
+              <Input
+                className="h-9 text-sm w-full"
+                type="number"
+                placeholder="0"
+                value={draft.sellingPrice}
+                onChange={(e) => update({ sellingPrice: Number(e.target.value) })}
+              />
+            ),
+          },
+        ].map(({ label, node }) => (
+          <div key={label} className="flex flex-col gap-1">
+            <p className="text-xs text-muted-foreground">{label}</p>
+            {node}
+          </div>
+        ))}
       </div>
     </Card>
   );
@@ -324,6 +338,7 @@ export const ProductFormSheet = ({
   const [internalOpen,    setInternalOpen]    = useState(false);
   const [variations,      setVariations]      = useState<Variation[]>([]);
   const [subBrands,       setSubBrands]       = useState<SubBrandOption[]>([]);
+  const [subBrandsLoading, setSubBrandsLoading] = useState(false);
   const [categories,      setCategories]      = useState<CategoryDropdownItem[]>([]);
   const [categoriesReady, setCategoriesReady] = useState(false);
   const [openBrand,       setOpenBrand]       = useState(false);
@@ -332,12 +347,13 @@ export const ProductFormSheet = ({
   const [savedProductId, setSavedProductId] = useState<string | null>(product?.id ?? null);
   const [drafts,         setDrafts]         = useState<DraftVariant[]>([]);
   const [isSavingAll,    setIsSavingAll]     = useState(false);
+  // Track whether we've already loaded variants for the current edit session
+  const variantsLoadedRef = useRef(false);
 
-  const { execute: execCreate, isExecuting: isCreating } = useAction(createProduct);
-  const { execute: execUpdate, isExecuting: isUpdating } = useAction(updateProduct);
-  const { execute: execCreateVariant } = useAction(createVariant);
-  const { execute: execUpdateVariant } = useAction(updateVariant);
-  const { execute: execDeleteVariant } = useAction(deleteVariant);
+  // Submission state — replaces useAction hooks; we call server actions directly
+  // so that async results are available immediately in handleSubmit.
+  const [isCreating, setIsCreating] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const form = useForm<FormValues>({
     resolver:      zodResolver(extendedProductSchema),
@@ -351,111 +367,119 @@ export const ProductFormSheet = ({
   const sellingPrice        = form.watch('sellingPrice');
   const selectedVariationIds: string[] = form.watch('variationIds') ?? [];
 
-  // Load variations
+  // Load variations once on mount
   useEffect(() => {
     getVariationList({}).then((result) => {
       setVariations(result?.data?.data ?? []);
     });
   }, []);
 
-  // Load categories
+  // Load categories once on mount
   useEffect(() => {
-  getCategoryDropdown().then((result) => {
-    setCategories(result ?? []);  // ← result IS the array, not result.data
-    setCategoriesReady(true);
-  });
-}, []);
+    getCategoryDropdown().then((result) => {
+      setCategories(result ?? []);
+      setCategoriesReady(true);
+    });
+  }, []);
 
-  // Reset form when sheet opens
+  // -------------------------------------------------------------------------
+  // FIX 3: Load existing variants when editing
+  // Separated from the main reset effect so it runs independently and is not
+  // gated on `categoriesReady`, which was causing it to be skipped on edit.
+  // -------------------------------------------------------------------------
+  const loadVariantsForProduct = useCallback(async (productId: string) => {
+    if (variantsLoadedRef.current) return;
+    variantsLoadedRef.current = true;
+    try {
+      const existing = await getProductVariants(productId);
+      const loaded: DraftVariant[] = existing.map((v) => ({
+        _localId:      v.id,
+        id:            v.id,
+        variantName:   v.variantName,
+        sku:           v.sku,
+        stock:         v.stock,
+        purchasePrice: v.purchasePrice,
+        sellingPrice:  v.sellingPrice,
+        attributes:    Object.fromEntries(
+          v.attributes.map((a) => [a.variation.id, a.value.id])
+        ),
+      }));
+      setDrafts(loaded);
+    } catch (err) {
+      toast.error('Failed to load existing variants.');
+    }
+  }, []);
+
+  // Reset form + drafts when sheet opens
   useEffect(() => {
-    if (!isOpen || !categoriesReady) return;
+    if (!isOpen) return;
+
+    // Reset draft-load guard so we re-fetch on each open
+    variantsLoadedRef.current = false;
+
     form.reset(buildDefaultValues(product));
     setSavedProductId(product?.id ?? null);
     setDrafts([]);
 
-    // Load existing variants if editing
     if (product?.id) {
-      getProductVariants(product.id).then((existing) => {
-        const loaded: DraftVariant[] = existing.map((v) => ({
-          _localId:      v.id,
-          id:            v.id,
-          variantName:   v.variantName,
-          sku:           v.sku,
-          stock:         v.stock,
-          purchasePrice: v.purchasePrice,
-          sellingPrice:  v.sellingPrice,
-          attributes:    Object.fromEntries(
-            v.attributes.map((a) => [a.variation.id, a.value.id])
-          ),
-        }));
-        setDrafts(loaded);
-      });
+      loadVariantsForProduct(product.id);
     }
-  }, [isOpen, categoriesReady]);
+  }, [isOpen]); // intentionally only on open toggle; form/product are stable refs
 
-  // Load sub-brands when brand changes
+  // -------------------------------------------------------------------------
+  // FIX 1: Sub-brand loading — Safari/macOS compatible
+  // Replaced the `fetch` call with a more robust pattern:
+  //  - Uses a stable base URL fallback
+  //  - Sets explicit headers that Safari requires for credentialed cross-origin
+  //  - Guards against stale responses with an AbortController
+  // -------------------------------------------------------------------------
   useEffect(() => {
     if (!brandId) {
       setSubBrands([]);
       form.setValue('subBrandId', '');
       return;
     }
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/brands/${brandId}/sub-brands?take=200`, {
+
+    const controller = new AbortController();
+    setSubBrandsLoading(true);
+
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
+    fetch(`${baseUrl}/brands/${brandId}/sub-brands?take=200`, {
       credentials: 'include',
+      headers: {
+        'Accept':       'application/json',
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
     })
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((json) => {
         const list: SubBrandOption[] = (json.data ?? []).map((s: any) => ({
           id: s.id, name: s.name,
         }));
         setSubBrands(list);
+
         const current = form.getValues('subBrandId');
         if (current && !list.find((s) => s.id === current)) {
           form.setValue('subBrandId', '');
         }
       })
-      .catch(() => setSubBrands([]));
-  }, [brandId]);
+      .catch((err) => {
+        if (err.name !== 'AbortError') {
+          console.error('Failed to load sub-brands:', err);
+          setSubBrands([]);
+        }
+      })
+      .finally(() => setSubBrandsLoading(false));
+
+    return () => controller.abort();
+  }, [brandId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // -------------------------------------------------------------------------
-  // Product submit
-  // -------------------------------------------------------------------------
-
-  const handleSubmit = async (data: FormValues) => {
-    let resultProduct: any = null;
-
-    if (product) {
-      const res = await execUpdate({ id: product.id, ...data });
-      if (res?.data?.error) { toast.error(res.data.error); return; }
-      resultProduct = res?.data?.data;
-      toast.success('Product updated');
-    } else {
-      const res = await execCreate(data);
-      if (res?.data?.error) { toast.error(res.data.error); return; }
-      resultProduct = res?.data?.data;
-      toast.success('Product created');
-    }
-
-    const id = resultProduct?.id ?? product?.id ?? null;
-    setSavedProductId(id);
-  };
-
-  const regenerateSku = () => {
-    form.setValue('sku', `SKU-${nanoid(6).toUpperCase()}`);
-    toast.info('Generated new SKU');
-  };
-
-  const toggleVariation = (id: string, checked: boolean) => {
-    const current = form.getValues('variationIds') ?? [];
-    form.setValue(
-      'variationIds',
-      checked ? [...current, id] : current.filter((v) => v !== id),
-      { shouldValidate: true },
-    );
-  };
-
-  // -------------------------------------------------------------------------
-  // Variant CRUD
+  // Variant helpers (no standalone save — variants are saved inside handleSubmit)
   // -------------------------------------------------------------------------
 
   const addDraft = () => {
@@ -472,84 +496,170 @@ export const ProductFormSheet = ({
   const removeDraft = async (index: number) => {
     const draft = drafts[index];
     if (draft.id) {
-      // persisted — delete from backend
-      const res = await execDeleteVariant({ id: draft.id });
-      if (res?.data?.error) { toast.error(res.data.error); return; }
-      toast.success('Variant deleted');
+      try {
+        const res = await deleteVariant({ id: draft.id });
+        if (res?.data?.error) { toast.error(res.data.error); return; }
+        toast.success('Variant removed');
+      } catch (err: any) {
+        toast.error(err?.message ?? 'Failed to delete variant');
+        return;
+      }
     }
     setDrafts((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const saveAllVariants = async () => {
-    if (!savedProductId) {
-      toast.error('Save the product first before saving variants.');
-      return;
-    }
-
+  /**
+   * Persist all draft variants against a known productId.
+   * Calls server actions directly (not via useAction hook) so results are
+   * available synchronously in the async flow.
+   * Returns true if all variants saved without error.
+   */
+  const persistVariants = async (productId: string): Promise<boolean> => {
     const unsaved = drafts.filter((d) => !d.id);
-    const updated  = drafts.filter((d) =>  d.id);
-
-    if (unsaved.length === 0 && updated.length === 0) {
-      toast.info('Nothing to save.');
-      return;
-    }
-
-    setIsSavingAll(true);
+    const toUpdate = drafts.filter((d) => !!d.id);
     let errorCount = 0;
 
-    // Create new
+    // Create new variants
     for (const draft of unsaved) {
       const attributesArr = Object.entries(draft.attributes).map(
         ([variationId, valueId]) => ({ variationId, valueId }),
       );
 
+      // Skip drafts that have no attributes when variations are selected
       if (attributesArr.length === 0 && selectedVariationIds.length > 0) {
-        toast.warning(`Variant "${draft.variantName || 'unnamed'}" has no attributes selected — skipped.`);
+        toast.warning(
+          `Variant "${draft.variantName || 'unnamed'}" has no attributes selected — skipped.`,
+        );
         errorCount++;
         continue;
       }
 
-      const res = await execCreateVariant({
-        productId:     savedProductId,
-        sku:           draft.sku,
-        variantName:   draft.variantName,
-        stock:         draft.stock,
-        purchasePrice: draft.purchasePrice,
-        sellingPrice:  draft.sellingPrice,
-        attributes:    attributesArr,
-      });
+      try {
+        const res = await createVariant({
+          productId,
+          sku:           draft.sku,
+          variantName:   draft.variantName,
+          stock:         draft.stock,
+          purchasePrice: draft.purchasePrice,
+          sellingPrice:  draft.sellingPrice,
+          attributes:    attributesArr,
+        });
 
-      if (res?.data?.error) {
-        toast.error(`Error creating variant: ${res.data.error}`);
-        errorCount++;
-      } else if (res?.data?.data) {
-        setDrafts((prev) =>
-          prev.map((d) =>
-            d._localId === draft._localId
-              ? { ...d, id: res.data!.data!.id }
-              : d,
-          ),
-        );
-      }
-    }
-
-    // Update existing
-    for (const draft of updated) {
-      const res = await execUpdateVariant({
-        id:            draft.id!,
-        sku:           draft.sku,
-        stock:         draft.stock,
-        purchasePrice: draft.purchasePrice,
-        sellingPrice:  draft.sellingPrice,
-      });
-      if (res?.data?.error) {
-        toast.error(`Error updating variant: ${res.data.error}`);
+        if (res?.data?.error) {
+          toast.error(`Variant error: ${res.data.error}`);
+          errorCount++;
+        } else if (res?.data?.data) {
+          const newId = res.data.data.id;
+          setDrafts((prev) =>
+            prev.map((d) =>
+              d._localId === draft._localId ? { ...d, id: newId } : d,
+            ),
+          );
+        }
+      } catch (err: any) {
+        toast.error(`Variant error: ${err?.message ?? 'Unknown error'}`);
         errorCount++;
       }
     }
 
-    setIsSavingAll(false);
-    if (errorCount === 0) toast.success('All variants saved');
+    // Update existing variants
+    for (const draft of toUpdate) {
+      try {
+        const res = await updateVariant({
+          id:            draft.id!,
+          sku:           draft.sku,
+          stock:         draft.stock,
+          purchasePrice: draft.purchasePrice,
+          sellingPrice:  draft.sellingPrice,
+        });
+        if (res?.data?.error) {
+          toast.error(`Variant update error: ${res.data.error}`);
+          errorCount++;
+        }
+      } catch (err: any) {
+        toast.error(`Variant update error: ${err?.message ?? 'Unknown error'}`);
+        errorCount++;
+      }
+    }
+
+    return errorCount === 0;
+  };
+
+  // -------------------------------------------------------------------------
+  // Product submit — calls server actions directly so we get real return values.
+  // useAction's execute() is fire-and-forget and returns undefined, which was
+  // the cause of "Could not determine product ID".
+  // -------------------------------------------------------------------------
+
+  const handleSubmit = async (data: FormValues) => {
+    setIsSavingAll(true);
+
+    try {
+      let productId: string | null = null;
+
+      // 1. Save the product (call action directly, not via useAction hook)
+      if (product) {
+        setIsUpdating(true);
+        try {
+          const res = await updateProduct({ id: product.id, ...data });
+          if (res?.data?.error) { toast.error(res.data.error); return; }
+          // updateProduct returns { data: normalizeProduct(...) }
+          productId = (res?.data as any)?.data?.id ?? product.id;
+        } finally {
+          setIsUpdating(false);
+        }
+      } else {
+        setIsCreating(true);
+        try {
+          const res = await createProduct(data);
+          if (res?.data?.error) { toast.error(res.data.error); return; }
+          // createProduct returns { data: normalizeProduct(...) }
+          productId = (res?.data as any)?.data?.id ?? null;
+        } finally {
+          setIsCreating(false);
+        }
+      }
+
+      if (!productId) {
+        toast.error('Product saved but ID was not returned — variants not saved.');
+        return;
+      }
+
+      setSavedProductId(productId);
+
+      // 2. Save all variants (new + updated) against the productId
+      if (drafts.length > 0) {
+        const variantsOk = await persistVariants(productId);
+        if (!variantsOk) {
+          toast.warning(
+            product
+              ? 'Product updated, but some variants had errors. Please review.'
+              : 'Product created, but some variants had errors. Please review.',
+          );
+          return;
+        }
+      }
+
+      // 3. Everything succeeded — show toast and close
+      toast.success(product ? 'Product updated successfully.' : 'Product created successfully.');
+      closeSheet();
+    } finally {
+      setIsSavingAll(false);
+    }
+  };
+
+  const regenerateSku = () => {
+    form.setValue('sku', `SKU-${nanoid(6).toUpperCase()}`);
+    toast.info('Generated new SKU');
+  };
+
+  const toggleVariation = (id: string, checked: boolean) => {
+    const current = form.getValues('variationIds') ?? [];
+    form.setValue(
+      'variationIds',
+      checked ? [...current, id] : current.filter((v) => v !== id),
+      { shouldValidate: true },
+    );
   };
 
   const closeSheet = () => {
@@ -561,6 +671,9 @@ export const ProductFormSheet = ({
   // -------------------------------------------------------------------------
 
   const showVariantSection = selectedVariationIds.length > 0;
+
+  // Shared class for uniform field height across all controls
+  const fieldH = 'h-9';
 
   return (
     <Sheet
@@ -584,15 +697,23 @@ export const ProductFormSheet = ({
             </SheetHeader>
 
             {/* ----------------------------------------------------------------
-                Core product fields
+                FIX 2: Core product fields — uniform heights + consistent grid
             ---------------------------------------------------------------- */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-              <Card className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:col-span-3">
+              {/*
+                All FormItem children use the same `fieldH` (h-9) on their
+                control element so every row has identical heights whether it
+                renders an Input, Select, or Button (combobox trigger).
+              */}
+              <Card className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-5 lg:col-span-3">
 
+                {/* Product Name */}
                 <FormField control={form.control} name="product_name" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Product Name</FormLabel>
-                    <FormControl><Input placeholder="Product Name" {...field} /></FormControl>
+                    <FormControl>
+                      <Input className={fieldH} placeholder="Product Name" {...field} />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -605,8 +726,14 @@ export const ProductFormSheet = ({
                       <PopoverTrigger asChild>
                         <FormControl>
                           <Button
-                            variant="outline" role="combobox"
-                            className={cn('w-full justify-between', !field.value && 'text-muted-foreground')}
+                            variant="outline"
+                            role="combobox"
+                            type="button"
+                            className={cn(
+                              'w-full justify-between font-normal',
+                              fieldH,
+                              !field.value && 'text-muted-foreground',
+                            )}
                           >
                             {field.value
                               ? brands.find((b) => b.id === field.value)?.name
@@ -615,17 +742,25 @@ export const ProductFormSheet = ({
                           </Button>
                         </FormControl>
                       </PopoverTrigger>
-                      <PopoverContent className="w-[200px] p-0">
+                      <PopoverContent className="w-[240px] p-0">
                         <Command>
                           <CommandInput placeholder="Search brand..." />
                           <CommandList>
                             <CommandEmpty>No brand found.</CommandEmpty>
                             <CommandGroup>
                               {brands.map((brand) => (
-                                <CommandItem key={brand.id} value={brand.name}
-                                  onSelect={() => { form.setValue('brandId', brand.id); setOpenBrand(false); }}
+                                <CommandItem
+                                  key={brand.id}
+                                  value={brand.name}
+                                  onSelect={() => {
+                                    form.setValue('brandId', brand.id);
+                                    setOpenBrand(false);
+                                  }}
                                 >
-                                  <Check className={cn('mr-2 h-4 w-4', brand.id === field.value ? 'opacity-100' : 'opacity-0')} />
+                                  <Check className={cn(
+                                    'mr-2 h-4 w-4',
+                                    brand.id === field.value ? 'opacity-100' : 'opacity-0',
+                                  )} />
                                   {brand.name}
                                 </CommandItem>
                               ))}
@@ -638,42 +773,59 @@ export const ProductFormSheet = ({
                   </FormItem>
                 )} />
 
-                {subBrands.length > 0 && (
-                  <FormField control={form.control} name="subBrandId" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        Sub-brand <span className="text-muted-foreground text-xs">(optional)</span>
-                      </FormLabel>
-                      <Select
-                        value={field.value || 'none'}
-                        onValueChange={(v) => field.onChange(v === 'none' ? '' : v)}
-                      >
-                        <FormControl>
-                          <SelectTrigger><SelectValue placeholder="Select sub-brand" /></SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          {subBrands.map((sb) => (
-                            <SelectItem key={sb.id} value={sb.id}>{sb.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                )}
+                {/* Sub-brand — always renders the slot; shows loader/disabled while fetching */}
+                <FormField control={form.control} name="subBrandId" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Sub-brand{' '}
+                      <span className="text-muted-foreground text-xs">(optional)</span>
+                    </FormLabel>
+                    <Select
+                      value={field.value || 'none'}
+                      onValueChange={(v) => field.onChange(v === 'none' ? '' : v)}
+                      disabled={!brandId || subBrandsLoading || subBrands.length === 0}
+                    >
+                      <FormControl>
+                        <SelectTrigger className={cn(fieldH, 'w-full')}>
+                          <SelectValue
+                            placeholder={
+                              !brandId
+                                ? 'Select a brand first'
+                                : subBrandsLoading
+                                ? 'Loading…'
+                                : subBrands.length === 0
+                                ? 'No sub-brands'
+                                : 'Select sub-brand'
+                            }
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {subBrands.map((sb) => (
+                          <SelectItem key={sb.id} value={sb.id}>{sb.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
 
+                {/* Category */}
                 <FormField control={form.control} name="categoryId" render={({ field }) => (
                   <FormItem>
                     <FormLabel>
-                      Category <span className="text-muted-foreground text-xs">(optional)</span>
+                      Category{' '}
+                      <span className="text-muted-foreground text-xs">(optional)</span>
                     </FormLabel>
                     <Select
                       value={field.value || 'none'}
                       onValueChange={(v) => field.onChange(v === 'none' ? '' : v)}
                     >
                       <FormControl>
-                        <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                        <SelectTrigger className={cn(fieldH, 'w-full')}>
+                          <SelectValue placeholder="Select category" />
+                        </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="none">None</SelectItem>
@@ -686,12 +838,15 @@ export const ProductFormSheet = ({
                   </FormItem>
                 )} />
 
+                {/* Business Location */}
                 <FormField control={form.control} name="branchId" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Business Location</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
-                        <SelectTrigger><SelectValue placeholder="Select Branch" /></SelectTrigger>
+                        <SelectTrigger className={cn(fieldH, 'w-full')}>
+                          <SelectValue placeholder="Select Branch" />
+                        </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         {branches.map((b) => (
@@ -703,12 +858,15 @@ export const ProductFormSheet = ({
                   </FormItem>
                 )} />
 
+                {/* Unit */}
                 <FormField control={form.control} name="unit" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Unit</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
-                        <SelectTrigger><SelectValue placeholder="Select Unit" /></SelectTrigger>
+                        <SelectTrigger className={cn(fieldH, 'w-full')}>
+                          <SelectValue placeholder="Select Unit" />
+                        </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="pcs">Pieces (pcs)</SelectItem>
@@ -720,35 +878,52 @@ export const ProductFormSheet = ({
                   </FormItem>
                 )} />
 
+                {/* SKU */}
                 <FormField control={form.control} name="sku" render={({ field }) => (
                   <FormItem>
                     <FormLabel className="flex items-center justify-between">
                       <span>Product SKU</span>
-                      <button type="button" onClick={regenerateSku}
-                        className="text-[10px] text-purple-600 hover:text-purple-700 underline font-medium">
+                      <button
+                        type="button"
+                        onClick={regenerateSku}
+                        className="text-[10px] text-purple-600 hover:text-purple-700 underline font-medium"
+                      >
                         Regenerate
                       </button>
                     </FormLabel>
-                    <FormControl><Input placeholder="Enter SKU" {...field} /></FormControl>
+                    <FormControl>
+                      <Input className={cn(fieldH, 'font-mono')} placeholder="Enter SKU" {...field} />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
 
+                {/* HSL Code */}
                 <FormField control={form.control} name="hsl" render={({ field }) => (
                   <FormItem>
                     <FormLabel>HSL Code</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g. HSL-001" {...field} value={field.value ?? ''} />
+                      <Input
+                        className={fieldH}
+                        placeholder="e.g. HSL-001"
+                        {...field}
+                        value={field.value ?? ''}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
 
+                {/* Stock */}
                 <FormField control={form.control} name="stock" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Initial Stock Qty</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="0" {...field}
+                      <Input
+                        className={fieldH}
+                        type="number"
+                        placeholder="0"
+                        {...field}
                         value={field.value ?? ''}
                         onChange={(e) => field.onChange(Number(e.target.value))}
                       />
@@ -757,11 +932,16 @@ export const ProductFormSheet = ({
                   </FormItem>
                 )} />
 
+                {/* Purchase Price */}
                 <FormField control={form.control} name="purchasePrice" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Purchase Price (₹)</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="0" {...field}
+                      <Input
+                        className={fieldH}
+                        type="number"
+                        placeholder="0"
+                        {...field}
                         value={field.value ?? ''}
                         onChange={(e) => field.onChange(Number(e.target.value))}
                       />
@@ -770,11 +950,16 @@ export const ProductFormSheet = ({
                   </FormItem>
                 )} />
 
+                {/* Selling Price */}
                 <FormField control={form.control} name="sellingPrice" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Selling Price (₹)</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="0" {...field}
+                      <Input
+                        className={fieldH}
+                        type="number"
+                        placeholder="0"
+                        {...field}
                         value={field.value ?? ''}
                         onChange={(e) => field.onChange(Number(e.target.value))}
                       />
@@ -783,13 +968,20 @@ export const ProductFormSheet = ({
                   </FormItem>
                 )} />
 
+                {/* Description — full width */}
                 <FormField control={form.control} name="description" render={({ field }) => (
                   <FormItem className="md:col-span-2 lg:col-span-3">
                     <FormLabel>
-                      Description <span className="text-muted-foreground text-xs">(optional)</span>
+                      Description{' '}
+                      <span className="text-muted-foreground text-xs">(optional)</span>
                     </FormLabel>
                     <FormControl>
-                      <Input placeholder="Product description..." {...field} value={field.value ?? ''} />
+                      <Input
+                        className={fieldH}
+                        placeholder="Product description…"
+                        {...field}
+                        value={field.value ?? ''}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -841,14 +1033,18 @@ export const ProductFormSheet = ({
                   {variations.map((variation) => {
                     const isChecked = selectedVariationIds.includes(variation.id);
                     return (
-                      <label key={variation.id} className={cn(
-                        'flex flex-col gap-2 rounded-lg border p-3 cursor-pointer transition-all duration-150 select-none',
-                        isChecked
-                          ? 'border-purple-400 bg-purple-50/60 dark:bg-purple-950/20 dark:border-purple-700'
-                          : 'border-border bg-muted/20 hover:border-muted-foreground/40 hover:bg-muted/40',
-                      )}>
+                      <label
+                        key={variation.id}
+                        className={cn(
+                          'flex flex-col gap-2 rounded-lg border p-3 cursor-pointer transition-all duration-150 select-none',
+                          isChecked
+                            ? 'border-purple-400 bg-purple-50/60 dark:bg-purple-950/20 dark:border-purple-700'
+                            : 'border-border bg-muted/20 hover:border-muted-foreground/40 hover:bg-muted/40',
+                        )}
+                      >
                         <div className="flex items-center justify-between">
-                          <span className={cn('text-sm font-medium',
+                          <span className={cn(
+                            'text-sm font-medium',
                             isChecked ? 'text-purple-700 dark:text-purple-300' : 'text-foreground',
                           )}>
                             {variation.name}
@@ -856,19 +1052,25 @@ export const ProductFormSheet = ({
                           <Checkbox
                             checked={isChecked}
                             onCheckedChange={(c) => toggleVariation(variation.id, !!c)}
-                            className={cn('shrink-0',
+                            className={cn(
+                              'shrink-0',
                               isChecked && 'border-purple-500 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600',
                             )}
                           />
                         </div>
                         <div className="flex flex-wrap gap-1">
                           {variation.values.slice(0, 5).map((val) => (
-                            <span key={val.id} className={cn(
-                              'inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium border',
-                              isChecked
-                                ? 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800'
-                                : 'bg-background text-muted-foreground border-border',
-                            )}>{val.value}</span>
+                            <span
+                              key={val.id}
+                              className={cn(
+                                'inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium border',
+                                isChecked
+                                  ? 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800'
+                                  : 'bg-background text-muted-foreground border-border',
+                              )}
+                            >
+                              {val.value}
+                            </span>
                           ))}
                           {variation.values.length > 5 && (
                             <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] text-muted-foreground border border-border bg-background">
@@ -884,7 +1086,7 @@ export const ProductFormSheet = ({
             )}
 
             {/* ----------------------------------------------------------------
-                Variant CRUD — only shown when variations are selected
+                Variant CRUD
             ---------------------------------------------------------------- */}
             {showVariantSection && (
               <Card className="p-4 border-purple-200">
@@ -899,39 +1101,23 @@ export const ProductFormSheet = ({
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {!savedProductId && (
-                      <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                        Save product first to persist variants
-                      </span>
-                    )}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={addDraft}
-                      className="h-8"
-                    >
-                      <Plus className="h-3.5 w-3.5 mr-1" /> Add Variant
-                    </Button>
-                    {drafts.length > 0 && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="h-8 bg-purple-600 hover:bg-purple-700 text-white"
-                        onClick={saveAllVariants}
-                        disabled={isSavingAll || !savedProductId}
-                      >
-                        {isSavingAll ? 'Saving…' : 'Save Variants'}
-                      </Button>
-                    )}
-                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addDraft}
+                    className="h-8"
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Add Variant
+                  </Button>
                 </div>
 
                 {drafts.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-8 border border-dashed border-purple-200 rounded-lg bg-purple-50/30 text-muted-foreground gap-2">
                     <Layers className="h-6 w-6 text-purple-300" />
-                    <p className="text-sm">No variants yet. Click <strong>Add Variant</strong> to create one.</p>
+                    <p className="text-sm">
+                      No variants yet. Click <strong>Add Variant</strong> to create one.
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -957,11 +1143,20 @@ export const ProductFormSheet = ({
             ---------------------------------------------------------------- */}
             <SheetFooter>
               <div className="mt-2 flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={closeSheet}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={closeSheet}
+                  disabled={isSavingAll}
+                >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isCreating || isUpdating}>
-                  {isCreating || isUpdating ? 'Saving…' : 'Save Product'}
+                <Button type="submit" disabled={isCreating || isUpdating || isSavingAll}>
+                  {isSavingAll || isCreating || isUpdating
+                    ? 'Saving…'
+                    : product
+                    ? 'Update Product'
+                    : 'Create Product'}
                 </Button>
               </div>
             </SheetFooter>

@@ -150,6 +150,9 @@ export const getProductDropdown = async (params?: { query?: string; branchId?: s
 
     const url = `/products/dropdown${searchParams.toString() ? `?${searchParams}` : ''}`;
     const products = await api.get<any[]>(url);
+    
+    console.log('RAW DROPDOWN FROM API:', JSON.stringify(products?.[0])); // ← add this
+    
     return (products ?? []).map((p: any) => ({
       ...p,
       product_name:  p.productName ?? p.product_name ?? '',
@@ -157,7 +160,8 @@ export const getProductDropdown = async (params?: { query?: string; branchId?: s
       sellingPrice:  Number(p.sellingPrice),
       stock:         Number(p.stock),
     }));
-  } catch {
+  } catch (e) {
+    console.error('DROPDOWN ERROR:', e); // ← and this
     return [];
   }
 };

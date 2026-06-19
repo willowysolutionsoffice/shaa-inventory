@@ -6,28 +6,22 @@ import { getPurchaseList } from "@/actions/purchase-actions";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { DateRangeFilter } from "@/components/common/date-range-filter";
 
 interface ProductPageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-import { DateRangeFilter } from "@/components/common/date-range-filter";
-
-import { format } from "date-fns";
-import { getTodayUtcMidnight, formatUtcDate } from "@/lib/date-utils";
-
 export default async function ProductPage({ searchParams }: ProductPageProps) {
   const params = await searchParams;
-  const page = typeof params.page === "string" ? Number(params.page) : 1;
-  const limit = 10000000;
+  const page  = typeof params.page === "string" ? Number(params.page) : 1;
+  const limit = 10_000_000;
+  const from  = typeof params.from === "string" ? params.from : undefined;
+  const to    = typeof params.to   === "string" ? params.to   : undefined;
 
-  const today = getTodayUtcMidnight();
-  const formattedToday = formatUtcDate(today);
-const from = typeof params.from === "string" ? params.from : undefined;
-const to = typeof params.to === "string" ? params.to : undefined;
-
-
-  const { data } = await getPurchaseList({ page, limit, from, to });
+  // FIX: guard against action returning an error shape
+  const result = await getPurchaseList({ page, limit, from, to });
+  const data   = result?.data;
 
   return (
     <div className="flex flex-1 flex-col">
@@ -39,8 +33,7 @@ const to = typeof params.to === "string" ? params.to : undefined;
               <p className="text-muted-foreground">Manage your Purchases</p>
             </div>
             <div className="flex items-center gap-2">
-             <DateRangeFilter defaultDate={undefined} />
-
+              <DateRangeFilter defaultDate={undefined} />
               <Link href="/purchase/new">
                 <Button>
                   <Plus className="mr-2 h-4 w-4" />
@@ -49,21 +42,19 @@ const to = typeof params.to === "string" ? params.to : undefined;
               </Link>
             </div>
           </div>
+
           <PurchaseTable
             columns={purchaseColumns}
             data={data?.purchases ?? []}
-            metadata={
-              data?.metadata ?? {
-                totalPages: 0,
-                totalCount: 0,
-                currentPage: 1,
-                hasNextPage: false,
-                hasPrevPage: false,
-              }
-            }
+            metadata={data?.metadata ?? {
+              totalPages:  0,
+              totalCount:  0,
+              currentPage: 1,
+              hasNextPage: false,
+              hasPrevPage: false,
+            }}
             totals={data?.totals ?? { totalAmount: 0, dueAmount: 0, paidAmount: 0 }}
           />
-
         </div>
       </div>
     </div>
