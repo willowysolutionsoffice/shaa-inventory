@@ -1,7 +1,7 @@
 // src/components/sales/pos-billing.tsx
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   Search, Trash2, Plus, Minus, Percent, CreditCard, Wallet, Receipt,
   UserPlus, PauseCircle, ShoppingBag, Tag, Sparkles,
@@ -24,6 +24,9 @@ import { useAction }      from "next-safe-action/hooks";
 import { createSale }     from "@/actions/sales-action";
 import { getCustomerListForDropdown } from "@/actions/customer-action";
 import { getProductDropdown }         from "@/actions/product-actions";
+
+// ── NEW: import the customer form dialog ───────────────────────────────────────
+import { CustomerFormDialog } from "@/components/customers/customer-form";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -77,21 +80,30 @@ export default function PosBillingPage({
   const [customers,   setCustomers]   = useState<POSCustomer[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
+  // ── NEW: customer-dialog state ─────────────────────────────────────────────
+  const [addCustomerOpen, setAddCustomerOpen] = useState(false);
+
+  // Fetch customers separately so we can re-fetch after a new one is created
+  const fetchCustomers = useCallback(async () => {
+    const custRes = await getCustomerListForDropdown();
+    const remoteCustomers: POSCustomer[] = (custRes ?? []).map((c: any) => ({
+      id:    c.id,
+      name:  c.name,
+      phone: c.phone ?? "",
+    }));
+    setCustomers([
+      { id: WALK_IN_SENTINEL, name: "Walk-in Customer", phone: "" },
+      ...remoteCustomers,
+    ]);
+    return remoteCustomers;
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
-        const [custRes, prodRes] = await Promise.all([
-          getCustomerListForDropdown(),
+        const [, prodRes] = await Promise.all([
+          fetchCustomers(),
           getProductDropdown({ query: "" }),
-        ]);
-
-        setCustomers([
-          { id: WALK_IN_SENTINEL, name: "Walk-in Customer", phone: "" },
-          ...(custRes ?? []).map((c: any) => ({
-            id:    c.id,
-            name:  c.name,
-            phone: c.phone ?? "",
-          })),
         ]);
 
         setProducts((prodRes ?? []).map((p: any) => ({
@@ -110,7 +122,35 @@ export default function PosBillingPage({
         setLoadingData(false);
       }
     })();
-  }, []);
+  }, [fetchCustomers]);
+
+  // ── NEW: called when CustomerFormDialog closes ─────────────────────────────
+  const handleAddCustomerClose = useCallback(
+    async (open: boolean) => {
+      setAddCustomerOpen(open);
+      if (!open) {
+        try {
+          // ① Snapshot existing IDs BEFORE the fetch overwrites state
+          const prevIds = new Set(
+            customers.map((c) => c.id)
+          );
+
+          // ② Fetch and update the customer list
+          const fresh = await fetchCustomers();
+
+          // ③ Diff against the snapshot — the new entry is whatever wasn't there before
+          const newEntry = fresh.find((c) => !prevIds.has(c.id));
+          if (newEntry) {
+            setSelectedCustomer(newEntry.id);
+            toast.success(`"${newEntry.name}" added and selected.`);
+          }
+        } catch {
+          // Silently ignore; the dialog already toasted on success/failure
+        }
+      }
+    },
+    [fetchCustomers, customers]   // customers in dep array so prevIds is always fresh
+  );
 
   // ── UI state ───────────────────────────────────────────────────────────────
   const [searchTerm,            setSearchTerm]            = useState("");
@@ -123,6 +163,7 @@ export default function PosBillingPage({
   const [couponCode,            setCouponCode]            = useState("");
   const [appliedCoupon,         setAppliedCoupon]         = useState("");
   const [paymentMethod,         setPaymentMethod]         = useState<"cash" | "card" | "upi">("cash");
+  const [cashTendered,          setCashTendered]          = useState<number | "">("");
   const [heldBills,             setHeldBills]             = useState<HeldBill[]>([]);
 
   // ── Server action ──────────────────────────────────────────────────────────
@@ -172,6 +213,8 @@ export default function PosBillingPage({
   const taxBase              = subtotal - totalDiscountAmount;
   const taxAmount            = (taxBase * 12) / 100;
   const grandTotal           = taxBase + taxAmount;
+  const cashChange           = paymentMethod === "cash" && typeof cashTendered === "number" && cashTendered > grandTotal
+                               ? cashTendered - grandTotal : 0;
 
   // ── Cart helpers ───────────────────────────────────────────────────────────
   const addToCart = (product: POSProduct) => {
@@ -207,6 +250,7 @@ export default function PosBillingPage({
     setCouponCode("");
     setAppliedCoupon("");
     setSelectedCustomer(WALK_IN_SENTINEL);
+    setCashTendered("");
   };
 
   // ── Barcode ────────────────────────────────────────────────────────────────
@@ -278,7 +322,7 @@ export default function PosBillingPage({
       invoiceNo:    "",
       grandTotal,
       dueAmount:    0,
-      paidAmount:   grandTotal,
+      paidAmount:   paymentMethod === "cash" && typeof cashTendered === "number" ? cashTendered : grandTotal,
       items: cart.map((item) => ({
         productId:     item.product.id,
         quantity:      item.quantity,
@@ -310,6 +354,20 @@ export default function PosBillingPage({
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-6">
+
+      {/*
+        ── NEW: CustomerFormDialog mounted outside the cart card so it renders
+           as a modal overlay — the cart state lives in PosBillingPage and is
+           completely unaffected when this dialog opens or closes.
+      ──────────────────────────────────────────────────────────────────────── */}
+      <CustomerFormDialog
+        open={addCustomerOpen}
+        openChange={handleAddCustomerClose}
+        // Pass the current branchId so the branch field is pre-filled
+        branches={branchId ? [{ id: branchId, name: branchName }] : []}
+        // No `customer` prop → creates a new customer
+      />
+
       {/* Header */}
       <div className="flex flex-col gap-2 md:flex-row md:items-center justify-between">
         <div>
@@ -468,7 +526,15 @@ export default function PosBillingPage({
                     ))}
                   </SelectContent>
                 </Select>
-                <Button size="icon" variant="outline" className="h-9 w-9 shrink-0" onClick={() => toast.info("Add customers via Sales → Customers.")}>
+
+                {/* ── CHANGED: opens CustomerFormDialog instead of toast ─── */}
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-9 w-9 shrink-0"
+                  title="Add new customer"
+                  onClick={() => setAddCustomerOpen(true)}
+                >
                   <UserPlus className="h-4 w-4 text-purple-600" />
                 </Button>
               </div>
@@ -627,6 +693,44 @@ export default function PosBillingPage({
                 ))}
               </div>
 
+
+              {/* Cash tendered (only for cash payments) */}
+              {paymentMethod === "cash" && (
+                <div className="space-y-1">
+                  <div className="flex gap-2 items-center">
+                    <div className="relative flex-1">
+                      <IndianRupee className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                      <Input
+                        type="number"
+                        min={grandTotal}
+                        placeholder={`Cash tendered (min ${formatCurrency(grandTotal)})`}
+                        value={cashTendered}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setCashTendered(v === "" ? "" : Math.max(Number(v), 0));
+                        }}
+                        className="pl-8 h-9 text-xs bg-card"
+                      />
+                    </div>
+                    {cashTendered !== "" && (
+                      <button type="button" onClick={() => setCashTendered("")}
+                        className="text-[10px] text-muted-foreground hover:text-destructive underline whitespace-nowrap">
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  {cashChange > 0 && (
+                    <div className="flex justify-between text-sm font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 rounded px-2 py-1.5">
+                      <span>Change to return:</span>
+                      <span>{formatCurrency(cashChange)}</span>
+                    </div>
+                  )}
+                  {typeof cashTendered === "number" && cashTendered > 0 && cashTendered < grandTotal && (
+                    <p className="text-xs text-red-500 px-1">Amount is less than total payable.</p>
+                  )}
+                </div>
+              )}
+
               {/* Hold + Checkout */}
               <div className="flex gap-2">
                 <Button
@@ -640,7 +744,7 @@ export default function PosBillingPage({
                 <Button
                   className="flex-[2] bg-purple-600 hover:bg-purple-700 text-white gap-1 h-11 shadow-md shadow-purple-600/20 font-bold disabled:opacity-60"
                   onClick={checkout}
-                  disabled={isCheckingOut || cart.length === 0 || selectedCustomer === WALK_IN_SENTINEL}
+                  disabled={isCheckingOut || cart.length === 0 || selectedCustomer === WALK_IN_SENTINEL || (paymentMethod === "cash" && typeof cashTendered === "number" && cashTendered < grandTotal)}
                 >
                   {isCheckingOut
                     ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing…</>
