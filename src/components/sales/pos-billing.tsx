@@ -92,7 +92,7 @@ export default function PosBillingPage({
       phone: c.phone ?? "",
     }));
     setCustomers([
-      { id: WALK_IN_SENTINEL, name: "Walk-in Customer", phone: "" },
+      { id: WALK_IN_SENTINEL, name: "Select a Customer", phone: "" },
       ...remoteCustomers,
     ]);
     return remoteCustomers;

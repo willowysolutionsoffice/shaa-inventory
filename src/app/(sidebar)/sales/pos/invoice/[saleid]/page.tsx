@@ -26,7 +26,7 @@ export default async function POSInvoicePage({ params }: Props) {
 
   const items    = sale.items    ?? [];
   const payments = sale.payments ?? [];
-  const customer = sale.customer ?? { name: "Walk-in Customer" };
+  const customer = sale.customer ?? { name: "Select a Customer" };
   const branch   = sale.branch   ?? { name: "Branch Central" };
 
   const subtotal = items.reduce(
@@ -43,7 +43,7 @@ export default async function POSInvoicePage({ params }: Props) {
     date:      sale.salesDate ?? sale.salesdate,   // backend returns salesDate (Prisma field)
 
     customer: {
-      name:  customer.name  ?? "Walk-in Customer",
+      name:  customer.name  ?? "Select a Customer",
       phone: (customer as any).phone ?? "",
     },
     branch: {

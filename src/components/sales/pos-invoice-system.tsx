@@ -125,7 +125,7 @@ function ThermalReceipt({ invoice }: { invoice: POSInvoice }) {
       {/* ── To (customer) ── */}
       <div style={{ marginBottom: 6 }}>
         <div>To :</div>
-        {invoice.customer.name && invoice.customer.name !== "Walk-in Customer" && (
+        {invoice.customer.name && invoice.customer.name !== "Select a Customer" && (
           <div style={{ paddingLeft: 8, fontWeight: 600 }}>{invoice.customer.name}</div>
         )}
         {invoice.customer.phone && (
@@ -336,7 +336,7 @@ function A4Invoice({ invoice }: { invoice: POSInvoice }) {
             content: (
               <>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>
-                  {invoice.customer.name || "Walk-in Customer"}
+                  {invoice.customer.name || "Select a Customer"}
                 </div>
                 {invoice.customer.phone && (
                   <div style={{ fontSize: 12, color: "#555", marginTop: 2 }}>📞 {invoice.customer.phone}</div>
