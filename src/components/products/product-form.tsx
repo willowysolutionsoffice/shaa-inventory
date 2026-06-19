@@ -21,6 +21,8 @@ import { Badge } from '@/components/ui/badge';
 import { createProduct, updateProduct } from '@/actions/product-actions';
 import { getVariationList } from '@/actions/variation-actions';
 import { getCategoryDropdown, CategoryDropdownItem } from '@/actions/category-actions';
+import { getSubBrandsByBrand } from '@/actions/brand-actions';
+
 import {
   createVariant,
   deleteVariant,
@@ -48,27 +50,27 @@ import { nanoid } from 'nanoid';
 // ---------------------------------------------------------------------------
 
 export interface Variation {
-  id:     string;
-  name:   string;
+  id: string;
+  name: string;
   values: VariationValue[];
 }
 
 export interface VariationValue {
-  id:    string;
+  id: string;
   value: string;
 }
 
 interface SubBrandOption {
-  id:   string;
+  id: string;
   name: string;
 }
 
 interface ProductFormProps {
-  product?:    Product;
-  open?:       boolean;
+  product?: Product;
+  open?: boolean;
   openChange?: (open: boolean) => void;
-  brands:      { name: string; id: string }[];
-  branches:    { name: string; id: string }[];
+  brands: { name: string; id: string }[];
+  branches: { name: string; id: string }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -77,9 +79,9 @@ interface ProductFormProps {
 
 const extendedProductSchema = productSchema.extend({
   variationIds: z.array(z.string()).optional().default([]),
-  subBrandId:   z.string().optional(),
-  categoryId:   z.string().optional(),
-  hsl:          z.string().optional(),
+  subBrandId: z.string().min(1, 'Sub-brand is required'),   // ← was .optional()
+  categoryId: z.string().min(1, 'Category is required'),    // ← was .optional()
+  hsl: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof extendedProductSchema>;
@@ -90,16 +92,16 @@ type FormValues = z.infer<typeof extendedProductSchema>;
 
 interface DraftVariant {
   /** client-side temp id */
-  _localId:      string;
+  _localId: string;
   /** set once persisted */
-  id?:           string;
-  variantName:   string;
-  sku:           string;
-  stock:         number;
+  id?: string;
+  variantName: string;
+  sku: string;
+  stock: number;
   purchasePrice: number;
-  sellingPrice:  number;
+  sellingPrice: number;
   /** variationId -> valueId */
-  attributes:    Record<string, string>;
+  attributes: Record<string, string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -109,54 +111,54 @@ interface DraftVariant {
 function buildDefaultValues(product?: Product): FormValues {
   if (!product) {
     return {
-      product_name:  '',
-      sku:           `SKU-${nanoid(6).toUpperCase()}`,
-      branchId:      '',
-      unit:          '',
-      stock:         0,
-      brandId:       '',
-      subBrandId:    '',
-      categoryId:    '',
+      product_name: '',
+      sku: `SKU-${nanoid(6).toUpperCase()}`,
+      branchId: '',
+      unit: '',
+      stock: 0,
+      brandId: '',
+      subBrandId: '',
+      categoryId: '',
       purchasePrice: 0,
-      sellingPrice:  0,
-      variationIds:  [],
-      hsl:           '',
-      description:   '',
+      sellingPrice: 0,
+      variationIds: [],
+      hsl: '',
+      description: '',
     };
   }
   return {
-    product_name:  product.product_name,
-    sku:           product.sku,
-    branchId:      product.branchId,
-    unit:          product.unit,
-    stock:         product.stock,
-    brandId:       product.brandId,
-    subBrandId:    product.subBrandId    ?? '',
-    categoryId:    product.categoryId    ?? product.category?.id ?? '',
+    product_name: product.product_name,
+    sku: product.sku,
+    branchId: product.branchId,
+    unit: product.unit,
+    stock: product.stock,
+    brandId: product.brandId,
+    subBrandId: product.subBrandId ?? '',
+    categoryId: product.categoryId ?? product.category?.id ?? '',
     purchasePrice: product.purchasePrice,
-    sellingPrice:  product.sellingPrice,
-    variationIds:  product.variations?.map((v) => v.variation.id) ?? [],
-    hsl:           product.hsl           ?? '',
-    description:   product.description   ?? '',
+    sellingPrice: product.sellingPrice,
+    variationIds: product.variations?.map((v) => v.variation.id) ?? [],
+    hsl: product.hsl ?? '',
+    description: product.description ?? '',
   };
 }
 
 function makeDraft(purchasePrice = 0, sellingPrice = 0): DraftVariant {
   return {
-    _localId:      nanoid(),
-    variantName:   '',
-    sku:           `SKU-${nanoid(6).toUpperCase()}`,
-    stock:         0,
+    _localId: nanoid(),
+    variantName: '',
+    sku: `SKU-${nanoid(6).toUpperCase()}`,
+    stock: 0,
     purchasePrice,
     sellingPrice,
-    attributes:    {},
+    attributes: {},
   };
 }
 
 /** Derive a variant name from selected attribute values */
 function deriveVariantName(
   attributes: Record<string, string>,
-  variations:  Variation[],
+  variations: Variation[],
 ): string {
   return variations
     .filter((v) => attributes[v.id])
@@ -173,13 +175,13 @@ function deriveVariantName(
 // ---------------------------------------------------------------------------
 
 interface VariantRowProps {
-  draft:        DraftVariant;
-  index:        number;
-  variations:   Variation[];
+  draft: DraftVariant;
+  index: number;
+  variations: Variation[];
   selectedVIds: string[];
-  onChange:     (index: number, next: DraftVariant) => void;
-  onRemove:     (index: number) => void;
-  isSaving:     boolean;
+  onChange: (index: number, next: DraftVariant) => void;
+  onRemove: (index: number) => void;
+  isSaving: boolean;
 }
 
 function VariantRow({
@@ -335,18 +337,18 @@ export const ProductFormSheet = ({
 }: ProductFormProps) => {
   const isControlled = typeof open !== 'undefined' && typeof openChange === 'function';
 
-  const [internalOpen,    setInternalOpen]    = useState(false);
-  const [variations,      setVariations]      = useState<Variation[]>([]);
-  const [subBrands,       setSubBrands]       = useState<SubBrandOption[]>([]);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const [variations, setVariations] = useState<Variation[]>([]);
+  const [subBrands, setSubBrands] = useState<SubBrandOption[]>([]);
   const [subBrandsLoading, setSubBrandsLoading] = useState(false);
-  const [categories,      setCategories]      = useState<CategoryDropdownItem[]>([]);
+  const [categories, setCategories] = useState<CategoryDropdownItem[]>([]);
   const [categoriesReady, setCategoriesReady] = useState(false);
-  const [openBrand,       setOpenBrand]       = useState(false);
+  const [openBrand, setOpenBrand] = useState(false);
 
   // Variant CRUD state
   const [savedProductId, setSavedProductId] = useState<string | null>(product?.id ?? null);
-  const [drafts,         setDrafts]         = useState<DraftVariant[]>([]);
-  const [isSavingAll,    setIsSavingAll]     = useState(false);
+  const [drafts, setDrafts] = useState<DraftVariant[]>([]);
+  const [isSavingAll, setIsSavingAll] = useState(false);
   // Track whether we've already loaded variants for the current edit session
   const variantsLoadedRef = useRef(false);
 
@@ -356,15 +358,15 @@ export const ProductFormSheet = ({
   const [isUpdating, setIsUpdating] = useState(false);
 
   const form = useForm<FormValues>({
-    resolver:      zodResolver(extendedProductSchema),
+    resolver: zodResolver(extendedProductSchema),
     defaultValues: buildDefaultValues(product),
   });
 
-  const isOpen              = isControlled ? open : internalOpen;
-  const skuValue            = form.watch('sku');
-  const brandId             = form.watch('brandId');
-  const purchasePrice       = form.watch('purchasePrice');
-  const sellingPrice        = form.watch('sellingPrice');
+  const isOpen = isControlled ? open : internalOpen;
+  const skuValue = form.watch('sku');
+  const brandId = form.watch('brandId');
+  const purchasePrice = form.watch('purchasePrice');
+  const sellingPrice = form.watch('sellingPrice');
   const selectedVariationIds: string[] = form.watch('variationIds') ?? [];
 
   // Load variations once on mount
@@ -393,14 +395,14 @@ export const ProductFormSheet = ({
     try {
       const existing = await getProductVariants(productId);
       const loaded: DraftVariant[] = existing.map((v) => ({
-        _localId:      v.id,
-        id:            v.id,
-        variantName:   v.variantName,
-        sku:           v.sku,
-        stock:         v.stock,
+        _localId: v.id,
+        id: v.id,
+        variantName: v.variantName,
+        sku: v.sku,
+        stock: v.stock,
         purchasePrice: v.purchasePrice,
-        sellingPrice:  v.sellingPrice,
-        attributes:    Object.fromEntries(
+        sellingPrice: v.sellingPrice,
+        attributes: Object.fromEntries(
           v.attributes.map((a) => [a.variation.id, a.value.id])
         ),
       }));
@@ -440,42 +442,22 @@ export const ProductFormSheet = ({
       return;
     }
 
-    const controller = new AbortController();
+    let cancelled = false;
     setSubBrandsLoading(true);
 
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
-    fetch(`${baseUrl}/brands/${brandId}/sub-brands?take=200`, {
-      credentials: 'include',
-      headers: {
-        'Accept':       'application/json',
-        'Content-Type': 'application/json',
-      },
-      signal: controller.signal,
-    })
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((json) => {
-        const list: SubBrandOption[] = (json.data ?? []).map((s: any) => ({
-          id: s.id, name: s.name,
-        }));
+    getSubBrandsByBrand(brandId)
+      .then((list) => {
+        if (cancelled) return;
         setSubBrands(list);
-
         const current = form.getValues('subBrandId');
         if (current && !list.find((s) => s.id === current)) {
           form.setValue('subBrandId', '');
         }
       })
-      .catch((err) => {
-        if (err.name !== 'AbortError') {
-          console.error('Failed to load sub-brands:', err);
-          setSubBrands([]);
-        }
-      })
-      .finally(() => setSubBrandsLoading(false));
+      .catch(() => { if (!cancelled) setSubBrands([]); })
+      .finally(() => { if (!cancelled) setSubBrandsLoading(false); });
 
-    return () => controller.abort();
+    return () => { cancelled = true; };
   }, [brandId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // -------------------------------------------------------------------------
@@ -537,12 +519,12 @@ export const ProductFormSheet = ({
       try {
         const res = await createVariant({
           productId,
-          sku:           draft.sku,
-          variantName:   draft.variantName,
-          stock:         draft.stock,
+          sku: draft.sku,
+          variantName: draft.variantName,
+          stock: draft.stock,
           purchasePrice: draft.purchasePrice,
-          sellingPrice:  draft.sellingPrice,
-          attributes:    attributesArr,
+          sellingPrice: draft.sellingPrice,
+          attributes: attributesArr,
         });
 
         if (res?.data?.error) {
@@ -566,11 +548,11 @@ export const ProductFormSheet = ({
     for (const draft of toUpdate) {
       try {
         const res = await updateVariant({
-          id:            draft.id!,
-          sku:           draft.sku,
-          stock:         draft.stock,
+          id: draft.id!,
+          sku: draft.sku,
+          stock: draft.stock,
           purchasePrice: draft.purchasePrice,
-          sellingPrice:  draft.sellingPrice,
+          sellingPrice: draft.sellingPrice,
         });
         if (res?.data?.error) {
           toast.error(`Variant update error: ${res.data.error}`);
@@ -776,13 +758,10 @@ export const ProductFormSheet = ({
                 {/* Sub-brand — always renders the slot; shows loader/disabled while fetching */}
                 <FormField control={form.control} name="subBrandId" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>
-                      Sub-brand{' '}
-                      <span className="text-muted-foreground text-xs">(optional)</span>
-                    </FormLabel>
+                    <FormLabel>Sub-brand</FormLabel>
                     <Select
-                      value={field.value || 'none'}
-                      onValueChange={(v) => field.onChange(v === 'none' ? '' : v)}
+                      value={field.value || ''}
+                      onValueChange={field.onChange}
                       disabled={!brandId || subBrandsLoading || subBrands.length === 0}
                     >
                       <FormControl>
@@ -792,16 +771,15 @@ export const ProductFormSheet = ({
                               !brandId
                                 ? 'Select a brand first'
                                 : subBrandsLoading
-                                ? 'Loading…'
-                                : subBrands.length === 0
-                                ? 'No sub-brands'
-                                : 'Select sub-brand'
+                                  ? 'Loading…'
+                                  : subBrands.length === 0
+                                    ? 'No sub-brands available'
+                                    : 'Select sub-brand'
                             }
                           />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
                         {subBrands.map((sb) => (
                           <SelectItem key={sb.id} value={sb.id}>{sb.name}</SelectItem>
                         ))}
@@ -810,17 +788,12 @@ export const ProductFormSheet = ({
                     <FormMessage />
                   </FormItem>
                 )} />
-
-                {/* Category */}
                 <FormField control={form.control} name="categoryId" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>
-                      Category{' '}
-                      <span className="text-muted-foreground text-xs">(optional)</span>
-                    </FormLabel>
+                    <FormLabel>Category</FormLabel>
                     <Select
-                      value={field.value || 'none'}
-                      onValueChange={(v) => field.onChange(v === 'none' ? '' : v)}
+                      value={field.value || ''}
+                      onValueChange={field.onChange}
                     >
                       <FormControl>
                         <SelectTrigger className={cn(fieldH, 'w-full')}>
@@ -828,7 +801,6 @@ export const ProductFormSheet = ({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
                         {categories.map((cat) => (
                           <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
                         ))}
@@ -1155,8 +1127,8 @@ export const ProductFormSheet = ({
                   {isSavingAll || isCreating || isUpdating
                     ? 'Saving…'
                     : product
-                    ? 'Update Product'
-                    : 'Create Product'}
+                      ? 'Update Product'
+                      : 'Create Product'}
                 </Button>
               </div>
             </SheetFooter>

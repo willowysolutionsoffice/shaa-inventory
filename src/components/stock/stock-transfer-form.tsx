@@ -26,54 +26,73 @@ import { toast } from "sonner";
 import { Plus, Trash2, ArrowRight, PackageCheck } from "lucide-react";
 import { useAction } from "next-safe-action/hooks";
 import { createStockTransfer } from "@/actions/stock-transfer-actions";
-import { Branch, Product } from "@/lib/mock-db";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface Branch {
+    id:   string;
+    name: string;
+}
+
+// Matches both mock-db shape and API dropdown shape
+interface Product {
+    id:            string;
+    product_name?: string;   // mock-db
+    productName?:  string;   // API
+    sku:           string;
+    stock:         number;
+    unit:          string;
+}
 
 interface TransferItem {
-  productId: string;
-  quantity: number;
+    productId: string;
+    quantity:  number;
 }
 
 interface StockTransferFormProps {
-  branches: Branch[];
-  products: Product[];
+    branches: Branch[];
+    products: Product[];
 }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function displayName(p: Product) {
+    return p.product_name ?? p.productName ?? p.sku;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export function StockTransferForm({ branches, products }: StockTransferFormProps) {
     const router = useRouter();
     const { execute, isExecuting } = useAction(createStockTransfer);
 
     const [fromBranchId, setFromBranchId] = useState("");
-    const [toBranchId, setToBranchId] = useState("");
-    const [note, setNote] = useState("");
+    const [toBranchId,   setToBranchId]   = useState("");
+    const [note,         setNote]         = useState("");
     const [items, setItems] = useState<TransferItem[]>([{ productId: "", quantity: 1 }]);
 
+    // When a source branch is selected, only show products belonging to it
     const availableProducts = fromBranchId
-        ? products.filter((p) => p.branchId === fromBranchId)
+        ? products.filter((p: any) => p.branchId === fromBranchId)
         : products;
 
-    const addItem = () => {
+    const addItem = () =>
         setItems((prev) => [...prev, { productId: "", quantity: 1 }]);
-    };
 
-    const removeItem = (index: number) => {
+    const removeItem = (index: number) =>
         setItems((prev) => prev.filter((_, i) => i !== index));
-    };
 
-    const updateItem = (index: number, field: keyof TransferItem, value: string | number) => {
+    const updateItem = (
+        index: number,
+        field: keyof TransferItem,
+        value: string | number
+    ) =>
         setItems((prev) =>
-            prev.map((item, i) =>
-                i === index ? { ...item, [field]: value } : item
-            )
+            prev.map((item, i) => (i === index ? { ...item, [field]: value } : item))
         );
-    };
 
-    const getProductStock = (productId: string) => {
-        return products.find((p) => p.id === productId)?.stock ?? 0;
-    };
-
-    const getProductUnit = (productId: string) => {
-        return products.find((p) => p.id === productId)?.unit ?? "pcs";
-    };
+    const getProduct = (productId: string) =>
+        products.find((p) => p.id === productId);
 
     const handleSubmit = async () => {
         if (!fromBranchId || !toBranchId) {
@@ -84,21 +103,38 @@ export function StockTransferForm({ branches, products }: StockTransferFormProps
             toast.error("Source and destination branches cannot be the same");
             return;
         }
+
         const validItems = items.filter((i) => i.productId && i.quantity > 0);
         if (validItems.length === 0) {
             toast.error("Add at least one product to transfer");
             return;
         }
 
+        // Client-side stock guard
+        for (const item of validItems) {
+            const p = getProduct(item.productId);
+            if (p && item.quantity > p.stock) {
+                toast.error(
+                    `Insufficient stock for "${displayName(p)}". Available: ${p.stock}`
+                );
+                return;
+            }
+        }
+
         const result = await execute({
             fromBranchId,
             toBranchId,
             note: note || undefined,
-            items: validItems.map((i) => ({ productId: i.productId, quantity: Number(i.quantity) })),
+            items: validItems.map((i) => ({
+                productId: i.productId,
+                quantity:  Number(i.quantity),
+            })),
         });
 
         if (result?.data?.data) {
-            toast.success(`Transfer ${result.data.data.transferNo} created successfully`);
+            toast.success(
+                `Transfer ${result.data.data.transferNo} created successfully`
+            );
             router.push("/admin/stock-transfer/history");
         } else if (result?.data?.error) {
             toast.error(result.data.error);
@@ -111,19 +147,28 @@ export function StockTransferForm({ branches, products }: StockTransferFormProps
             <Card>
                 <CardHeader>
                     <CardTitle className="text-base">Transfer Route</CardTitle>
-                    <CardDescription>Select the source and destination branches</CardDescription>
+                    <CardDescription>
+                        Select the source and destination branches
+                    </CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-col sm:flex-row items-center gap-4">
+                        {/* From */}
                         <div className="flex-1 w-full">
-                            <Label className="mb-1.5 block text-sm font-medium">From Branch</Label>
+                            <Label className="mb-1.5 block text-sm font-medium">
+                                From Branch
+                            </Label>
                             <Select value={fromBranchId} onValueChange={setFromBranchId}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Select source branch" />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {branches.map((b) => (
-                                        <SelectItem key={b.id} value={b.id} disabled={b.id === toBranchId}>
+                                        <SelectItem
+                                            key={b.id}
+                                            value={b.id}
+                                            disabled={b.id === toBranchId}
+                                        >
                                             {b.name}
                                         </SelectItem>
                                     ))}
@@ -131,21 +176,29 @@ export function StockTransferForm({ branches, products }: StockTransferFormProps
                             </Select>
                         </div>
 
+                        {/* Arrow */}
                         <div className="flex items-center justify-center pt-5">
                             <div className="flex items-center justify-center w-9 h-9 rounded-full bg-primary/10 text-primary">
                                 <ArrowRight className="h-4 w-4" />
                             </div>
                         </div>
 
+                        {/* To */}
                         <div className="flex-1 w-full">
-                            <Label className="mb-1.5 block text-sm font-medium">To Branch</Label>
+                            <Label className="mb-1.5 block text-sm font-medium">
+                                To Branch
+                            </Label>
                             <Select value={toBranchId} onValueChange={setToBranchId}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Select destination branch" />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {branches.map((b) => (
-                                        <SelectItem key={b.id} value={b.id} disabled={b.id === fromBranchId}>
+                                        <SelectItem
+                                            key={b.id}
+                                            value={b.id}
+                                            disabled={b.id === fromBranchId}
+                                        >
                                             {b.name}
                                         </SelectItem>
                                     ))}
@@ -170,16 +223,23 @@ export function StockTransferForm({ branches, products }: StockTransferFormProps
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3">
                     {items.map((item, index) => {
-                        const currentStock = getProductStock(item.productId);
-                        const unit = getProductUnit(item.productId);
-                        const isOverStock = item.productId && item.quantity > currentStock;
+                        const product     = getProduct(item.productId);
+                        const currentStock = product?.stock ?? 0;
+                        const unit        = product?.unit  ?? "pcs";
+                        const isOverStock = !!item.productId && item.quantity > currentStock;
 
                         return (
-                            <div key={index} className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                            <div
+                                key={index}
+                                className="flex flex-col sm:flex-row gap-3 items-start sm:items-center"
+                            >
+                                {/* Product select */}
                                 <div className="flex-1 w-full">
                                     <Select
                                         value={item.productId}
-                                        onValueChange={(val) => updateItem(index, "productId", val)}
+                                        onValueChange={(val) =>
+                                            updateItem(index, "productId", val)
+                                        }
                                     >
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select product" />
@@ -188,8 +248,11 @@ export function StockTransferForm({ branches, products }: StockTransferFormProps
                                             {availableProducts.map((p) => (
                                                 <SelectItem key={p.id} value={p.id}>
                                                     <div className="flex items-center gap-2">
-                                                        <span>{p.product_name}</span>
-                                                        <Badge variant="secondary" className="text-xs">
+                                                        <span>{displayName(p)}</span>
+                                                        <Badge
+                                                            variant="secondary"
+                                                            className="text-xs"
+                                                        >
                                                             {p.stock} {p.unit}
                                                         </Badge>
                                                     </div>
@@ -199,6 +262,7 @@ export function StockTransferForm({ branches, products }: StockTransferFormProps
                                     </Select>
                                 </div>
 
+                                {/* Quantity */}
                                 <div className="flex items-center gap-2 w-full sm:w-44">
                                     <div className="flex-1">
                                         <Input
@@ -206,25 +270,37 @@ export function StockTransferForm({ branches, products }: StockTransferFormProps
                                             min={1}
                                             max={currentStock || undefined}
                                             value={item.quantity}
-                                            onChange={(e) => updateItem(index, "quantity", parseInt(e.target.value) || 1)}
+                                            onChange={(e) =>
+                                                updateItem(
+                                                    index,
+                                                    "quantity",
+                                                    parseInt(e.target.value) || 1
+                                                )
+                                            }
                                             className={isOverStock ? "border-destructive" : ""}
                                         />
                                     </div>
                                     {item.productId && (
-                                        <span className="text-xs text-muted-foreground w-8 shrink-0">{unit}</span>
+                                        <span className="text-xs text-muted-foreground w-8 shrink-0">
+                                            {unit}
+                                        </span>
                                     )}
                                 </div>
 
+                                {/* Stock hint */}
                                 {item.productId && (
                                     <div className="text-xs text-muted-foreground whitespace-nowrap">
                                         {isOverStock ? (
-                                            <span className="text-destructive font-medium">Max: {currentStock}</span>
+                                            <span className="text-destructive font-medium">
+                                                Max: {currentStock}
+                                            </span>
                                         ) : (
                                             <span>Avail: {currentStock}</span>
                                         )}
                                     </div>
                                 )}
 
+                                {/* Remove */}
                                 <Button
                                     variant="ghost"
                                     size="icon"

@@ -124,3 +124,18 @@ export const deleteSubBrand = actionClient
       return { error: error.message ?? 'Something went wrong' };
     }
   });
+
+  export const getSubBrandsByBrand = async (
+  brandId: string,
+): Promise<{ id: string; name: string }[]> => {
+  try {
+    const result = await api.get<{ data: SubBrand[] } | SubBrand[]>(
+      `/brands/${brandId}/sub-brands?take=200`,
+    );
+    // Handle both { data: [...] } and plain array shapes
+    const list = Array.isArray(result) ? result : (result as any).data ?? [];
+    return list.map((s: SubBrand) => ({ id: s.id, name: s.name }));
+  } catch {
+    return [];
+  }
+};

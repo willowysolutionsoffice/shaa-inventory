@@ -1,154 +1,128 @@
-// src/actions/stock-transfer-actions.ts
 'use server';
 
-import { db } from "@/lib/mock-db";
-import { actionClient } from "@/lib/safeAction";
-import { revalidatePath } from "next/cache";
-import { z } from "zod";
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-export interface StockTransfer {
-  id: string;
-  transferNo: string;
-  transferDate: Date;
-  fromBranchId: string;
-  toBranchId: string;
-  status: "Pending" | "Completed" | "Cancelled";
-  note?: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface StockTransferItem {
-  id: string;
-  transferId: string;
-  productId: string;
-  quantity: number;
-}
-
-// ── In-memory store extension ─────────────────────────────────────────────────
-
-const globalStore = globalThis as unknown as {
-  stockTransfers: StockTransfer[];
-  stockTransferItems: StockTransferItem[];
-  transferCounter: number;
-};
-
-if (!globalStore.stockTransfers) globalStore.stockTransfers = [];
-if (!globalStore.stockTransferItems) globalStore.stockTransferItems = [];
-if (!globalStore.transferCounter) globalStore.transferCounter = 1;
+import { actionClient } from '@/lib/safeAction';
+import { revalidatePath } from 'next/cache';
+import { api } from '@/lib/api';
+import { z } from 'zod';
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
 const transferItemSchema = z.object({
-  productId: z.string().min(1, "Product is required"),
-  quantity: z.number().int().min(1, "Quantity must be at least 1"),
+  productId: z.string().min(1, 'Product is required'),
+  quantity:  z.coerce.number().int().min(1, 'Quantity must be at least 1'),
 });
 
 const createTransferSchema = z.object({
-  fromBranchId: z.string().min(1, "Source branch is required"),
-  toBranchId: z.string().min(1, "Destination branch is required"),
-  note: z.string().optional(),
-  items: z.array(transferItemSchema).min(1, "At least one item is required"),
+  fromBranchId: z.string().min(1, 'Source branch is required'),
+  toBranchId:   z.string().min(1, 'Destination branch is required'),
+  note:         z.string().optional(),
+  items:        z.array(transferItemSchema).min(1, 'At least one item is required'),
 });
+
+const listTransfersSchema = z.object({
+  page:         z.coerce.number().optional().default(1),
+  limit:        z.coerce.number().optional().default(10),
+  branchId:     z.string().optional(),
+  fromBranchId: z.string().optional(),
+  toBranchId:   z.string().optional(),
+  status:       z.enum(['PENDING', 'COMPLETED', 'CANCELLED']).optional(),
+  search:       z.string().optional(),
+});
+
+const getTransferByIdSchema = z.object({
+  id: z.string().min(1),
+});
+
+const cancelTransferSchema = z.object({
+  id: z.string().min(1),
+});
+
+// ── Normalizer ────────────────────────────────────────────────────────────────
+
+function normalizeTransfer(t: any) {
+  return {
+    ...t,
+    fromBranchName: t.fromBranch?.name ?? t.fromBranchName ?? 'Unknown',
+    toBranchName:   t.toBranch?.name   ?? t.toBranchName   ?? 'Unknown',
+    itemCount:      t.items?.length    ?? t.itemCount       ?? 0,
+    items: (t.items ?? []).map((i: any) => ({
+      ...i,
+      product_name: i.product?.productName ?? i.product_name ?? 'Unknown',
+      sku:          i.product?.sku         ?? i.sku          ?? '',
+    })),
+  };
+}
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
 export const createStockTransfer = actionClient
   .inputSchema(createTransferSchema)
   .action(async ({ parsedInput }) => {
-    const { fromBranchId, toBranchId, note, items } = parsedInput;
-
-    if (fromBranchId === toBranchId) {
-      return { error: "Source and destination branches cannot be the same" };
+    try {
+      const transfer = await api.post<any>('/stock-transfers', parsedInput);
+      revalidatePath('/admin/stock-transfer');
+      revalidatePath('/admin/stock-transfer/history');
+      revalidatePath('/admin/stock-adjustment');
+      return { data: normalizeTransfer(transfer) };
+    } catch (error: any) {
+      return { error: error.message ?? 'Something went wrong' };
     }
-
-    // Validate stock availability
-    for (const item of items) {
-      const product = db.products.find((p) => p.id === item.productId);
-      if (!product) return { error: `Product not found: ${item.productId}` };
-      if (product.stock < item.quantity) {
-        return {
-          error: `Insufficient stock for "${product.product_name}". Available: ${product.stock}`,
-        };
-      }
-    }
-
-    const transferNo = `TRF-${new Date().getFullYear()}-${String(globalStore.transferCounter).padStart(4, "0")}`;
-    globalStore.transferCounter += 1;
-
-    const transfer: StockTransfer = {
-      id: `transfer-${Date.now()}`,
-      transferNo,
-      transferDate: new Date(),
-      fromBranchId,
-      toBranchId,
-      status: "Completed",
-      note,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    const transferItems: StockTransferItem[] = items.map((item, idx) => ({
-      id: `titem-${Date.now()}-${idx}`,
-      transferId: transfer.id,
-      productId: item.productId,
-      quantity: item.quantity,
-    }));
-
-    // Deduct from source branch product & add to destination
-    for (const item of items) {
-      const srcProduct = db.products.find((p) => p.id === item.productId && p.branchId === fromBranchId);
-      if (srcProduct) {
-        srcProduct.stock -= item.quantity;
-        srcProduct.updatedAt = new Date();
-      }
-
-      // Check if product exists at destination branch, else we just note it
-      const destProduct = db.products.find((p) => p.id === item.productId && p.branchId === toBranchId);
-      if (destProduct) {
-        destProduct.stock += item.quantity;
-        destProduct.updatedAt = new Date();
-      }
-      // In a real system you'd create the product at destination if it doesn't exist
-    }
-
-    globalStore.stockTransfers.push(transfer);
-    globalStore.stockTransferItems.push(...transferItems);
-
-    revalidatePath("/admin/stock-adjustment");
-    revalidatePath("/admin/stock-transfer");
-
-    return { data: transfer };
   });
 
-export const getStockTransfers = actionClient.action(async () => {
-  try {
-    const transfers = [...globalStore.stockTransfers].sort(
-      (a, b) => new Date(b.transferDate).getTime() - new Date(a.transferDate).getTime()
-    );
-
-    const enriched = transfers.map((t) => {
-      const fromBranch = db.branches.find((b) => b.id === t.fromBranchId);
-      const toBranch = db.branches.find((b) => b.id === t.toBranchId);
-      const items = globalStore.stockTransferItems.filter((i) => i.transferId === t.id);
-      const enrichedItems = items.map((i) => {
-        const product = db.products.find((p) => p.id === i.productId);
-        return { ...i, product_name: product?.product_name ?? "Unknown", sku: product?.sku ?? "" };
+export const getStockTransfers = actionClient
+  .inputSchema(listTransfersSchema)
+  .action(async ({ parsedInput }) => {
+    try {
+      const { page, limit, branchId, fromBranchId, toBranchId, status, search } = parsedInput;
+      const params = new URLSearchParams({
+        page:  String(page),
+        limit: String(limit),
+        ...(branchId     && { branchId }),
+        ...(fromBranchId && { fromBranchId }),
+        ...(toBranchId   && { toBranchId }),
+        ...(status       && { status }),
+        ...(search       && { search }),
       });
+      const payload = await api.get<any>(`/stock-transfers?${params}`);
+      if (payload?.transfers) {
+        payload.transfers = payload.transfers.map(normalizeTransfer);
+      }
+      return { data: payload };
+    } catch (error: any) {
+      return { error: error.message ?? 'Something went wrong' };
+    }
+  });
 
-      return {
-        ...t,
-        fromBranchName: fromBranch?.name ?? "Unknown",
-        toBranchName: toBranch?.name ?? "Unknown",
-        items: enrichedItems,
-        itemCount: items.length,
-      };
-    });
+export const getStockTransferById = actionClient
+  .inputSchema(getTransferByIdSchema)
+  .action(async ({ parsedInput }) => {
+    try {
+      const transfer = await api.get<any>(`/stock-transfers/${parsedInput.id}`);
+      return { data: normalizeTransfer(transfer) };
+    } catch (error: any) {
+      return { error: error.message ?? 'Transfer not found' };
+    }
+  });
 
-    return { data: enriched };
-  } catch (error) {
-    return { error: "Failed to fetch transfers" };
+export const cancelStockTransfer = actionClient
+  .inputSchema(cancelTransferSchema)
+  .action(async ({ parsedInput }) => {
+    try {
+      const transfer = await api.patch<any>(`/stock-transfers/${parsedInput.id}/cancel`, {});
+      revalidatePath('/admin/stock-transfer/history');
+      return { data: normalizeTransfer(transfer) };
+    } catch (error: any) {
+      return { error: error.message ?? 'Something went wrong' };
+    }
+  });
+
+// ── Non-action helper (dropdown / SSR) ───────────────────────────────────────
+
+export async function getBranchDropdown() {
+  try {
+    const branches = await api.get<any[]>('/branches/dropdown');
+    return branches ?? [];
+  } catch {
+    return [];
   }
-});
+}

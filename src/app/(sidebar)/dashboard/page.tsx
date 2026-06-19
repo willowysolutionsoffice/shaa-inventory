@@ -609,28 +609,53 @@ async function AdminDashboard({
               <CardContent className="p-6">
                 <div className="mb-4 flex items-center justify-between">
                   <h3 className="text-foreground text-sm font-bold uppercase tracking-wider">Branch Performance</h3>
-                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">Optimal</Badge>
+                  <Badge
+                    variant="outline"
+                    className={
+                      overallStatus === "Optimal"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]"
+                        : overallStatus === "Needs Attention"
+                        ? "bg-red-50 text-red-700 border-red-200 text-[10px]"
+                        : "bg-blue-50 text-blue-700 border-blue-200 text-[10px]"
+                    }
+                  >
+                    {overallStatus}
+                  </Badge>
                 </div>
                 <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="font-medium">HQ Central Store</span>
-                      <span className="font-bold text-emerald-600">92%</span>
-                    </div>
-                    <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                      <div className="h-full bg-emerald-500 rounded-full" style={{ width: "92%" }}></div>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="font-medium">Downtown Outlet</span>
-                      <span className="font-bold text-blue-600">76%</span>
-                    </div>
-                    <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-500 rounded-full" style={{ width: "76%" }}></div>
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground italic mt-2">Metrics based on weekly sales targets</p>
+                  {branchPerf.length === 0 ? (
+                    <p className="text-xs text-muted-foreground italic">No branch sales data yet.</p>
+                  ) : (
+                    branchPerf.map((branch, i) => {
+                      const colors = ["emerald", "blue", "purple", "orange"];
+                      const c = colors[i % colors.length];
+                      const barColor =
+                        c === "emerald" ? "bg-emerald-500" :
+                        c === "blue"    ? "bg-blue-500"    :
+                        c === "purple"  ? "bg-purple-500"  : "bg-orange-500";
+                      const textColor =
+                        c === "emerald" ? "text-emerald-600" :
+                        c === "blue"    ? "text-blue-600"    :
+                        c === "purple"  ? "text-purple-600"  : "text-orange-600";
+                      return (
+                        <div key={branch.id}>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="font-medium truncate max-w-[140px]">{branch.name}</span>
+                            <span className={`font-bold ${textColor}`}>{branch.pct}%</span>
+                          </div>
+                          <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                            <div
+                              className={`h-full ${barColor} rounded-full transition-all duration-700`}
+                              style={{ width: `${Math.min(branch.pct, 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  <p className="text-[10px] text-muted-foreground italic mt-2">
+                    This week vs last week sales
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -731,27 +756,38 @@ async function AdminDashboard({
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
                 </span>
                 Live Notifications
+                {notifications.length > 0 && (
+                  <span className="ml-auto text-[10px] font-semibold bg-red-500 text-white rounded-full px-1.5 py-0.5">
+                    {notifications.length}
+                  </span>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="divide-y divide-border">
-                <div className="p-4 flex gap-3 hover:bg-muted/30 transition-colors cursor-pointer">
-                  <div className="mt-0.5 bg-blue-100 text-blue-600 p-1.5 rounded-md h-fit"><IconUsers className="h-3.5 w-3.5" /></div>
-                  <div>
-                    <p className="text-xs font-semibold text-foreground">New B2B Account Registered</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Corporate client "TechVision Inc" was onboarded.</p>
-                    <p className="text-[9px] text-muted-foreground mt-1">10 minutes ago</p>
-                  </div>
+              {notifications.length === 0 ? (
+                <p className="text-center text-xs text-muted-foreground py-6">No recent activity</p>
+              ) : (
+                <div className="divide-y divide-border">
+                  {notifications.map((n) => (
+                    <div key={n.id} className="p-4 flex gap-3 hover:bg-muted/30 transition-colors cursor-pointer">
+                      <div className={`mt-0.5 p-1.5 rounded-md h-fit shrink-0 ${
+                        n.color === "blue"  ? "bg-blue-100 text-blue-600"   :
+                        n.color === "green" ? "bg-green-100 text-green-600" :
+                                              "bg-red-100 text-red-600"
+                      }`}>
+                        {n.icon === "user"    && <IconUsers className="h-3.5 w-3.5" />}
+                        {n.icon === "dollar"  && <IconCurrencyDollar className="h-3.5 w-3.5" />}
+                        {n.icon === "package" && <IconPackage className="h-3.5 w-3.5" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-foreground">{n.title}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{n.body}</p>
+                        <p className="text-[9px] text-muted-foreground mt-1">{n.time}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="p-4 flex gap-3 hover:bg-muted/30 transition-colors cursor-pointer">
-                  <div className="mt-0.5 bg-green-100 text-green-600 p-1.5 rounded-md h-fit"><IconCurrencyDollar className="h-3.5 w-3.5" /></div>
-                  <div>
-                    <p className="text-xs font-semibold text-foreground">Large Payment Cleared</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Invoice #INV-9022 fully paid ($4,500.00) via Bank Transfer.</p>
-                    <p className="text-[9px] text-muted-foreground mt-1">1 hour ago</p>
-                  </div>
-                </div>
-              </div>
+              )}
             </CardContent>
           </Card>
 
@@ -759,31 +795,33 @@ async function AdminDashboard({
           <Card className="border-border shadow-sm bg-card">
             <CardHeader className="py-4 border-b border-border flex flex-row items-center justify-between">
               <CardTitle className="text-sm font-bold uppercase tracking-wider">Pending POs</CardTitle>
-              <Badge variant="secondary" className="text-[10px]">3 Active</Badge>
+              <Badge variant="secondary" className="text-[10px]">{pendingPOs.length} Active</Badge>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="divide-y divide-border">
-                <div className="p-4 flex justify-between items-center hover:bg-muted/30 transition-colors">
-                  <div>
-                    <p className="text-xs font-bold font-mono text-purple-600">PO-2026-88</p>
-                    <p className="text-[10px] text-muted-foreground">Global Electronics Ltd</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs font-bold">$1,250.00</p>
-                    <p className="text-[9px] text-orange-500 font-semibold uppercase">Processing</p>
-                  </div>
+              {pendingPOs.length === 0 ? (
+                <p className="text-center text-xs text-muted-foreground py-6">No pending purchase orders</p>
+              ) : (
+                <div className="divide-y divide-border">
+                  {pendingPOs.map((po) => (
+                    <div key={po.id} className="p-4 flex justify-between items-center hover:bg-muted/30 transition-colors">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold font-mono text-purple-600">{po.purchaseNo}</p>
+                        <p className="text-[10px] text-muted-foreground truncate max-w-[160px]">{po.supplier?.name ?? "—"}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs font-bold">{formatCurrency(Number(po.totalAmount))}</p>
+                        <p className={`text-[9px] font-semibold uppercase ${
+                          po.paymentStatus === "PENDING" ? "text-orange-500" : "text-blue-500"
+                        }`}>
+                          {po.paymentStatus === "PARTIAL"
+                            ? `Due ${formatCurrency(Number(po.paymentDue))}`
+                            : "Unpaid"}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="p-4 flex justify-between items-center hover:bg-muted/30 transition-colors">
-                  <div>
-                    <p className="text-xs font-bold font-mono text-purple-600">PO-2026-89</p>
-                    <p className="text-[10px] text-muted-foreground">Office Supplies Co</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs font-bold">$420.50</p>
-                    <p className="text-[9px] text-blue-500 font-semibold uppercase">Dispatched</p>
-                  </div>
-                </div>
-              </div>
+              )}
               <div className="p-3 border-t border-border text-center">
                 <a href="/purchase" className="text-xs text-muted-foreground hover:text-foreground font-medium">View all orders →</a>
               </div>
