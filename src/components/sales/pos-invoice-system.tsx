@@ -185,57 +185,42 @@ function ThermalReceipt({ invoice }: { invoice: POSInvoice }) {
 </table>
 
       {/* ── Totals ── */}
-      <div style={{ borderTop: dashed, paddingTop: 6, marginTop: 2 }}>
-        {/* Net Total */}
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
-          <span style={{ color: "#555" }}>Net Total:</span>
-          <span>{toNum(invoice.subtotal - invoice.couponDiscount - invoice.manualDiscount).toLocaleString("en-IN")}</span>
-        </div>
+      {/* ── Totals ── */}
+<div style={{ borderTop: dashed, paddingTop: 6, marginTop: 2 }}>
+  {/* Discounts (if any) */}
+  {invoice.couponDiscount > 0 && (
+    <div style={{ display: "flex", justifyContent: "space-between", color: "#1a7a4a", fontSize: 10 }}>
+      <span>Coupon ({invoice.couponCode}):</span>
+      <span>-{invoice.couponDiscount.toLocaleString("en-IN")}</span>
+    </div>
+  )}
+  {invoice.manualDiscount > 0 && (
+    <div style={{ display: "flex", justifyContent: "space-between", color: "#1a7a4a", fontSize: 10 }}>
+      <span>Discount:</span>
+      <span>-{invoice.manualDiscount.toLocaleString("en-IN")}</span>
+    </div>
+  )}
 
-        {/* Discounts (if any) */}
-        {invoice.couponDiscount > 0 && (
-          <div style={{ display: "flex", justifyContent: "space-between", color: "#1a7a4a", fontSize: 10 }}>
-            <span>Coupon ({invoice.couponCode}):</span>
-            <span>-{invoice.couponDiscount.toLocaleString("en-IN")}</span>
-          </div>
-        )}
-        {invoice.manualDiscount > 0 && (
-          <div style={{ display: "flex", justifyContent: "space-between", color: "#1a7a4a", fontSize: 10 }}>
-            <span>Discount:</span>
-            <span>-{invoice.manualDiscount.toLocaleString("en-IN")}</span>
-          </div>
-        )}
+  {/* Grand Total */}
+  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 900, fontSize: 14, borderTop: solid, marginTop: 4, paddingTop: 4 }}>
+    <span>Grand Total:</span>
+    <span>{toNum(invoice.grandTotal).toLocaleString("en-IN")}</span>
+  </div>
 
-        {/* Grand Total */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            fontWeight: 900,
-            fontSize: 14,
-            borderTop: solid,
-            marginTop: 4,
-            paddingTop: 4,
-          }}
-        >
-          <span>Grand Total:</span>
-          <span>{toNum(invoice.grandTotal).toLocaleString("en-IN")}</span>
-        </div>
+  {/* Payment method */}
+  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#555", marginTop: 2 }}>
+    <span>Paid via:</span>
+    <span style={{ fontWeight: 600 }}>{invoice.paymentMethod}</span>
+  </div>
 
-        {/* Payment method */}
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#555", marginTop: 2 }}>
-          <span>Paid via:</span>
-          <span style={{ fontWeight: 600 }}>{invoice.paymentMethod}</span>
-        </div>
-
-        {/* Change */}
-        {invoice.change > 0 && (
-          <div style={{ display: "flex", justifyContent: "space-between", color: "#1a7a4a", fontWeight: 700 }}>
-            <span>Change:</span>
-            <span>{invoice.change.toLocaleString("en-IN")}</span>
-          </div>
-        )}
-      </div>
+  {/* Change */}
+  {invoice.change > 0 && (
+    <div style={{ display: "flex", justifyContent: "space-between", color: "#1a7a4a", fontWeight: 700 }}>
+      <span>Change:</span>
+      <span>{invoice.change.toLocaleString("en-IN")}</span>
+    </div>
+  )}
+</div>
 
       {/* ── Salesman ── */}
       <div style={{ borderTop: dashed, marginTop: 8, paddingTop: 6 }}>

@@ -34,7 +34,6 @@ export default async function POSInvoicePage({ params }: Props) {
   );
   const itemDiscountTotal = items.reduce((s: number, i: any) => s + toNum(i.discount), 0);
   const netAfterDiscount  = subtotal - itemDiscountTotal;
-  const taxAmount         = (netAfterDiscount * 12) / 100;
   const amountPaid        = payments.reduce((s: number, p: any) => s + toNum(p.amount), 0);
 
   const invoice = {
@@ -70,7 +69,6 @@ export default async function POSInvoicePage({ params }: Props) {
     couponCode:     "",
     manualDiscount: itemDiscountTotal,
     taxRate:        12,
-    taxAmount,
     grandTotal:  toNum(sale.grandTotal),
     amountPaid,
     change:      Math.max(0, amountPaid - toNum(sale.grandTotal)),

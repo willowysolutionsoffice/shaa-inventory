@@ -210,9 +210,7 @@ export default function PosBillingPage({
   const manualPct            = typeof manualDiscountPercent === "number" ? Math.min(Math.max(manualDiscountPercent, 0), 100) : 0;
   const manualDiscountAmount = (afterCoupon * manualPct) / 100;
   const totalDiscountAmount  = couponDiscountAmount + manualDiscountAmount;
-  const taxBase              = subtotal - totalDiscountAmount;
-  const taxAmount            = (taxBase * 12) / 100;
-  const grandTotal           = taxBase + taxAmount;
+  const grandTotal           = subtotal - totalDiscountAmount;
   const cashChange           = paymentMethod === "cash" && typeof cashTendered === "number" && cashTendered > grandTotal
                                ? cashTendered - grandTotal : 0;
 
@@ -661,10 +659,7 @@ export default function PosBillingPage({
                     <span>−{formatCurrency(totalDiscountAmount)}</span>
                   </div>
                 )}
-                <div className="flex justify-between">
-                  <span>GST / VAT (12%):</span>
-                  <span className="font-semibold text-foreground">{formatCurrency(taxAmount)}</span>
-                </div>
+                
                 <Separator className="my-1 bg-border" />
                 <div className="flex justify-between text-base font-extrabold text-purple-700 dark:text-purple-400">
                   <span>Total Payable:</span>
