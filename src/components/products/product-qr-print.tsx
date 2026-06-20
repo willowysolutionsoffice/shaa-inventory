@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Printer, QrCode } from "lucide-react";
+import { Printer, Barcode } from "lucide-react";
 import { toast } from "sonner";
 
 interface ProductQrPrintProps {
@@ -14,115 +14,116 @@ interface ProductQrPrintProps {
 
 export function ProductQrPrint({ sku, productName }: ProductQrPrintProps) {
   const [printQty, setPrintQty] = useState<number>(1);
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  useEffect(() => {
+    if (!sku || !svgRef.current) return;
+    import("jsbarcode").then((mod) => {
+      const JsBarcode = mod.default;
+      JsBarcode(svgRef.current, sku, {
+        format: "CODE128",
+        width: 2,
+        height: 50,
+        displayValue: true,
+        fontSize: 11,
+        margin: 6,
+        background: "#ffffff",
+        lineColor: "#000000",
+      });
+    });
+  }, [sku]);
 
   const handlePrint = () => {
     if (printQty < 1) {
       toast.warning("Please enter a valid quantity of 1 or more.");
       return;
     }
-    
-    // Create a new window for printing to avoid printing the whole dashboard UI
+
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
       toast.error("Failed to open print window. Please allow popups.");
       return;
     }
 
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(sku)}`;
-
-    // Generate HTML for printing labels
+    // 38mm × 25mm at 96dpi ≈ 144px × 94px
+    // We embed a canvas-rendered barcode via JsBarcode in the print window
     let labelHtml = "";
     for (let i = 0; i < printQty; i++) {
-      labelHtml += `
-        <div class="label-item">
-          <img src="${qrUrl}" alt="QR Code" />
-          <div class="label-text">
-            <span class="prod-name">${productName}</span>
-            <span class="prod-sku">${sku}</span>
-          </div>
-        </div>
-      `;
+      labelHtml += `<div class="label-item"><svg class="barcode" id="bc-${i}"></svg><span class="prod-name">${productName}</span></div>`;
     }
 
     printWindow.document.write(`
       <html>
         <head>
-          <title>Print QR Codes - ${sku}</title>
+          <title>Print Barcodes - ${sku}</title>
+          <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
           <style>
+            @page { margin: 6mm; }
             @media print {
-              body {
-                margin: 0;
-                padding: 10px;
-              }
+              body { margin: 0; padding: 0; }
             }
             body {
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-              display: grid;
-              grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-              gap: 15px;
-              padding: 20px;
-              background-color: #ffffff;
+              display: flex;
+              flex-wrap: wrap;
+              gap: 4mm;
+              padding: 4mm;
+              background: #fff;
             }
             .label-item {
-              border: 1px solid #e2e8f0;
-              border-radius: 8px;
-              padding: 10px;
+              width: 38mm;
+              height: 25mm;
+              border: 0.3mm solid #cbd5e1;
+              border-radius: 1.5mm;
               display: flex;
               flex-direction: column;
               align-items: center;
               justify-content: center;
-              text-align: center;
+              padding: 1.5mm 2mm 1mm;
+              box-sizing: border-box;
               page-break-inside: avoid;
-              background-color: #ffffff;
-              width: 120px;
-              height: 150px;
-              box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+              background: #fff;
+              overflow: hidden;
             }
-            .label-item img {
-              width: 85px;
-              height: 85px;
-              display: block;
-              margin-bottom: 8px;
-            }
-            .label-text {
-              display: flex;
-              flex-direction: column;
-              gap: 2px;
-              width: 100%;
+            .label-item svg.barcode {
+              width: 34mm;
+              height: 16mm;
             }
             .prod-name {
-              font-size: 9px;
+              font-size: 6pt;
               font-weight: 600;
               color: #1e293b;
               white-space: nowrap;
               overflow: hidden;
               text-overflow: ellipsis;
-              display: block;
-              padding: 0 4px;
-            }
-            .prod-sku {
-              font-size: 8px;
-              font-family: monospace;
-              font-weight: 700;
-              color: #64748b;
-              background-color: #f1f5f9;
-              padding: 1px 4px;
-              border-radius: 3px;
-              align-self: center;
+              max-width: 34mm;
+              margin-top: 0.5mm;
+              text-align: center;
             }
           </style>
         </head>
         <body>
           ${labelHtml}
           <script>
-            // Automatically trigger print dialog when images are loaded
-            window.onload = function() {
-              setTimeout(function() {
+            window.onload = function () {
+              document.querySelectorAll("svg.barcode").forEach(function (el) {
+                JsBarcode(el, ${JSON.stringify(sku)}, {
+                  format: "CODE128",
+                  width: 1.4,
+                  height: 45,
+                  displayValue: true,
+                  fontSize: 7,
+                  margin: 2,
+                  background: "#ffffff",
+                  lineColor: "#000000",
+                });
+              });
+              setTimeout(function () {
                 window.print();
                 window.close();
-              }, 600);
+              }, 700);
             };
-          </script>
+          <\/script>
         </body>
       </html>
     `);
@@ -133,21 +134,17 @@ export function ProductQrPrint({ sku, productName }: ProductQrPrintProps) {
     <Card className="border border-border shadow-sm">
       <CardHeader className="pb-3">
         <CardTitle className="text-base font-bold flex items-center gap-1.5">
-          <QrCode className="h-4 w-4 text-purple-600" /> QR Code & Printing
+          <Barcode className="h-4 w-4 text-purple-600" /> Barcode & Printing
         </CardTitle>
         <CardDescription className="text-xs">
-          Generate individual or batch QR labels for inventory scanning
+          Generate 38×25mm CODE128 barcode labels for inventory scanning
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* QR Code Container */}
+        {/* Barcode Preview */}
         <div className="flex flex-col items-center justify-center p-4 border border-dashed border-border/80 bg-muted/10 rounded-xl">
           <div className="bg-white p-3 rounded-2xl border border-border shadow-sm">
-            <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(sku)}`}
-              alt="SKU QR Code"
-              className="w-[140px] h-[140px] select-none"
-            />
+            <svg ref={svgRef} />
           </div>
           <span className="font-mono text-xs font-bold text-purple-700 bg-purple-50 dark:bg-purple-950/30 px-2 py-0.5 mt-3 rounded border border-purple-100 dark:border-purple-900/50">
             {sku}

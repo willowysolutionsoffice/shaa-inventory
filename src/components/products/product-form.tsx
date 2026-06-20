@@ -327,7 +327,48 @@ function VariantRow({
     </Card>
   );
 }
+function BarcodePanel({ sku }: { sku: string }) {
+  const svgRef = useRef<SVGSVGElement>(null);
 
+  useEffect(() => {
+    if (!sku || !svgRef.current) return;
+    import("jsbarcode").then((mod) => {
+      const JsBarcode = mod.default;
+      JsBarcode(svgRef.current, sku, {
+        format: "CODE128",
+        width: 2,
+        height: 50,
+        displayValue: true,
+        fontSize: 11,
+        margin: 6,
+        background: "#ffffff",
+        lineColor: "#000000",
+      });
+    });
+  }, [sku]);
+
+  return (
+    <Card className="p-4 flex flex-col items-center justify-center border border-dashed border-border/80 bg-muted/10">
+      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+        Product Barcode
+      </span>
+      {sku ? (
+        <div className="flex flex-col items-center gap-2.5">
+          <div className="bg-white p-2.5 rounded-xl border border-border shadow-sm">
+            <svg ref={svgRef} />
+          </div>
+          <span className="font-mono text-xs font-bold text-purple-700 bg-purple-50 dark:bg-purple-950/30 px-2 py-0.5 rounded border border-purple-100 dark:border-purple-900/50">
+            {sku}
+          </span>
+        </div>
+      ) : (
+        <div className="text-center py-6 text-muted-foreground">
+          <span className="text-sm">Enter SKU to generate barcode</span>
+        </div>
+      )}
+    </Card>
+  );
+}
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -960,30 +1001,9 @@ export const ProductFormSheet = ({
                 )} />
               </Card>
 
-              {/* QR code panel */}
-              <Card className="p-4 flex flex-col items-center justify-center border border-dashed border-border/80 bg-muted/10">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                  Product QR Code
-                </span>
-                {skuValue ? (
-                  <div className="flex flex-col items-center gap-2.5">
-                    <div className="bg-white p-2.5 rounded-xl border border-border shadow-sm">
-                      <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(skuValue)}`}
-                        alt="SKU QR Code"
-                        className="w-[140px] h-[140px] select-none"
-                      />
-                    </div>
-                    <span className="font-mono text-xs font-bold text-purple-700 bg-purple-50 dark:bg-purple-950/30 px-2 py-0.5 rounded border border-purple-100 dark:border-purple-900/50">
-                      {skuValue}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="text-center py-6 text-muted-foreground">
-                    <span className="text-sm">Enter SKU to generate QR Code</span>
-                  </div>
-                )}
-              </Card>
+              {/* Bar code panel */}
+              {/* Barcode panel */}
+<BarcodePanel sku={skuValue} />
             </div>
 
             {/* ----------------------------------------------------------------
