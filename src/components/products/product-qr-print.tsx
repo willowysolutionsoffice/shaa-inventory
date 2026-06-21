@@ -65,41 +65,36 @@ export function ProductQrPrint({ sku, productName }: ProductQrPrintProps) {
             body {
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
               display: flex;
-              flex-wrap: wrap;
-              gap: 4mm;
-              padding: 4mm;
+  flex-wrap: wrap;
+  gap: 0mm;              /* remove gap — rely on physical label spacing */
+  padding: 0mm;
+  margin: 0;
               background: #fff;
             }
             .label-item {
-              width: 38mm;
-              height: 25mm;
-              border: 0.3mm solid #cbd5e1;
-              border-radius: 1.5mm;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              padding: 1.5mm 2mm 1mm;
-              box-sizing: border-box;
-              page-break-inside: avoid;
-              background: #fff;
-              overflow: hidden;
-            }
-            .label-item svg.barcode {
-              width: 34mm;
-              height: 16mm;
-            }
-            .prod-name {
-              font-size: 6pt;
-              font-weight: 600;
-              color: #1e293b;
-              white-space: nowrap;
-              overflow: hidden;
-              text-overflow: ellipsis;
-              max-width: 34mm;
-              margin-top: 0.5mm;
-              text-align: center;
-            }
+  width: 38mm;
+  height: 25mm;
+  border: 0.3mm solid #cbd5e1;
+  border-radius: 1.5mm;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1mm;          /* reduced padding */
+  box-sizing: border-box;
+  page-break-inside: avoid;
+  overflow: hidden;
+}
+
+.label-item svg.barcode {
+  width: 34mm;
+  height: 14mm;          /* reduced from 16mm */
+}
+
+.prod-name {
+  font-size: 5pt;        /* smaller font */
+  margin-top: 0.3mm;
+}
           </style>
         </head>
         <body>
@@ -108,15 +103,15 @@ export function ProductQrPrint({ sku, productName }: ProductQrPrintProps) {
             window.onload = function () {
               document.querySelectorAll("svg.barcode").forEach(function (el) {
                 JsBarcode(el, ${JSON.stringify(sku)}, {
-                  format: "CODE128",
-                  width: 1.4,
-                  height: 45,
-                  displayValue: true,
-                  fontSize: 7,
-                  margin: 2,
-                  background: "#ffffff",
-                  lineColor: "#000000",
-                });
+  format: "CODE128",
+  width: 1.2,
+  height: 35,            // reduced from 45
+  displayValue: true,
+  fontSize: 6,
+  margin: 1,             // reduced from 2
+  background: "#ffffff",
+  lineColor: "#000000",
+});
               });
               setTimeout(function () {
                 window.print();
