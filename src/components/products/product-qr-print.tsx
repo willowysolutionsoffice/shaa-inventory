@@ -46,9 +46,9 @@ export function ProductQrPrint({ sku, productName }: ProductQrPrintProps) {
     }
 
     let labelHtml = "";
-for (let i = 0; i < printQty; i++) {
-  labelHtml += `<div class="label-item"><svg class="barcode" id="bc-${i}"></svg></div>`;
-}
+    for (let i = 0; i < printQty; i++) {
+      labelHtml += `<div class="label-item"><svg class="barcode" id="bc-${i}"></svg></div>`;
+    }
 
     printWindow.document.write(`
       <html>
@@ -69,20 +69,21 @@ for (let i = 0; i < printQty; i++) {
               background: #fff;
             }
             .label-item {
-              width: 105mm;
-              height: 74mm;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              padding: 4mm;
-              overflow: hidden;
-            }
+  width: 105mm;
+  height: 74mm;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 6mm 10mm 6mm 6mm;  /* ← reduce right padding to fix right shift */
+  overflow: hidden;
+}
             .label-item svg.barcode {
+              display: block;
               width: 90mm;
-              height: 30mm;
+              height: auto;
+              margin: 0 auto;
             }
-            
           </style>
         </head>
         <body>
@@ -93,12 +94,12 @@ for (let i = 0; i < printQty; i++) {
                 JsBarcode(el, ${JSON.stringify(sku)}, {
   format: "CODE128",
   width: 2.5,
-  height: 55,
+  height: 60,        // ← increased from 40
   displayValue: true,
-  text: ${JSON.stringify(productName + " | " + sku)},
-  fontSize: 14,
-  textMargin: 4,
-  margin: 4,
+  text: ${JSON.stringify(productName + "  |  " + sku)},
+  fontSize: 18,
+  textMargin: 8,
+  margin: 10,
   background: "#ffffff",
   lineColor: "#000000",
 });
@@ -122,7 +123,7 @@ for (let i = 0; i < printQty; i++) {
           <Barcode className="h-4 w-4 text-purple-600" /> Barcode & Printing
         </CardTitle>
         <CardDescription className="text-xs">
-          Generate 38×25mm CODE128 barcode labels for inventory scanning
+          Generate CODE128 barcode labels — 2×4 per A4 sheet
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
