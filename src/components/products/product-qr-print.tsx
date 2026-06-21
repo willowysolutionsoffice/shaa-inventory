@@ -45,12 +45,10 @@ export function ProductQrPrint({ sku, productName }: ProductQrPrintProps) {
       return;
     }
 
-    // 38mm × 25mm at 96dpi ≈ 144px × 94px
-    // We embed a canvas-rendered barcode via JsBarcode in the print window
     let labelHtml = "";
-    for (let i = 0; i < printQty; i++) {
-      labelHtml += `<div class="label-item"><svg class="barcode" id="bc-${i}"></svg><span class="prod-name">${productName}</span></div>`;
-    }
+for (let i = 0; i < printQty; i++) {
+  labelHtml += `<div class="label-item"><svg class="barcode" id="bc-${i}"></svg></div>`;
+}
 
     printWindow.document.write(`
       <html>
@@ -58,43 +56,33 @@ export function ProductQrPrint({ sku, productName }: ProductQrPrintProps) {
           <title>Print Barcodes - ${sku}</title>
           <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
           <style>
-            @page { margin: 6mm; }
-            @media print {
-              body { margin: 0; padding: 0; }
+            @page {
+              size: A4 portrait;
+              margin: 0;
             }
+            * { box-sizing: border-box; margin: 0; padding: 0; }
             body {
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-              display: flex;
-  flex-wrap: wrap;
-  gap: 0mm;              /* remove gap — rely on physical label spacing */
-  padding: 0mm;
-  margin: 0;
+              width: 210mm;
+              display: grid;
+              grid-template-columns: repeat(2, 105mm);
+              grid-template-rows: repeat(4, 74mm);
               background: #fff;
             }
             .label-item {
-  width: 38mm;
-  height: 25mm;
-  border: 0.3mm solid #cbd5e1;
-  border-radius: 1.5mm;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 1mm;          /* reduced padding */
-  box-sizing: border-box;
-  page-break-inside: avoid;
-  overflow: hidden;
-}
-
-.label-item svg.barcode {
-  width: 34mm;
-  height: 14mm;          /* reduced from 16mm */
-}
-
-.prod-name {
-  font-size: 5pt;        /* smaller font */
-  margin-top: 0.3mm;
-}
+              width: 105mm;
+              height: 74mm;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              padding: 4mm;
+              overflow: hidden;
+            }
+            .label-item svg.barcode {
+              width: 90mm;
+              height: 30mm;
+            }
+            
           </style>
         </head>
         <body>
@@ -104,11 +92,13 @@ export function ProductQrPrint({ sku, productName }: ProductQrPrintProps) {
               document.querySelectorAll("svg.barcode").forEach(function (el) {
                 JsBarcode(el, ${JSON.stringify(sku)}, {
   format: "CODE128",
-  width: 1.2,
-  height: 35,            // reduced from 45
+  width: 2.5,
+  height: 55,
   displayValue: true,
-  fontSize: 6,
-  margin: 1,             // reduced from 2
+  text: ${JSON.stringify(productName + " | " + sku)},
+  fontSize: 14,
+  textMargin: 4,
+  margin: 4,
   background: "#ffffff",
   lineColor: "#000000",
 });
