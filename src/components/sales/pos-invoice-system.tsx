@@ -24,13 +24,23 @@ export interface InvoiceItem {
   total: number;
 }
 
+export interface InvoicePayment {
+  method: string;  // "cash" | "card" | "upi"
+  amount: number;
+}
+
 export interface POSInvoice {
   saleId: string;
   invoiceNo: string;
   date: Date | string;
   customer: { name: string; phone: string };
   branch: { name: string; address: string; phone: string };
+
+  // Legacy single-method field — kept for backward compat with old records
   paymentMethod: string;
+  // New: array of payments (may be absent on old records — always use normalizedPayments below)
+  payments?: InvoicePayment[];
+
   items: InvoiceItem[];
   subtotal: number;
   couponDiscount: number;
@@ -61,15 +71,10 @@ const fmtDate = (date: string | Date | null | undefined): { date: string; time: 
   const d = date instanceof Date ? date : new Date(date);
   if (isNaN(d.getTime())) return { date: "—", time: "—" };
   const dateStr = new Intl.DateTimeFormat("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
+    day: "2-digit", month: "short", year: "numeric",
   }).format(d);
   const timeStr = new Intl.DateTimeFormat("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
   }).format(d);
   return { date: dateStr, time: timeStr };
 };
@@ -79,23 +84,118 @@ const toNum = (v: unknown): number => {
   return isFinite(n) ? n : 0;
 };
 
-function ThermalReceipt({ invoice }: { invoice: POSInvoice }) {
+// ── Normalize: always produce a valid payments array, even from old records ───
+function normalizePayments(invoice: POSInvoice): InvoicePayment[] {
+  if (invoice.payments && invoice.payments.length > 0) return invoice.payments;
+  // Fall back to legacy single paymentMethod string
+  return [{ method: invoice.paymentMethod ?? "cash", amount: toNum(invoice.grandTotal) }];
+}
+
+function methodLabel(method: string): string {
+  const m = method.toLowerCase();
+  if (m === "cash") return "Cash";
+  if (m === "card") return "Card";
+  if (m === "upi")  return "UPI";
+  return method;
+}
+
+function paymentSummary(payments: InvoicePayment[]): string {
+  if (!payments.length) return "—";
+  if (payments.length === 1) return methodLabel(payments[0].method);
+  return payments.map((p) => methodLabel(p.method)).join(" + ");
+}
+
+function MethodIcon({ method, size = 13 }: { method: string; size?: number }) {
+  const m = method.toLowerCase();
+  if (m === "upi")  return <Wallet size={size} />;
+  if (m === "card") return <CreditCard size={size} />;
+  return <IndianRupee size={size} />;
+}
+
+// ── Shared payment breakdown — on-screen receipt ─────────────────────────────
+
+function PaymentBreakdown({ payments, change }: { payments: InvoicePayment[]; change: number }) {
+  const isSplit = payments.length > 1;
+  return (
+    <div>
+      {isSplit ? (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#000", marginTop: 2, fontWeight: 700 }}>
+            <span>Paid via:</span>
+            <span>Split Payment</span>
+          </div>
+          {payments.map((p, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#000", paddingLeft: 8 }}>
+              <span>↳ {methodLabel(p.method)}:</span>
+              <span style={{ fontWeight: 700 }}>{p.amount.toLocaleString("en-IN")}</span>
+            </div>
+          ))}
+        </>
+      ) : (
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#000", marginTop: 2 }}>
+          <span>Paid via:</span>
+          <span style={{ fontWeight: 700 }}>{methodLabel(payments[0].method)}</span>
+        </div>
+      )}
+      {change > 0 && (
+        <div style={{ display: "flex", justifyContent: "space-between", color: "#000", fontWeight: 700 }}>
+          <span>Change:</span>
+          <span>{change.toLocaleString("en-IN")}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Payment HTML for the thermal print popup ──────────────────────────────────
+
+function buildPaymentHtml(payments: InvoicePayment[], change: number): string {
+  const isSplit = payments.length > 1;
+
+  const changeRow = change > 0
+    ? `<div style="display:flex;justify-content:space-between;color:#000;font-weight:700;margin-top:2px;"><span>Change:</span><span>${change.toLocaleString("en-IN")}</span></div>`
+    : "";
+
+  if (!isSplit) {
+    return `
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:#000;margin-top:2px;">
+        <span>Paid via:</span>
+        <span style="font-weight:700;color:#000;">${methodLabel(payments[0].method)}</span>
+      </div>
+      ${changeRow}
+    `;
+  }
+
+  const rows = payments.map((p) => `
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:#000;padding-left:8px;">
+      <span>&#x21b3; ${methodLabel(p.method)}:</span>
+      <span style="font-weight:700;">${p.amount.toLocaleString("en-IN")}</span>
+    </div>`).join("");
+
+  return `
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:#000;margin-top:2px;font-weight:700;">
+      <span>Paid via:</span><span>Split Payment</span>
+    </div>
+    ${rows}
+    ${changeRow}
+  `;
+}
+
+// ── ThermalReceipt (on-screen preview) ───────────────────────────────────────
+
+function ThermalReceipt({ invoice, payments }: { invoice: POSInvoice; payments: InvoicePayment[] }) {
   const { date, time } = fmtDate(invoice.date);
-
-  const mono: React.CSSProperties = {
-    fontFamily: "'Courier New', Courier, monospace",
-    fontSize: 11,
-    lineHeight: 1.55,
-    color: "#111",
-  };
-
-  const dashed = "1px dashed #999";
-  const solid  = "1px solid #111";
+  const dashed = "1px dashed #000";
+  const solid  = "1px solid #000";
 
   return (
-    <div id="print-receipt"
+    <div
+      id="print-receipt"
       style={{
-        ...mono,
+        fontFamily: "'Courier New', Courier, monospace",
+        fontSize: 11,
+        lineHeight: 1.55,
+        color: "#000000",
         background: "white",
         width: 300,
         padding: "18px 16px",
@@ -103,18 +203,16 @@ function ThermalReceipt({ invoice }: { invoice: POSInvoice }) {
         borderRadius: 4,
       }}
     >
-      {/* ── Store header ── */}
+      {/* Store header */}
       <div style={{ textAlign: "center", marginBottom: 10 }}>
-        <div style={{ fontWeight: 900, fontSize: 17, letterSpacing: 1.5, textTransform: "uppercase" }}>
-          SHAASHOPY
-        </div>
-        <div style={{ fontSize: 10, marginTop: 1 }}>2ND FLOOR, HILITE MALL</div>
-        <div style={{ fontSize: 10 }}>PH: +91 9847640052</div>
-        <div style={{ fontSize: 10 }}>GSTIN: 32AFJFS9358F1ZN</div>
+        <div style={{ fontWeight: 900, fontSize: 17, letterSpacing: 1.5, textTransform: "uppercase", color: "#000" }}>SHAASHOPY</div>
+        <div style={{ fontSize: 10, marginTop: 1, color: "#000" }}>2ND FLOOR, HILITE MALL</div>
+        <div style={{ fontSize: 10, color: "#000" }}>PH: +91 9847640052</div>
+        <div style={{ fontSize: 10, color: "#000" }}>GSTIN: 32AFJFS9358F1ZN</div>
       </div>
 
-      {/* ── Bill No / Date / Time ── */}
-      <div style={{ borderTop: dashed, borderBottom: dashed, padding: "5px 0", marginBottom: 8 }}>
+      {/* Bill No / Date / Time */}
+      <div style={{ borderTop: dashed, borderBottom: dashed, padding: "5px 0", marginBottom: 8, color: "#000" }}>
         <div style={{ display: "flex", justifyContent: "space-between" }}>
           <span>Bill No : <strong>{invoice.invoiceNo}</strong></span>
           <span>Date : {date}</span>
@@ -122,133 +220,84 @@ function ThermalReceipt({ invoice }: { invoice: POSInvoice }) {
         <div style={{ textAlign: "right" }}>Time : {time}</div>
       </div>
 
-      {/* ── To (customer) ── */}
-      <div style={{ marginBottom: 6 }}>
+      {/* Customer */}
+      <div style={{ marginBottom: 6, color: "#000" }}>
         <div>To :</div>
         {invoice.customer.name && invoice.customer.name !== "Select a Customer" && (
-          <div style={{ paddingLeft: 8, fontWeight: 600 }}>{invoice.customer.name}</div>
+          <div style={{ paddingLeft: 8, fontWeight: 700, color: "#000" }}>{invoice.customer.name}</div>
         )}
         {invoice.customer.phone && (
-          <div style={{ paddingLeft: 8, fontSize: 10, color: "#555" }}>{invoice.customer.phone}</div>
+          <div style={{ paddingLeft: 8, fontSize: 10, color: "#000" }}>{invoice.customer.phone}</div>
         )}
       </div>
 
-      {/* ── Items table ── */}
-      {/* ── Items table ── */}
-<table style={{ borderTop: dashed, width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-  <colgroup>
-    <col style={{ width: 18 }} />
-    <col style={{ width: 42 }} />
-    <col />
-    <col style={{ width: 26 }} />
-    <col style={{ width: 50 }} />
-    <col style={{ width: 50 }} />
-  </colgroup>
-  <thead>
-    <tr style={{ borderBottom: dashed, fontSize: 10, fontWeight: 700 }}>
-      <th style={{ textAlign: "left", padding: "4px 0 3px" }}>Sn</th>
-      <th style={{ textAlign: "left", padding: "4px 0 3px" }}>Code</th>
-      <th style={{ textAlign: "left", padding: "4px 0 3px" }}>Item</th>
-      <th style={{ textAlign: "center", padding: "4px 0 3px" }}>Qty</th>
-      <th style={{ textAlign: "right", padding: "4px 0 3px" }}>Rate</th>
-      <th style={{ textAlign: "right", padding: "4px 0 3px" }}>Total</th>
-    </tr>
-  </thead>
-  <tbody>
-    {invoice.items.map((item, i) => (
-      <tr
-        key={item.id}
-        style={{
-          borderBottom: i < invoice.items.length - 1 ? dashed : "none",
-          fontSize: 11,
-        }}
-      >
-        <td style={{ padding: "4px 0", color: "#555" }}>{i + 1}</td>
-        <td style={{ padding: "4px 0", color: "#555", fontSize: 10 }}>{item.sku}</td>
-        <td
-          style={{
-            padding: "4px 4px 4px 0",
-            fontWeight: 700,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {item.name}
-        </td>
-        <td style={{ padding: "4px 0", textAlign: "center" }}>{item.qty}</td>
-        <td style={{ padding: "4px 0", textAlign: "right" }}>{item.unitPrice.toLocaleString("en-IN")}</td>
-        <td style={{ padding: "4px 0", textAlign: "right", fontWeight: 600 }}>{item.total.toLocaleString("en-IN")}</td>
-      </tr>
-    ))}
-  </tbody>
-</table>
+      {/* Items table */}
+      <table style={{ borderTop: dashed, width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+        <colgroup>
+          <col style={{ width: 18 }} /><col style={{ width: 42 }} /><col />
+          <col style={{ width: 26 }} /><col style={{ width: 50 }} /><col style={{ width: 50 }} />
+        </colgroup>
+        <thead>
+          <tr style={{ borderBottom: dashed, fontSize: 10, fontWeight: 700, color: "#000" }}>
+            <th style={{ textAlign: "left", padding: "4px 0 3px", color: "#000" }}>Sn</th>
+            <th style={{ textAlign: "left", padding: "4px 0 3px", color: "#000" }}>Code</th>
+            <th style={{ textAlign: "left", padding: "4px 0 3px", color: "#000" }}>Item</th>
+            <th style={{ textAlign: "center", padding: "4px 0 3px", color: "#000" }}>Qty</th>
+            <th style={{ textAlign: "right", padding: "4px 0 3px", color: "#000" }}>Rate</th>
+            <th style={{ textAlign: "right", padding: "4px 0 3px", color: "#000" }}>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {invoice.items.map((item, i) => (
+            <tr key={item.id} style={{ borderBottom: i < invoice.items.length - 1 ? dashed : "none", fontSize: 11, color: "#000" }}>
+              <td style={{ padding: "4px 0", color: "#000" }}>{i + 1}</td>
+              <td style={{ padding: "4px 0", color: "#000", fontSize: 10 }}>{item.sku}</td>
+              <td style={{ padding: "4px 4px 4px 0", fontWeight: 700, color: "#000", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</td>
+              <td style={{ padding: "4px 0", textAlign: "center", color: "#000" }}>{item.qty}</td>
+              <td style={{ padding: "4px 0", textAlign: "right", color: "#000" }}>{item.unitPrice.toLocaleString("en-IN")}</td>
+              <td style={{ padding: "4px 0", textAlign: "right", fontWeight: 700, color: "#000" }}>{item.total.toLocaleString("en-IN")}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
-      {/* ── Totals ── */}
-      {/* ── Totals ── */}
-<div style={{ borderTop: dashed, paddingTop: 6, marginTop: 2 }}>
-  {/* Discounts (if any) */}
-  {invoice.couponDiscount > 0 && (
-    <div style={{ display: "flex", justifyContent: "space-between", color: "#1a7a4a", fontSize: 10 }}>
-      <span>Coupon ({invoice.couponCode}):</span>
-      <span>-{invoice.couponDiscount.toLocaleString("en-IN")}</span>
-    </div>
-  )}
-  {invoice.manualDiscount > 0 && (
-    <div style={{ display: "flex", justifyContent: "space-between", color: "#1a7a4a", fontSize: 10 }}>
-      <span>Discount:</span>
-      <span>-{invoice.manualDiscount.toLocaleString("en-IN")}</span>
-    </div>
-  )}
-
-  {/* Grand Total */}
-  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 900, fontSize: 14, borderTop: solid, marginTop: 4, paddingTop: 4 }}>
-    <span>Grand Total:</span>
-    <span>{toNum(invoice.grandTotal).toLocaleString("en-IN")}</span>
-  </div>
-
-  {/* Payment method */}
-  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#555", marginTop: 2 }}>
-    <span>Paid via:</span>
-    <span style={{ fontWeight: 600 }}>{invoice.paymentMethod}</span>
-  </div>
-
-  {/* Change */}
-  {invoice.change > 0 && (
-    <div style={{ display: "flex", justifyContent: "space-between", color: "#1a7a4a", fontWeight: 700 }}>
-      <span>Change:</span>
-      <span>{invoice.change.toLocaleString("en-IN")}</span>
-    </div>
-  )}
-</div>
-
-      {/* ── Salesman ── */}
-      <div style={{ borderTop: dashed, marginTop: 8, paddingTop: 6 }}>
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <span style={{ fontSize: 10, color: "#555" }}>SALESMAN : </span>
-          <span style={{ fontSize: 10, fontWeight: 700, marginLeft: 4 }}>
-            {/* Salesman name not in invoice type — show branch name or blank */}
-            &nbsp;
-          </span>
+      {/* Totals */}
+      <div style={{ borderTop: dashed, paddingTop: 6, marginTop: 2, color: "#000" }}>
+        {invoice.couponDiscount > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", color: "#000", fontSize: 10 }}>
+            <span>Coupon ({invoice.couponCode}):</span>
+            <span>-{invoice.couponDiscount.toLocaleString("en-IN")}</span>
+          </div>
+        )}
+        {invoice.manualDiscount > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", color: "#000", fontSize: 10 }}>
+            <span>Discount:</span>
+            <span>-{invoice.manualDiscount.toLocaleString("en-IN")}</span>
+          </div>
+        )}
+        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 900, fontSize: 14, borderTop: solid, marginTop: 4, paddingTop: 4, color: "#000" }}>
+          <span>Grand Total:</span>
+          <span>{toNum(invoice.grandTotal).toLocaleString("en-IN")}</span>
         </div>
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 2, fontSize: 10, color: "#555" }}>
-          Insta ID : &nbsp;<span style={{ fontWeight: 600 }}>shaashopy.hilitemall</span>
+
+        {/* Split-aware payment breakdown */}
+        <PaymentBreakdown payments={payments} change={invoice.change} />
+      </div>
+
+      {/* Salesman */}
+      <div style={{ borderTop: dashed, marginTop: 8, paddingTop: 6, color: "#000" }}>
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <span style={{ fontSize: 10, color: "#000", fontWeight: 700 }}>SALESMAN : </span>
+          <span style={{ fontSize: 10, fontWeight: 700, marginLeft: 4, color: "#000" }}>&nbsp;</span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 2, fontSize: 10, color: "#000" }}>
+          Insta ID :&nbsp;<span style={{ fontWeight: 700, color: "#000" }}>shaashopy.hilitemall</span>
         </div>
       </div>
 
-      {/* ── Terms & Conditions ── */}
-      <div
-        style={{
-          borderTop: solid,
-          borderBottom: solid,
-          marginTop: 10,
-          padding: "8px 0",
-          textAlign: "center",
-        }}
-      >
-        <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 6, textDecoration: "underline" }}>
-          TERMS AND CONDITIONS
-        </div>
+      {/* T&C */}
+      <div style={{ borderTop: solid, borderBottom: solid, marginTop: 10, padding: "8px 0", color: "#000" }}>
+        <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 6, textDecoration: "underline", textAlign: "center", color: "#000" }}>TERMS AND CONDITIONS</div>
         {[
           "No Cash Refund",
           "NO credit note will be issued",
@@ -257,50 +306,33 @@ function ThermalReceipt({ invoice }: { invoice: POSInvoice }) {
           "Only dry wash recommend for this material",
           "We are under composition taxpayer, We are not collecting tax from customer",
         ].map((line) => (
-          <div key={line} style={{ textAlign: "left", fontSize: 10, marginBottom: 2 }}>
-            * {line}
-          </div>
+          <div key={line} style={{ textAlign: "left", fontSize: 10, marginBottom: 2, color: "#000" }}>* {line}</div>
         ))}
       </div>
 
-      {/* ── Footer ── */}
-      <div style={{ textAlign: "center", marginTop: 10, fontWeight: 700, fontSize: 11, letterSpacing: 0.5 }}>
+      {/* Footer */}
+      <div style={{ textAlign: "center", marginTop: 10, fontWeight: 700, fontSize: 11, letterSpacing: 0.5, color: "#000" }}>
         THANK YOU VISIT AGAIN ;
       </div>
     </div>
   );
 }
 
-function A4Invoice({ invoice }: { invoice: POSInvoice }) {
+// ── A4 Invoice ────────────────────────────────────────────────────────────────
+
+function A4Invoice({ invoice, payments }: { invoice: POSInvoice; payments: InvoicePayment[] }) {
   const { date, time } = fmtDate(invoice.date);
+  const isSplit = payments.length > 1;
 
   return (
-    <div id="print-a4"
-      style={{
-        fontFamily: "Georgia, serif",
-        background: "white",
-        color: "#1a1a1a",
-        width: "100%",
-        minHeight: 800,
-        padding: "40px 48px",
-        boxSizing: "border-box",
-      }}
+    <div
+      id="print-a4"
+      style={{ fontFamily: "Georgia, serif", background: "white", color: "#1a1a1a", width: "100%", minHeight: 800, padding: "40px 48px", boxSizing: "border-box" }}
     >
       {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 32,
-          paddingBottom: 24,
-          borderBottom: "2px solid #1a1a1a",
-        }}
-      >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 32, paddingBottom: 24, borderBottom: "2px solid #1a1a1a" }}>
         <div>
-          <div style={{ fontFamily: "serif", fontWeight: 700, fontSize: 28, letterSpacing: 2, textTransform: "uppercase" }}>
-            SHAASHOPY
-          </div>
+          <div style={{ fontFamily: "serif", fontWeight: 700, fontSize: 28, letterSpacing: 2, textTransform: "uppercase" }}>SHAASHOPY</div>
           <div style={{ fontSize: 12, color: "#555", marginTop: 4, lineHeight: 1.6 }}>
             2nd Floor, Hilite Mall, Calicut<br />
             PH: +91 9847640052 • GSTIN: 32AFJFS9358F1ZN
@@ -315,37 +347,41 @@ function A4Invoice({ invoice }: { invoice: POSInvoice }) {
 
       {/* Bill-to / Payment */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 28 }}>
-        {[
-          {
-            title: "Bill To",
-            content: (
-              <>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>
-                  {invoice.customer.name || "Select a Customer"}
+        {/* Bill To */}
+        <div style={{ background: "#f9f9f7", padding: "14px 16px", borderRadius: 6, border: "0.5px solid #e0e0d8" }}>
+          <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: "#888", marginBottom: 6 }}>Bill To</div>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>{invoice.customer.name || "Walk-in Customer"}</div>
+          {invoice.customer.phone && (
+            <div style={{ fontSize: 12, color: "#555", marginTop: 2 }}>📞 {invoice.customer.phone}</div>
+          )}
+        </div>
+
+        {/* Payment Details — split-aware */}
+        <div style={{ background: "#f9f9f7", padding: "14px 16px", borderRadius: 6, border: "0.5px solid #e0e0d8" }}>
+          <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: "#888", marginBottom: 6 }}>Payment Details</div>
+          {isSplit ? (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Split Payment</div>
+              {payments.map((p, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#555", marginBottom: 2 }}>
+                  <span>{methodLabel(p.method)}</span>
+                  <span style={{ fontWeight: 600, color: "#1a1a1a" }}>{fmt(p.amount)}</span>
                 </div>
-                {invoice.customer.phone && (
-                  <div style={{ fontSize: 12, color: "#555", marginTop: 2 }}>📞 {invoice.customer.phone}</div>
-                )}
-              </>
-            ),
-          },
-          {
-            title: "Payment Details",
-            content: (
-              <>
-                <div style={{ fontSize: 13 }}>Method: <strong>{invoice.paymentMethod}</strong></div>
-                <div style={{ fontSize: 13, marginTop: 2 }}>
-                  Status: <span style={{ color: "#1a7a4a", fontWeight: 600 }}>Paid</span>
+              ))}
+              {invoice.change > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#1a7a4a", marginTop: 4, fontWeight: 600 }}>
+                  <span>Change returned</span>
+                  <span>{fmt(invoice.change)}</span>
                 </div>
-              </>
-            ),
-          },
-        ].map(({ title, content }) => (
-          <div key={title} style={{ background: "#f9f9f7", padding: "14px 16px", borderRadius: 6, border: "0.5px solid #e0e0d8" }}>
-            <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: "#888", marginBottom: 6 }}>{title}</div>
-            {content}
-          </div>
-        ))}
+              )}
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 13 }}>Method: <strong>{methodLabel(payments[0].method)}</strong></div>
+              <div style={{ fontSize: 13, marginTop: 2 }}>Status: <span style={{ color: "#1a7a4a", fontWeight: 600 }}>Paid</span></div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Items table */}
@@ -353,13 +389,7 @@ function A4Invoice({ invoice }: { invoice: POSInvoice }) {
         <thead>
           <tr style={{ background: "#1a1a1a", color: "white" }}>
             {["#", "Code", "Item", "Qty", "Rate", "Disc", "Total"].map((h, i) => (
-              <th key={h} style={{
-                padding: "10px 12px",
-                textAlign: i === 0 || i === 3 ? "center" : i >= 4 ? "right" : "left",
-                fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5,
-              }}>
-                {h}
-              </th>
+              <th key={h} style={{ padding: "10px 12px", textAlign: i === 0 || i === 3 ? "center" : i >= 4 ? "right" : "left", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -368,9 +398,7 @@ function A4Invoice({ invoice }: { invoice: POSInvoice }) {
             <tr key={item.id} style={{ background: i % 2 === 0 ? "white" : "#f9f9f7", borderBottom: "0.5px solid #e8e8e4" }}>
               <td style={{ padding: "10px 12px", color: "#888", textAlign: "center" }}>{i + 1}</td>
               <td style={{ padding: "10px 12px", color: "#888", fontSize: 12 }}>{item.sku}</td>
-              <td style={{ padding: "10px 12px" }}>
-                <div style={{ fontWeight: 500 }}>{item.name}</div>
-              </td>
+              <td style={{ padding: "10px 12px" }}><div style={{ fontWeight: 500 }}>{item.name}</div></td>
               <td style={{ padding: "10px 12px", textAlign: "center" }}>{item.qty}</td>
               <td style={{ padding: "10px 12px", textAlign: "right" }}>{fmt(item.unitPrice)}</td>
               <td style={{ padding: "10px 12px", textAlign: "right", color: item.discount > 0 ? "#1a7a4a" : "#999" }}>
@@ -389,21 +417,34 @@ function A4Invoice({ invoice }: { invoice: POSInvoice }) {
             { label: "Net Total", value: fmt(invoice.subtotal) },
             invoice.couponDiscount > 0 ? { label: `Coupon (${invoice.couponCode})`, value: `-${fmt(invoice.couponDiscount)}`, color: "#1a7a4a" } : null,
             invoice.manualDiscount > 0 ? { label: "Discount", value: `-${fmt(invoice.manualDiscount)}`, color: "#1a7a4a" } : null,
-          ]
-            .filter(Boolean)
-            .map((row: any, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13, color: row.color ?? "#555", borderBottom: "0.5px solid #eee" }}>
-                <span>{row.label}</span>
-                <span style={{ fontWeight: 500 }}>{row.value}</span>
-              </div>
-            ))}
+          ].filter(Boolean).map((row: any, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13, color: row.color ?? "#555", borderBottom: "0.5px solid #eee" }}>
+              <span>{row.label}</span>
+              <span style={{ fontWeight: 500 }}>{row.value}</span>
+            </div>
+          ))}
           <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 0 8px", fontSize: 16, fontWeight: 700, borderTop: "2px solid #1a1a1a", marginTop: 4 }}>
             <span>Grand Total</span>
             <span>{fmt(toNum(invoice.grandTotal))}</span>
           </div>
-          <div style={{ background: "#f0f7f3", borderRadius: 6, padding: "8px 12px", textAlign: "center", fontSize: 12, color: "#1a7a4a", fontWeight: 600, marginTop: 4 }}>
-            ✓ Paid via {invoice.paymentMethod}
-          </div>
+
+          {/* Split-aware paid badge */}
+          {isSplit ? (
+            <div style={{ background: "#f0f7f3", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#1a7a4a", fontWeight: 600, marginTop: 4 }}>
+              <div style={{ marginBottom: 4 }}>✓ Split Payment</div>
+              {payments.map((p, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontWeight: 400, fontSize: 11 }}>
+                  <span>{methodLabel(p.method)}</span>
+                  <span>{fmt(p.amount)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ background: "#f0f7f3", borderRadius: 6, padding: "8px 12px", textAlign: "center", fontSize: 12, color: "#1a7a4a", fontWeight: 600, marginTop: 4 }}>
+              ✓ Paid via {methodLabel(payments[0].method)}
+            </div>
+          )}
+
           {invoice.change > 0 && (
             <div style={{ textAlign: "center", fontSize: 13, color: "#1a7a4a", marginTop: 6, fontWeight: 600 }}>
               Change returned: {fmt(invoice.change)}
@@ -425,9 +466,7 @@ function A4Invoice({ invoice }: { invoice: POSInvoice }) {
         ].map((line) => (
           <div key={line} style={{ marginBottom: 2 }}>* {line}</div>
         ))}
-        <div style={{ marginTop: 10, textAlign: "center", fontWeight: 700, color: "#333" }}>
-          THANK YOU VISIT AGAIN
-        </div>
+        <div style={{ marginTop: 10, textAlign: "center", fontWeight: 700, color: "#333" }}>THANK YOU VISIT AGAIN</div>
       </div>
     </div>
   );
@@ -435,84 +474,63 @@ function A4Invoice({ invoice }: { invoice: POSInvoice }) {
 
 // ── Refund Screen ─────────────────────────────────────────────────────────────
 
-interface RefundItem extends InvoiceItem {
-  refundQty: number;
-}
+interface RefundItem extends InvoiceItem { refundQty: number; }
 
 interface RefundScreenProps {
   invoice: POSInvoice;
+  payments: InvoicePayment[];
   onClose: () => void;
   onComplete: () => void;
 }
 
-function RefundScreen({ invoice, onClose, onComplete }: RefundScreenProps) {
-  const [search, setSearch] = useState("");
-  const [refundItems, setRefundItems] = useState<RefundItem[]>([]);
+function RefundScreen({ invoice, payments, onClose, onComplete }: RefundScreenProps) {
+  const [search, setSearch]             = useState("");
+  const [refundItems, setRefundItems]   = useState<RefundItem[]>([]);
   const [refundMethod, setRefundMethod] = useState<"original" | "cash" | "credit">("original");
-  const [reason, setReason] = useState("");
-  const [step, setStep] = useState<"select" | "confirm" | "done">("select");
-  const [returnNo, setReturnNo] = useState("");
+  const [reason, setReason]             = useState("");
+  const [step, setStep]                 = useState<"select" | "confirm" | "done">("select");
+  const [returnNo, setReturnNo]         = useState("");
 
   const { execute: executeRefund, isPending: isRefunding } = useAction(posRefund, {
     onSuccess: ({ data }) => {
-      if (data?.returnNo) {
-        setReturnNo(data.returnNo);
-        setStep("done");
-      } else {
-        toast.error("Refund processed but no return number returned.");
-        setStep("done");
-      }
+      if (data?.returnNo) { setReturnNo(data.returnNo); setStep("done"); }
+      else { toast.error("Refund processed but no return number returned."); setStep("done"); }
     },
-    onError: () => {
-      toast.error("Refund failed. Please try again.");
-    },
+    onError: () => { toast.error("Refund failed. Please try again."); },
   });
 
   const filteredItems = invoice.items.filter(
-    (item) =>
-      item.name.toLowerCase().includes(search.toLowerCase()) ||
-      item.sku.toLowerCase().includes(search.toLowerCase())
+    (item) => item.name.toLowerCase().includes(search.toLowerCase()) || item.sku.toLowerCase().includes(search.toLowerCase())
   );
 
   const toggleItem = (item: InvoiceItem) => {
     const exists = refundItems.find((r) => r.id === item.id);
-    if (exists) {
-      setRefundItems(refundItems.filter((r) => r.id !== item.id));
-    } else {
-      setRefundItems([...refundItems, { ...item, refundQty: item.qty }]);
-    }
+    setRefundItems(exists ? refundItems.filter((r) => r.id !== item.id) : [...refundItems, { ...item, refundQty: item.qty }]);
   };
 
   const updateQty = (id: string, delta: number) => {
-    setRefundItems(
-      refundItems.map((r) => {
-        if (r.id !== id) return r;
-        const orig = invoice.items.find((i) => i.id === id);
-        const newQty = Math.min(Math.max(r.refundQty + delta, 1), orig?.qty ?? r.qty);
-        return { ...r, refundQty: newQty };
-      })
-    );
+    setRefundItems(refundItems.map((r) => {
+      if (r.id !== id) return r;
+      const orig = invoice.items.find((i) => i.id === id);
+      return { ...r, refundQty: Math.min(Math.max(r.refundQty + delta, 1), orig?.qty ?? r.qty) };
+    }));
   };
 
   const refundTotal = refundItems.reduce((sum, r) => sum + r.unitPrice * r.refundQty, 0);
 
-  const REASONS = [
-    "Customer changed mind",
-    "Wrong size / colour",
-    "Defective product",
-    "Duplicate billing",
-    "Other",
-  ];
+  const REASONS = ["Customer changed mind", "Wrong size / colour", "Defective product", "Duplicate billing", "Other"];
+
+  // Label adapts for split payments
+  const originalLabel = payments.length > 1
+    ? `Original (Split: ${payments.map((p) => methodLabel(p.method)).join(" + ")})`
+    : `Original (${methodLabel(payments[0].method)})`;
 
   const handleRefundConfirm = () => {
     executeRefund({
       saleId: invoice.saleId,
       refundMethod,
       reason,
-      items: refundItems.map((r) => ({
-        productId: r.productId,
-        quantity:  r.refundQty,
-      })),
+      items: refundItems.map((r) => ({ productId: r.productId, quantity: r.refundQty })),
     });
   };
 
@@ -526,7 +544,7 @@ function RefundScreen({ invoice, onClose, onComplete }: RefundScreenProps) {
         <div style={{ color: "var(--color-text-secondary)", fontSize: 14, marginBottom: 4 }}>{fmt(refundTotal)} refunded to customer</div>
         {returnNo && <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 4 }}>Return #{returnNo}</div>}
         <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 32 }}>
-          via {refundMethod === "original" ? invoice.paymentMethod : refundMethod === "cash" ? "Cash" : "Store Credit"}
+          via {refundMethod === "original" ? paymentSummary(payments) : refundMethod === "cash" ? "Cash" : "Store Credit"}
         </div>
         <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
           <button onClick={onClose} style={{ padding: "10px 24px", borderRadius: "var(--border-radius-md)", border: "0.5px solid var(--color-border-secondary)", background: "transparent", cursor: "pointer", fontSize: 14, color: "var(--color-text-primary)" }}>Close</button>
@@ -572,11 +590,12 @@ function RefundScreen({ invoice, onClose, onComplete }: RefundScreenProps) {
           <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 10 }}>Refund Method</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
             {([
-              { key: "original" as const, label: `Original (${invoice.paymentMethod})`, icon: <Receipt size={16} /> },
+              { key: "original" as const, label: originalLabel, icon: <Receipt size={16} /> },
               { key: "cash"     as const, label: "Cash",         icon: <IndianRupee size={16} /> },
               { key: "credit"   as const, label: "Store Credit", icon: <CreditCard size={16} /> },
-            ] as const).map((opt) => (
-              <button key={opt.key} onClick={() => setRefundMethod(opt.key)} style={{ padding: "10px 8px", border: refundMethod === opt.key ? "2px solid #7F77DD" : "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", background: refundMethod === opt.key ? "#EEEDFE" : "var(--color-background-primary)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, fontSize: 12, color: refundMethod === opt.key ? "#534AB7" : "var(--color-text-secondary)" }}>
+            ]).map((opt) => (
+              <button key={opt.key} onClick={() => setRefundMethod(opt.key)}
+                style={{ padding: "10px 8px", border: refundMethod === opt.key ? "2px solid #7F77DD" : "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", background: refundMethod === opt.key ? "#EEEDFE" : "var(--color-background-primary)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, fontSize: 12, color: refundMethod === opt.key ? "#534AB7" : "var(--color-text-secondary)" }}>
                 <span style={{ color: refundMethod === opt.key ? "#534AB7" : "var(--color-text-secondary)" }}>{opt.icon}</span>
                 {opt.label}
               </button>
@@ -588,14 +607,16 @@ function RefundScreen({ invoice, onClose, onComplete }: RefundScreenProps) {
           <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6 }}>Reason for Return</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {REASONS.map((r) => (
-              <button key={r} onClick={() => setReason(r)} style={{ padding: "5px 12px", border: reason === r ? "2px solid #7F77DD" : "0.5px solid var(--color-border-secondary)", borderRadius: 20, background: reason === r ? "#EEEDFE" : "transparent", color: reason === r ? "#534AB7" : "var(--color-text-secondary)", fontSize: 12, cursor: "pointer" }}>
+              <button key={r} onClick={() => setReason(r)}
+                style={{ padding: "5px 12px", border: reason === r ? "2px solid #7F77DD" : "0.5px solid var(--color-border-secondary)", borderRadius: 20, background: reason === r ? "#EEEDFE" : "transparent", color: reason === r ? "#534AB7" : "var(--color-text-secondary)", fontSize: 12, cursor: "pointer" }}>
                 {r}
               </button>
             ))}
           </div>
         </div>
 
-        <button onClick={handleRefundConfirm} disabled={!reason || isRefunding} style={{ width: "100%", padding: "13px", background: reason && !isRefunding ? "#7F77DD" : "var(--color-background-secondary)", color: reason && !isRefunding ? "white" : "var(--color-text-secondary)", border: "none", borderRadius: "var(--border-radius-md)", fontSize: 14, fontWeight: 600, cursor: reason && !isRefunding ? "pointer" : "not-allowed", transition: "all 0.15s" }}>
+        <button onClick={handleRefundConfirm} disabled={!reason || isRefunding}
+          style={{ width: "100%", padding: "13px", background: reason && !isRefunding ? "#7F77DD" : "var(--color-background-secondary)", color: reason && !isRefunding ? "white" : "var(--color-text-secondary)", border: "none", borderRadius: "var(--border-radius-md)", fontSize: 14, fontWeight: 600, cursor: reason && !isRefunding ? "pointer" : "not-allowed", transition: "all 0.15s" }}>
           {isRefunding ? "Processing…" : `Process Refund • ${fmt(refundTotal)}`}
         </button>
       </div>
@@ -613,14 +634,16 @@ function RefundScreen({ invoice, onClose, onComplete }: RefundScreenProps) {
 
       <div style={{ position: "relative", marginBottom: 12 }}>
         <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--color-text-secondary)" }} />
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter items..." style={{ width: "100%", paddingLeft: 36, paddingRight: 12, height: 36, border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, boxSizing: "border-box" }} />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter items..."
+          style={{ width: "100%", paddingLeft: 36, paddingRight: 12, height: 36, border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, boxSizing: "border-box" }} />
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 280, overflowY: "auto", marginBottom: 16 }}>
         {filteredItems.map((item) => {
           const selected = refundItems.find((r) => r.id === item.id);
           return (
-            <div key={item.id} style={{ border: selected ? "2px solid #7F77DD" : "0.5px solid var(--color-border-tertiary)", borderRadius: "var(--border-radius-md)", padding: "10px 12px", background: selected ? "#EEEDFE" : "var(--color-background-primary)", cursor: "pointer", transition: "all 0.12s" }} onClick={() => toggleItem(item)}>
+            <div key={item.id} onClick={() => toggleItem(item)}
+              style={{ border: selected ? "2px solid #7F77DD" : "0.5px solid var(--color-border-tertiary)", borderRadius: "var(--border-radius-md)", padding: "10px 12px", background: selected ? "#EEEDFE" : "var(--color-background-primary)", cursor: "pointer", transition: "all 0.12s" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 500, fontSize: 13, color: selected ? "#3C3489" : "var(--color-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: 8 }}>{item.name}</div>
@@ -631,7 +654,8 @@ function RefundScreen({ invoice, onClose, onComplete }: RefundScreenProps) {
                 </div>
               </div>
               {selected && (
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, paddingTop: 8, borderTop: "0.5px solid #AFA9EC" }} onClick={(e) => e.stopPropagation()}>
+                <div onClick={(e) => e.stopPropagation()}
+                  style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, paddingTop: 8, borderTop: "0.5px solid #AFA9EC" }}>
                   <span style={{ fontSize: 12, color: "#534AB7", fontWeight: 500 }}>Return qty:</span>
                   <div style={{ display: "flex", alignItems: "center", border: "0.5px solid #7F77DD", borderRadius: 6, overflow: "hidden" }}>
                     <button onClick={() => updateQty(item.id, -1)} style={{ padding: "4px 10px", background: "#EEEDFE", border: "none", cursor: "pointer", color: "#534AB7" }}><Minus size={12} /></button>
@@ -653,7 +677,8 @@ function RefundScreen({ invoice, onClose, onComplete }: RefundScreenProps) {
         </div>
       )}
 
-      <button onClick={() => setStep("confirm")} disabled={refundItems.length === 0} style={{ width: "100%", padding: "13px", background: refundItems.length > 0 ? "#7F77DD" : "var(--color-background-secondary)", color: refundItems.length > 0 ? "white" : "var(--color-text-secondary)", border: "none", borderRadius: "var(--border-radius-md)", fontSize: 14, fontWeight: 600, cursor: refundItems.length > 0 ? "pointer" : "not-allowed" }}>
+      <button onClick={() => setStep("confirm")} disabled={refundItems.length === 0}
+        style={{ width: "100%", padding: "13px", background: refundItems.length > 0 ? "#7F77DD" : "var(--color-background-secondary)", color: refundItems.length > 0 ? "white" : "var(--color-text-secondary)", border: "none", borderRadius: "var(--border-radius-md)", fontSize: 14, fontWeight: 600, cursor: refundItems.length > 0 ? "pointer" : "not-allowed" }}>
         Continue to Confirm
       </button>
     </div>
@@ -667,221 +692,158 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
   const [activeTab, setActiveTab] = useState<"payment-done" | "invoice-preview" | "refund">("payment-done");
   const [printMode, setPrintMode] = useState<"thermal" | "a4">("thermal");
 
+  // ── Normalize payments once — all children use this ──────────────────────
+  const payments = normalizePayments(invoice);
+  const isSplit  = payments.length > 1;
+
   const tabs = [
     { id: "payment-done"    as const, label: "Payment Complete", icon: <CheckCircle size={15} /> },
     { id: "invoice-preview" as const, label: "Invoice Preview",  icon: <FileText size={15} />    },
     { id: "refund"          as const, label: "Refund",           icon: <RotateCcw size={15} />   },
   ];
 
-  
-// ── Thermal Receipt — matches SHAASHOPY real receipt format ───────────────────
-const generatePdfBlob = async (): Promise<{ blob: Blob; filename: string }> => {
-  const { default: html2canvas } = await import("html2canvas-pro");
-  const { default: jsPDF } = await import("jspdf");
-
-  const elementId = printMode === "thermal" ? "print-receipt" : "print-a4";
-  const el = document.getElementById(elementId);
-  if (!el) throw new Error("Receipt element not found");
-
-  const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
-  const imgData = canvas.toDataURL("image/png");
-
-  let pdf: InstanceType<typeof jsPDF>;
-  let filename: string;
-
-  if (printMode === "thermal") {
-    const heightMm = (canvas.height * 80) / canvas.width;
-    pdf = new jsPDF({ unit: "mm", format: [80, heightMm] });
-    pdf.addImage(imgData, "PNG", 0, 0, 80, heightMm);
-    filename = `${invoice.invoiceNo}-thermal.pdf`;
-  } else {
-    pdf = new jsPDF({ unit: "mm", format: "a4" });
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = (canvas.height * pageW) / canvas.width;
+  const generatePdfBlob = async (): Promise<{ blob: Blob; filename: string }> => {
+    const { default: html2canvas } = await import("html2canvas-pro");
+    const { default: jsPDF }       = await import("jspdf");
+    const el = document.getElementById("print-a4");
+    if (!el) throw new Error("A4 element not found");
+    const canvas  = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
+    const imgData = canvas.toDataURL("image/png");
+    const pdf     = new jsPDF({ unit: "mm", format: "a4" });
+    const pageW   = pdf.internal.pageSize.getWidth();
+    const pageH   = (canvas.height * pageW) / canvas.width;
     pdf.addImage(imgData, "PNG", 0, 0, pageW, pageH);
-    filename = `${invoice.invoiceNo}-invoice.pdf`;
-  }
+    return { blob: pdf.output("blob"), filename: `${invoice.invoiceNo}-invoice.pdf` };
+  };
 
-  return { blob: pdf.output("blob"), filename };
-};
-
-const handleDownload = async () => {
-  if (printMode === "thermal") {
-    // For thermal, "download" = open print window → user saves as PDF from browser
-    // This avoids canvas rasterization and keeps text crisp
-    toast.info("Use your browser's 'Save as PDF' option in the print dialog.");
-setTimeout(() => handlePrint(), 800);
-    return;
-  }
-  // A4 download via canvas PDF (unchanged)
-  const { blob, filename } = await generatePdfBlob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-};
-
-const handlePrint = async () => {
-  if (printMode === "thermal") {
+  const printThermal = () => {
     const printWindow = window.open("", "_blank");
-    if (!printWindow) {
-      toast.error("Failed to open print window. Please allow popups.");
-      return;
-    }
+    if (!printWindow) { toast.error("Failed to open print window. Please allow popups."); return; }
 
     const { date, time } = fmtDate(invoice.date);
 
     const itemRows = invoice.items.map((item, i) => `
-      <tr style="border-bottom: ${i < invoice.items.length - 1 ? "1px dashed #999" : "none"}; font-size: 11px;">
+      <tr style="border-bottom:${i < invoice.items.length - 1 ? "1px dashed #000" : "none"};font-size:11px;color:#000;">
         <td style="padding:4px 0;color:#000;">${i + 1}</td>
         <td style="padding:4px 0;color:#000;font-size:10px;">${item.sku}</td>
-        <td style="padding:4px 4px 4px 0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.name}</td>
-        <td style="padding:4px 0;text-align:center;">${item.qty}</td>
-        <td style="padding:4px 0;text-align:right;">${item.unitPrice.toLocaleString("en-IN")}</td>
-        <td style="padding:4px 0;text-align:right;font-weight:600;">${item.total.toLocaleString("en-IN")}</td>
-      </tr>
-    `).join("");
+        <td style="padding:4px 4px 4px 0;font-weight:700;color:#000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.name}</td>
+        <td style="padding:4px 0;text-align:center;color:#000;">${item.qty}</td>
+        <td style="padding:4px 0;text-align:right;color:#000;">${item.unitPrice.toLocaleString("en-IN")}</td>
+        <td style="padding:4px 0;text-align:right;font-weight:700;color:#000;">${item.total.toLocaleString("en-IN")}</td>
+      </tr>`).join("");
 
-    const couponRow = invoice.couponDiscount > 0
-      ? `<div style="display:flex;justify-content:space-between;color:#1a7a4a;font-size:10px;"><span>Coupon (${invoice.couponCode}):</span><span>-${invoice.couponDiscount.toLocaleString("en-IN")}</span></div>`
+    const couponRow   = invoice.couponDiscount > 0
+      ? `<div style="display:flex;justify-content:space-between;color:#000;font-size:10px;"><span>Coupon (${invoice.couponCode}):</span><span>-${invoice.couponDiscount.toLocaleString("en-IN")}</span></div>`
       : "";
-
     const discountRow = invoice.manualDiscount > 0
-      ? `<div style="display:flex;justify-content:space-between;color:#1a7a4a;font-size:10px;"><span>Discount:</span><span>-${invoice.manualDiscount.toLocaleString("en-IN")}</span></div>`
+      ? `<div style="display:flex;justify-content:space-between;color:#000;font-size:10px;"><span>Discount:</span><span>-${invoice.manualDiscount.toLocaleString("en-IN")}</span></div>`
       : "";
-
-    const changeRow = invoice.change > 0
-      ? `<div style="display:flex;justify-content:space-between;color:#1a7a4a;font-weight:700;"><span>Change:</span><span>${invoice.change.toLocaleString("en-IN")}</span></div>`
+    const customerBlock = invoice.customer.name && invoice.customer.name !== "Select a Customer"
+      ? `<div style="padding-left:8px;font-weight:700;color:#000;">${invoice.customer.name}</div>`
       : "";
-
-    const customerBlock = (invoice.customer.name && invoice.customer.name !== "Select a Customer")
-      ? `<div style="padding-left:8px;font-weight:600;">${invoice.customer.name}</div>` : "";
-
     const phoneBlock = invoice.customer.phone
-      ? `<div style="padding-left:8px;font-size:10px;color:#000;">${invoice.customer.phone}</div>` : "";
+      ? `<div style="padding-left:8px;font-size:10px;color:#000;">${invoice.customer.phone}</div>`
+      : "";
+
+    const paymentHtml = buildPaymentHtml(payments, invoice.change);
 
     printWindow.document.write(`
       <html>
         <head>
-          <title>Thermal Receipt - ${invoice.invoiceNo}</title>
+          <title>Receipt - ${invoice.invoiceNo}</title>
           <style>
             @page { size: 80mm auto; margin: 0; }
-            * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            body {
-              font-family: 'Courier New', Courier, monospace;
-              font-size: 11px;
-              line-height: 1.55;
-              color: #000000;
-              background: #ffffff;
-              width: 80mm;
-              padding: 18px 16px;
-            }
-            table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+            * { box-sizing:border-box; margin:0; padding:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; color:#000000; }
+            body { font-family:'Courier New',Courier,monospace; font-size:11px; line-height:1.55; color:#000000; background:#ffffff; width:80mm; padding:14px 12px; }
+            table { width:100%; border-collapse:collapse; table-layout:fixed; }
+            th, td { color:#000000; }
           </style>
         </head>
         <body>
           <div style="text-align:center;margin-bottom:10px;">
-            <div style="font-weight:900;font-size:17px;letter-spacing:1.5px;text-transform:uppercase;">SHAASHOPY</div>
-            <div style="font-size:10px;margin-top:1px;">2ND FLOOR, HILITE MALL</div>
-            <div style="font-size:10px;">PH: +91 9847640052</div>
-            <div style="font-size:10px;">GSTIN: 32AFJFS9358F1ZN</div>
+            <div style="font-weight:900;font-size:17px;letter-spacing:1.5px;text-transform:uppercase;color:#000;">SHAASHOPY</div>
+            <div style="font-size:10px;margin-top:1px;color:#000;">2ND FLOOR, HILITE MALL</div>
+            <div style="font-size:10px;color:#000;">PH: +91 9847640052</div>
+            <div style="font-size:10px;color:#000;">GSTIN: 32AFJFS9358F1ZN</div>
           </div>
-
-          <div style="border-top:1px dashed #999;border-bottom:1px dashed #999;padding:5px 0;margin-bottom:8px;">
+          <div style="border-top:1px dashed #000;border-bottom:1px dashed #000;padding:5px 0;margin-bottom:8px;color:#000;">
             <div style="display:flex;justify-content:space-between;">
               <span>Bill No : <strong>${invoice.invoiceNo}</strong></span>
               <span>Date : ${date}</span>
             </div>
-            <div style="text-align:right;">Time : ${time}</div>
+            <div style="text-align:right;color:#000;">Time : ${time}</div>
           </div>
-
-          <div style="margin-bottom:6px;">
-            <div>To :</div>
+          <div style="margin-bottom:6px;color:#000;">
+            <div style="color:#000;">To :</div>
             ${customerBlock}
             ${phoneBlock}
           </div>
-
-          <table style="border-top:1px dashed #999;">
+          <table style="border-top:1px dashed #000;">
             <colgroup>
               <col style="width:18px"/><col style="width:42px"/><col/>
               <col style="width:26px"/><col style="width:50px"/><col style="width:50px"/>
             </colgroup>
             <thead>
-              <tr style="border-bottom:1px dashed #999;font-size:10px;font-weight:700;">
-                <th style="text-align:left;padding:4px 0 3px;">Sn</th>
-                <th style="text-align:left;padding:4px 0 3px;">Code</th>
-                <th style="text-align:left;padding:4px 0 3px;">Item</th>
-                <th style="text-align:center;padding:4px 0 3px;">Qty</th>
-                <th style="text-align:right;padding:4px 0 3px;">Rate</th>
-                <th style="text-align:right;padding:4px 0 3px;">Total</th>
+              <tr style="border-bottom:1px dashed #000;font-size:10px;font-weight:700;color:#000;">
+                <th style="text-align:left;padding:4px 0 3px;color:#000;">Sn</th>
+                <th style="text-align:left;padding:4px 0 3px;color:#000;">Code</th>
+                <th style="text-align:left;padding:4px 0 3px;color:#000;">Item</th>
+                <th style="text-align:center;padding:4px 0 3px;color:#000;">Qty</th>
+                <th style="text-align:right;padding:4px 0 3px;color:#000;">Rate</th>
+                <th style="text-align:right;padding:4px 0 3px;color:#000;">Total</th>
               </tr>
             </thead>
             <tbody>${itemRows}</tbody>
           </table>
-
-          <div style="border-top:1px dashed #999;padding-top:6px;margin-top:2px;">
+          <div style="border-top:1px dashed #000;padding-top:6px;margin-top:2px;color:#000;">
             ${couponRow}
             ${discountRow}
-            <div style="display:flex;justify-content:space-between;font-weight:900;font-size:14px;border-top:1px solid #000;margin-top:4px;padding-top:4px;">
+            <div style="display:flex;justify-content:space-between;font-weight:900;font-size:14px;border-top:1px solid #000;margin-top:4px;padding-top:4px;color:#000;">
               <span>Grand Total:</span>
               <span>${toNum(invoice.grandTotal).toLocaleString("en-IN")}</span>
             </div>
-            <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:2px;">
-              <span>Paid via:</span>
-              <span style="font-weight:600;">${invoice.paymentMethod}</span>
-            </div>
-            ${changeRow}
+            ${paymentHtml}
           </div>
-
-          <div style="border-top:1px dashed #999;margin-top:8px;padding-top:6px;text-align:center;font-size:10px;">
-            <div>SALESMAN :&nbsp;</div>
-            <div style="margin-top:2px;">Insta ID :&nbsp;<span style="font-weight:600;">shaashopy.hilitemall</span></div>
+          <div style="border-top:1px dashed #000;margin-top:8px;padding-top:6px;text-align:center;font-size:10px;color:#000;">
+            <div style="color:#000;">SALESMAN :&nbsp;</div>
+            <div style="margin-top:2px;color:#000;">Insta ID :&nbsp;<span style="font-weight:700;color:#000;">shaashopy.hilitemall</span></div>
           </div>
-
-          <div style="border-top:1px solid #000;border-bottom:1px solid #000;margin-top:10px;padding:8px 0;text-align:center;">
-            <div style="font-weight:700;font-size:11px;margin-bottom:6px;text-decoration:underline;">TERMS AND CONDITIONS</div>
-            <div style="text-align:left;font-size:10px;margin-bottom:2px;">* No Cash Refund</div>
-            <div style="text-align:left;font-size:10px;margin-bottom:2px;">* NO credit note will be issued</div>
-            <div style="text-align:left;font-size:10px;margin-bottom:2px;">* NO Guarantee is provided for fancy items</div>
-            <div style="text-align:left;font-size:10px;margin-bottom:2px;">* Exchange Within 3 Days (Only on Same Brand)</div>
-            <div style="text-align:left;font-size:10px;margin-bottom:2px;">* Only dry wash recommend for this material</div>
-            <div style="text-align:left;font-size:10px;margin-bottom:2px;">* We are under composition taxpayer, We are not collecting tax from customer</div>
+          <div style="border-top:1px solid #000;border-bottom:1px solid #000;margin-top:10px;padding:8px 0;color:#000;">
+            <div style="font-weight:700;font-size:11px;margin-bottom:6px;text-decoration:underline;text-align:center;color:#000;">TERMS AND CONDITIONS</div>
+            <div style="font-size:10px;margin-bottom:2px;color:#000;">* No Cash Refund</div>
+            <div style="font-size:10px;margin-bottom:2px;color:#000;">* NO credit note will be issued</div>
+            <div style="font-size:10px;margin-bottom:2px;color:#000;">* NO Guarantee is provided for fancy items</div>
+            <div style="font-size:10px;margin-bottom:2px;color:#000;">* Exchange Within 3 Days (Only on Same Brand)</div>
+            <div style="font-size:10px;margin-bottom:2px;color:#000;">* Only dry wash recommend for this material</div>
+            <div style="font-size:10px;margin-bottom:2px;color:#000;">* We are under composition taxpayer, We are not collecting tax from customer</div>
           </div>
-
-          <div style="text-align:center;margin-top:10px;font-weight:700;font-size:11px;letter-spacing:0.5px;">
-            THANK YOU VISIT AGAIN ;
-          </div>
-
-          <script>
-            window.onload = function () {
-              setTimeout(function () { window.print(); window.close(); }, 400);
-            };
-          <\/script>
+          <div style="text-align:center;margin-top:10px;font-weight:700;font-size:11px;letter-spacing:0.5px;color:#000;">THANK YOU VISIT AGAIN ;</div>
+          <script>window.onload=function(){setTimeout(function(){window.print();window.close();},400);};<\/script>
         </body>
       </html>
     `);
     printWindow.document.close();
-    return; // ← thermal done, skip A4 path below
-  }
-
-  // A4: canvas → PDF → iframe print (unchanged)
-  const { blob } = await generatePdfBlob();
-  const url = URL.createObjectURL(blob);
-  const iframe = document.createElement("iframe");
-  iframe.style.display = "none";
-  iframe.src = url;
-  document.body.appendChild(iframe);
-  iframe.onload = () => {
-    iframe.contentWindow?.focus();
-    iframe.contentWindow?.print();
   };
-  setTimeout(() => {
-    document.body.removeChild(iframe);
+
+  const handleDownload = async () => {
+    if (printMode === "thermal") { toast.info("Use 'Save as PDF' in the print dialog to download."); setTimeout(() => printThermal(), 600); return; }
+    const { blob, filename } = await generatePdfBlob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
     URL.revokeObjectURL(url);
-  }, 60_000);
-};
+  };
+
+  const handlePrint = async () => {
+    if (printMode === "thermal") { printThermal(); return; }
+    const { blob } = await generatePdfBlob();
+    const url = URL.createObjectURL(blob);
+    const iframe = document.createElement("iframe");
+    iframe.style.display = "none"; iframe.src = url;
+    document.body.appendChild(iframe);
+    iframe.onload = () => { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); };
+    setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url); }, 60_000);
+  };
+
   return (
     <div style={{ padding: "1rem 0" }}>
       <h2 className="sr-only">POS Invoice and Refund System</h2>
@@ -889,13 +851,14 @@ const handlePrint = async () => {
       {/* Tab bar */}
       <div style={{ display: "flex", gap: 6, marginBottom: 24, background: "var(--color-background-secondary)", padding: 4, borderRadius: "var(--border-radius-lg)", border: "0.5px solid var(--color-border-tertiary)" }}>
         {tabs.map((tab) => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ flex: 1, padding: "8px 12px", border: activeTab === tab.id ? "0.5px solid var(--color-border-secondary)" : "none", borderRadius: "var(--border-radius-md)", background: activeTab === tab.id ? "var(--color-background-primary)" : "transparent", color: activeTab === tab.id ? "var(--color-text-primary)" : "var(--color-text-secondary)", cursor: "pointer", fontSize: 13, fontWeight: activeTab === tab.id ? 500 : 400, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, transition: "all 0.1s" }}>
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+            style={{ flex: 1, padding: "8px 12px", border: activeTab === tab.id ? "0.5px solid var(--color-border-secondary)" : "none", borderRadius: "var(--border-radius-md)", background: activeTab === tab.id ? "var(--color-background-primary)" : "transparent", color: activeTab === tab.id ? "var(--color-text-primary)" : "var(--color-text-secondary)", cursor: "pointer", fontSize: 13, fontWeight: activeTab === tab.id ? 500 : 400, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, transition: "all 0.1s" }}>
             {tab.icon}{tab.label}
           </button>
         ))}
       </div>
 
-      {/* ── Payment Done ── */}
+      {/* Payment Done */}
       {activeTab === "payment-done" && (
         <div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingBottom: 20, marginBottom: 20, borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
@@ -903,19 +866,39 @@ const handlePrint = async () => {
               <CheckCircle size={32} color="var(--color-text-success)" />
             </div>
             <div style={{ fontSize: 20, fontWeight: 500 }}>Payment Successful</div>
-            <div style={{ fontSize: 28, fontWeight: 700, color: "#7F77DD", marginTop: 4 }}>
-              {fmt(toNum(invoice.grandTotal))}
-            </div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: "#7F77DD", marginTop: 4 }}>{fmt(toNum(invoice.grandTotal))}</div>
+
+            {/* Payment method line */}
             <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginTop: 6, display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
               <span>{invoice.invoiceNo}</span>
               <span>•</span>
               <span>{invoice.customer.name}</span>
               <span>•</span>
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                {invoice.paymentMethod === "UPI" ? <Wallet size={13} /> : invoice.paymentMethod === "Card" ? <CreditCard size={13} /> : <IndianRupee size={13} />}
-                {invoice.paymentMethod}
-              </span>
+              {isSplit ? (
+                <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <CreditCard size={13} />
+                  {payments.map((p) => methodLabel(p.method)).join(" + ")}
+                </span>
+              ) : (
+                <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <MethodIcon method={payments[0].method} />
+                  {methodLabel(payments[0].method)}
+                </span>
+              )}
             </div>
+
+            {/* Split breakdown pills */}
+            {isSplit && (
+              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", justifyContent: "center" }}>
+                {payments.map((p, i) => (
+                  <div key={i} style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-secondary)", borderRadius: 20, padding: "3px 10px", fontSize: 12, color: "var(--color-text-secondary)", display: "flex", alignItems: "center", gap: 4 }}>
+                    <MethodIcon method={p.method} size={11} />
+                    {methodLabel(p.method)}: {fmt(p.amount)}
+                  </div>
+                ))}
+              </div>
+            )}
+
             {invoice.change > 0 && (
               <div style={{ marginTop: 10, background: "var(--color-background-success)", borderRadius: "var(--border-radius-md)", padding: "6px 16px", fontSize: 13, color: "var(--color-text-success)", fontWeight: 500 }}>
                 Change to return: {fmt(invoice.change)}
@@ -928,7 +911,8 @@ const handlePrint = async () => {
             <div style={{ fontSize: 14, fontWeight: 500 }}>Print Receipt</div>
             <div style={{ display: "flex", gap: 6 }}>
               {(["thermal", "a4"] as const).map((m) => (
-                <button key={m} onClick={() => setPrintMode(m)} style={{ padding: "5px 14px", border: printMode === m ? "2px solid #7F77DD" : "0.5px solid var(--color-border-secondary)", borderRadius: 20, background: printMode === m ? "#EEEDFE" : "transparent", color: printMode === m ? "#534AB7" : "var(--color-text-secondary)", fontSize: 12, cursor: "pointer", fontWeight: printMode === m ? 500 : 400 }}>
+                <button key={m} onClick={() => setPrintMode(m)}
+                  style={{ padding: "5px 14px", border: printMode === m ? "2px solid #7F77DD" : "0.5px solid var(--color-border-secondary)", borderRadius: 20, background: printMode === m ? "#EEEDFE" : "transparent", color: printMode === m ? "#534AB7" : "var(--color-text-secondary)", fontSize: 12, cursor: "pointer", fontWeight: printMode === m ? 500 : 400 }}>
                   {m === "thermal" ? "Thermal" : "A4"}
                 </button>
               ))}
@@ -937,8 +921,8 @@ const handlePrint = async () => {
 
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 20, overflowX: "auto" }}>
             {printMode === "thermal"
-              ? <ThermalReceipt invoice={invoice} />
-              : <div style={{ width: "100%", border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-lg)", overflow: "hidden" }}><A4Invoice invoice={invoice} /></div>
+              ? <ThermalReceipt invoice={invoice} payments={payments} />
+              : <div style={{ width: "100%", border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-lg)", overflow: "hidden" }}><A4Invoice invoice={invoice} payments={payments} /></div>
             }
           </div>
 
@@ -953,14 +937,13 @@ const handlePrint = async () => {
               <RotateCcw size={15} /> Refund
             </button>
           </div>
-
           <button onClick={() => router.push("/sales/pos")} style={{ width: "100%", marginTop: 10, padding: "11px", border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
             <Receipt size={15} /> New Transaction
           </button>
         </div>
       )}
 
-      {/* ── Invoice Preview ── */}
+      {/* Invoice Preview */}
       {activeTab === "invoice-preview" && (
         <div>
           <div style={{ display: "flex", gap: 8, marginBottom: 16, justifyContent: "flex-end" }}>
@@ -972,14 +955,19 @@ const handlePrint = async () => {
             </button>
           </div>
           <div style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-lg)", overflow: "hidden" }}>
-            <A4Invoice invoice={invoice} />
+            <A4Invoice invoice={invoice} payments={payments} />
           </div>
         </div>
       )}
 
-      {/* ── Refund ── */}
+      {/* Refund */}
       {activeTab === "refund" && (
-        <RefundScreen invoice={invoice} onClose={() => setActiveTab("payment-done")} onComplete={() => router.push("/sales/pos")} />
+        <RefundScreen
+          invoice={invoice}
+          payments={payments}
+          onClose={() => setActiveTab("payment-done")}
+          onComplete={() => router.push("/sales/pos")}
+        />
       )}
     </div>
   );

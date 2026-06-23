@@ -24,8 +24,6 @@ import { useAction }      from "next-safe-action/hooks";
 import { createSale }     from "@/actions/sales-action";
 import { getCustomerListForDropdown } from "@/actions/customer-action";
 import { getProductDropdown }         from "@/actions/product-actions";
-
-// ── NEW: import the customer form dialog ───────────────────────────────────────
 import { CustomerFormDialog } from "@/components/customers/customer-form";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -59,7 +57,14 @@ interface HeldBill {
   couponCode:            string;
   couponDiscountPercent: number;
   manualDiscountPercent: number | "";
-  paymentMethod:         "cash" | "card" | "upi";
+  payments:              PaymentEntry[];
+  splitMode:             boolean;
+}
+
+// ── NEW: multi-payment entry ──────────────────────────────────────────────────
+interface PaymentEntry {
+  method: "cash" | "card" | "upi";
+  amount: number | "";
 }
 
 const WALK_IN_SENTINEL = "__walk_in__";
@@ -79,11 +84,8 @@ export default function PosBillingPage({
   const [products,    setProducts]    = useState<POSProduct[]>([]);
   const [customers,   setCustomers]   = useState<POSCustomer[]>([]);
   const [loadingData, setLoadingData] = useState(true);
-
-  // ── NEW: customer-dialog state ─────────────────────────────────────────────
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
 
-  // Fetch customers separately so we can re-fetch after a new one is created
   const fetchCustomers = useCallback(async () => {
     const custRes = await getCustomerListForDropdown();
     const remoteCustomers: POSCustomer[] = (custRes ?? []).map((c: any) => ({
@@ -105,7 +107,6 @@ export default function PosBillingPage({
           fetchCustomers(),
           getProductDropdown({ query: "" }),
         ]);
-
         setProducts((prodRes ?? []).map((p: any) => ({
           id:            p.id,
           name:          p.product_name ?? p.productName ?? "Unknown",
@@ -124,32 +125,22 @@ export default function PosBillingPage({
     })();
   }, [fetchCustomers]);
 
-  // ── NEW: called when CustomerFormDialog closes ─────────────────────────────
   const handleAddCustomerClose = useCallback(
     async (open: boolean) => {
       setAddCustomerOpen(open);
       if (!open) {
         try {
-          // ① Snapshot existing IDs BEFORE the fetch overwrites state
-          const prevIds = new Set(
-            customers.map((c) => c.id)
-          );
-
-          // ② Fetch and update the customer list
-          const fresh = await fetchCustomers();
-
-          // ③ Diff against the snapshot — the new entry is whatever wasn't there before
+          const prevIds = new Set(customers.map((c) => c.id));
+          const fresh   = await fetchCustomers();
           const newEntry = fresh.find((c) => !prevIds.has(c.id));
           if (newEntry) {
             setSelectedCustomer(newEntry.id);
             toast.success(`"${newEntry.name}" added and selected.`);
           }
-        } catch {
-          // Silently ignore; the dialog already toasted on success/failure
-        }
+        } catch {}
       }
     },
-    [fetchCustomers, customers]   // customers in dep array so prevIds is always fresh
+    [fetchCustomers, customers]
   );
 
   // ── UI state ───────────────────────────────────────────────────────────────
@@ -162,17 +153,16 @@ export default function PosBillingPage({
   const [manualDiscountPercent, setManualDiscountPercent] = useState<number | "">("");
   const [couponCode,            setCouponCode]            = useState("");
   const [appliedCoupon,         setAppliedCoupon]         = useState("");
-  const [paymentMethod,         setPaymentMethod]         = useState<"cash" | "card" | "upi">("cash");
-  const [cashTendered,          setCashTendered]          = useState<number | "">("");
   const [heldBills,             setHeldBills]             = useState<HeldBill[]>([]);
+
+  // ── NEW: payment state ─────────────────────────────────────────────────────
+  const [payments,  setPayments]  = useState<PaymentEntry[]>([{ method: "cash", amount: "" }]);
+  const [splitMode, setSplitMode] = useState(false);
 
   // ── Server action ──────────────────────────────────────────────────────────
   const { execute: executeSale, isExecuting: isCheckingOut } = useAction(createSale, {
     onSuccess: ({ data }) => {
-      if ((data as any)?.error) {
-        toast.error((data as any).error);
-        return;
-      }
+      if ((data as any)?.error) { toast.error((data as any).error); return; }
       const saleId = (data as any)?.id ?? (data as any)?.data?.id;
       if (saleId) {
         resetCart();
@@ -211,8 +201,20 @@ export default function PosBillingPage({
   const manualDiscountAmount = (afterCoupon * manualPct) / 100;
   const totalDiscountAmount  = couponDiscountAmount + manualDiscountAmount;
   const grandTotal           = subtotal - totalDiscountAmount;
-  const cashChange           = paymentMethod === "cash" && typeof cashTendered === "number" && cashTendered > grandTotal
-                               ? cashTendered - grandTotal : 0;
+
+  // ── Payment derived ────────────────────────────────────────────────────────
+  const totalPaid = payments.reduce((s, p) => s + (typeof p.amount === "number" ? p.amount : 0), 0);
+
+  const cashChange = (() => {
+    if (!splitMode) {
+      const p = payments[0];
+      return p.method === "cash" && typeof p.amount === "number" && p.amount > grandTotal
+        ? p.amount - grandTotal : 0;
+    }
+    return totalPaid > grandTotal ? totalPaid - grandTotal : 0;
+  })();
+
+  const paymentShortfall = Math.max(0, grandTotal - totalPaid);
 
   // ── Cart helpers ───────────────────────────────────────────────────────────
   const addToCart = (product: POSProduct) => {
@@ -248,7 +250,8 @@ export default function PosBillingPage({
     setCouponCode("");
     setAppliedCoupon("");
     setSelectedCustomer(WALK_IN_SENTINEL);
-    setCashTendered("");
+    setPayments([{ method: "cash", amount: "" }]);
+    setSplitMode(false);
   };
 
   // ── Barcode ────────────────────────────────────────────────────────────────
@@ -278,9 +281,14 @@ export default function PosBillingPage({
     if (!cart.length) { toast.warning("Cart is empty."); return; }
     const hold: HeldBill = {
       id: `HOLD-${Date.now().toString().slice(-4)}`,
-      cart, customerId: selectedCustomer, subtotal,
-      couponCode: appliedCoupon, couponDiscountPercent,
-      manualDiscountPercent, paymentMethod,
+      cart,
+      customerId:            selectedCustomer,
+      subtotal,
+      couponCode:            appliedCoupon,
+      couponDiscountPercent,
+      manualDiscountPercent,
+      payments,
+      splitMode,
     };
     setHeldBills([...heldBills, hold]);
     resetCart();
@@ -296,7 +304,8 @@ export default function PosBillingPage({
     setAppliedCoupon(ticket.couponCode);
     setCouponDiscountPercent(ticket.couponDiscountPercent);
     setManualDiscountPercent(ticket.manualDiscountPercent);
-    setPaymentMethod(ticket.paymentMethod);
+    setPayments(ticket.payments);
+    setSplitMode(ticket.splitMode);
     setHeldBills(heldBills.filter((h) => h.id !== holdId));
     toast.success(`Restored: ${holdId}`);
   };
@@ -308,19 +317,22 @@ export default function PosBillingPage({
       toast.error("Please select a customer before checking out.");
       return;
     }
+    if (paymentShortfall > 0.009) {
+      toast.error("Payment amount doesn't cover the total.");
+      return;
+    }
 
-    const now   = new Date().toISOString();
-    const pmMap: Record<string, string> = { cash: "cash", card: "card", upi: "upi" };
+    const now = new Date().toISOString();
 
     executeSale({
-      customerId:   selectedCustomer,
+      customerId: selectedCustomer,
       branchId,
-      salesdate:    now,
-      status:       "Dispatched",
-      invoiceNo:    "",
+      salesdate:  now,
+      status:     "Dispatched",
+      invoiceNo:  "",
       grandTotal,
-      dueAmount:    0,
-      paidAmount:   paymentMethod === "cash" && typeof cashTendered === "number" ? cashTendered : grandTotal,
+      dueAmount:  0,
+      paidAmount: totalPaid,
       items: cart.map((item) => ({
         productId:     item.product.id,
         quantity:      item.quantity,
@@ -330,13 +342,15 @@ export default function PosBillingPage({
         total:         item.product.price * item.quantity,
         purchasePrice: item.product.purchasePrice,
       })),
-      salesPayment: [{
-        amount:        grandTotal,
-        paymentMethod: pmMap[paymentMethod],
-        paidOn:        now,
-        paymentNote:   appliedCoupon ? `Coupon: ${appliedCoupon}` : null,
-        dueDate:       null,
-      }],
+      salesPayment: payments
+        .filter((p) => typeof p.amount === "number" && p.amount > 0)
+        .map((p) => ({
+          amount:        p.amount as number,
+          paymentMethod: p.method,
+          paidOn:        now,
+          paymentNote:   appliedCoupon ? `Coupon: ${appliedCoupon}` : null,
+          dueDate:       null,
+        })),
     });
   };
 
@@ -353,17 +367,10 @@ export default function PosBillingPage({
   return (
     <div className="flex flex-col gap-6">
 
-      {/*
-        ── NEW: CustomerFormDialog mounted outside the cart card so it renders
-           as a modal overlay — the cart state lives in PosBillingPage and is
-           completely unaffected when this dialog opens or closes.
-      ──────────────────────────────────────────────────────────────────────── */}
       <CustomerFormDialog
         open={addCustomerOpen}
         openChange={handleAddCustomerClose}
-        // Pass the current branchId so the branch field is pre-filled
         branches={branchId ? [{ id: branchId, name: branchName }] : []}
-        // No `customer` prop → creates a new customer
       />
 
       {/* Header */}
@@ -524,8 +531,6 @@ export default function PosBillingPage({
                     ))}
                   </SelectContent>
                 </Select>
-
-                {/* ── CHANGED: opens CustomerFormDialog instead of toast ─── */}
                 <Button
                   size="icon"
                   variant="outline"
@@ -584,7 +589,7 @@ export default function PosBillingPage({
               )}
             </CardContent>
 
-            {/* Totals + Payment + Checkout */}
+            {/* ── Totals + Payment + Checkout ── */}
             <div className="border-t border-border bg-muted/20 p-4 space-y-3 rounded-b-xl">
 
               {/* Coupon */}
@@ -659,7 +664,6 @@ export default function PosBillingPage({
                     <span>−{formatCurrency(totalDiscountAmount)}</span>
                   </div>
                 )}
-                
                 <Separator className="my-1 bg-border" />
                 <div className="flex justify-between text-base font-extrabold text-purple-700 dark:text-purple-400">
                   <span>Total Payable:</span>
@@ -667,64 +671,223 @@ export default function PosBillingPage({
                 </div>
               </div>
 
-              {/* Payment method */}
-              <div className="grid grid-cols-3 gap-2 py-1">
-                {(["cash", "card", "upi"] as const).map((method) => (
+              {/* ── Payment Section ── */}
+              <div className="space-y-2">
+                {/* Header + Split toggle */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Payment</span>
                   <button
-                    key={method}
                     type="button"
-                    onClick={() => setPaymentMethod(method)}
-                    className={`flex flex-col items-center p-2.5 border rounded-xl gap-1 text-[11px] font-bold transition-all ${
-                      paymentMethod === method
-                        ? "border-purple-600 bg-purple-50 text-purple-700 dark:bg-purple-950/20"
-                        : "border-border bg-card text-muted-foreground hover:bg-muted"
+                    onClick={() => {
+                      setSplitMode(!splitMode);
+                      setPayments([{ method: "cash", amount: "" }]);
+                    }}
+                    className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-all ${
+                      splitMode
+                        ? "bg-purple-600 text-white border-purple-600"
+                        : "bg-card text-purple-600 border-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/20"
                     }`}
                   >
-                    {method === "cash" && <IndianRupee className="h-4 w-4" />}
-                    {method === "card" && <CreditCard className="h-4 w-4" />}
-                    {method === "upi"  && <Wallet className="h-4 w-4" />}
-                    <span>{method === "cash" ? "Cash" : method === "card" ? "Card" : "UPI"}</span>
+                    {splitMode ? "✓ Split ON" : "Split Payment"}
                   </button>
-                ))}
-              </div>
+                </div>
 
-
-              {/* Cash tendered (only for cash payments) */}
-              {paymentMethod === "cash" && (
-                <div className="space-y-1">
-                  <div className="flex gap-2 items-center">
-                    <div className="relative flex-1">
-                      <IndianRupee className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                      <Input
-                        type="number"
-                        min={grandTotal}
-                        placeholder={`Cash tendered (min ${formatCurrency(grandTotal)})`}
-                        value={cashTendered}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setCashTendered(v === "" ? "" : Math.max(Number(v), 0));
-                        }}
-                        className="pl-8 h-9 text-xs bg-card"
-                      />
+                {/* ── Single payment mode ── */}
+                {!splitMode && (
+                  <div className="space-y-2">
+                    {/* Method picker */}
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["cash", "card", "upi"] as const).map((method) => (
+                        <button
+                          key={method}
+                          type="button"
+                          onClick={() => setPayments([{ method, amount: payments[0].amount }])}
+                          className={`flex flex-col items-center p-2.5 border rounded-xl gap-1 text-[11px] font-bold transition-all ${
+                            payments[0].method === method
+                              ? "border-purple-600 bg-purple-50 text-purple-700 dark:bg-purple-950/20"
+                              : "border-border bg-card text-muted-foreground hover:bg-muted"
+                          }`}
+                        >
+                          {method === "cash" && <IndianRupee className="h-4 w-4" />}
+                          {method === "card" && <CreditCard className="h-4 w-4" />}
+                          {method === "upi"  && <Wallet className="h-4 w-4" />}
+                          <span>{method === "cash" ? "Cash" : method === "card" ? "Card" : "UPI"}</span>
+                        </button>
+                      ))}
                     </div>
-                    {cashTendered !== "" && (
-                      <button type="button" onClick={() => setCashTendered("")}
-                        className="text-[10px] text-muted-foreground hover:text-destructive underline whitespace-nowrap">
-                        Clear
-                      </button>
+
+                    {/* Cash: tendered amount input */}
+                    {payments[0].method === "cash" && (
+                      <div className="space-y-1">
+                        <div className="flex gap-2 items-center">
+                          <div className="relative flex-1">
+                            <IndianRupee className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                            <Input
+                              type="number"
+                              min={0}
+                              placeholder={`Cash tendered (min ${formatCurrency(grandTotal)})`}
+                              value={payments[0].amount}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setPayments([{ method: "cash", amount: v === "" ? "" : Math.max(Number(v), 0) }]);
+                              }}
+                              className="pl-8 h-9 text-xs bg-card"
+                            />
+                          </div>
+                          {payments[0].amount !== "" && (
+                            <button type="button" onClick={() => setPayments([{ method: "cash", amount: "" }])}
+                              className="text-[10px] text-muted-foreground hover:text-destructive underline whitespace-nowrap">
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                        {cashChange > 0 && (
+                          <div className="flex justify-between text-sm font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 rounded px-2 py-1.5">
+                            <span>Change to return:</span>
+                            <span>{formatCurrency(cashChange)}</span>
+                          </div>
+                        )}
+                        {typeof payments[0].amount === "number" && payments[0].amount > 0 && payments[0].amount < grandTotal && (
+                          <p className="text-xs text-red-500 px-1">Amount is less than total payable.</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Card / UPI: quick exact-amount button */}
+                    {payments[0].method !== "cash" && (
+                      <div className="flex items-center gap-2 bg-muted/30 rounded-lg px-3 py-2 text-xs text-muted-foreground">
+                        <span>Amount:</span>
+                        <span className="font-bold text-foreground">{formatCurrency(grandTotal)}</span>
+                        <button
+                          type="button"
+                          className="ml-auto text-[10px] text-purple-600 underline"
+                          onClick={() => setPayments([{ ...payments[0], amount: grandTotal }])}
+                        >
+                          Set exact
+                        </button>
+                      </div>
                     )}
                   </div>
-                  {cashChange > 0 && (
-                    <div className="flex justify-between text-sm font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 rounded px-2 py-1.5">
-                      <span>Change to return:</span>
-                      <span>{formatCurrency(cashChange)}</span>
+                )}
+
+                {/* ── Split payment mode ── */}
+                {splitMode && (
+                  <div className="space-y-2">
+                    {payments.map((entry, idx) => (
+                      <div key={idx} className="flex gap-2 items-center">
+                        {/* Compact method toggle */}
+                        <div className="flex border border-border rounded-lg overflow-hidden shrink-0">
+                          {(["cash", "card", "upi"] as const).map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => {
+                                const next = [...payments];
+                                next[idx] = { ...next[idx], method: m };
+                                setPayments(next);
+                              }}
+                              className={`px-2 py-1.5 text-[10px] font-bold transition-all ${
+                                entry.method === m
+                                  ? "bg-purple-600 text-white"
+                                  : "bg-card text-muted-foreground hover:bg-muted"
+                              }`}
+                            >
+                              {m === "cash" ? "₹" : m === "card" ? "Card" : "UPI"}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Amount */}
+                        <div className="relative flex-1">
+                          <IndianRupee className="absolute left-2 top-2.5 h-3 w-3 text-muted-foreground" />
+                          <Input
+                            type="number"
+                            min={0}
+                            placeholder="Amount"
+                            value={entry.amount}
+                            onChange={(e) => {
+                              const next = [...payments];
+                              next[idx] = {
+                                ...next[idx],
+                                amount: e.target.value === "" ? "" : Math.max(Number(e.target.value), 0),
+                              };
+                              setPayments(next);
+                            }}
+                            className="pl-6 h-8 text-xs bg-card"
+                          />
+                        </div>
+
+                        {/* Fill remaining */}
+                        <button
+                          type="button"
+                          title="Fill remaining balance"
+                          onClick={() => {
+                            const otherTotal = payments
+                              .filter((_, i) => i !== idx)
+                              .reduce((s, p) => s + (typeof p.amount === "number" ? p.amount : 0), 0);
+                            const remaining = Math.max(0, grandTotal - otherTotal);
+                            const next = [...payments];
+                            next[idx] = { ...next[idx], amount: remaining };
+                            setPayments(next);
+                          }}
+                          className="text-[10px] text-purple-600 border border-purple-200 rounded px-1.5 py-1 hover:bg-purple-50 dark:hover:bg-purple-950/20 shrink-0 whitespace-nowrap"
+                        >
+                          Rem.
+                        </button>
+
+                        {/* Remove row */}
+                        {payments.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setPayments(payments.filter((_, i) => i !== idx))}
+                            className="text-muted-foreground hover:text-red-500 shrink-0"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+
+                    {/* Add method (max 3) */}
+                    {payments.length < 3 && (
+                      <button
+                        type="button"
+                        onClick={() => setPayments([...payments, { method: "cash", amount: "" }])}
+                        className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 font-semibold px-1"
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Add payment method
+                      </button>
+                    )}
+
+                    {/* Split summary */}
+                    <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 space-y-1 text-xs">
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Total entered:</span>
+                        <span className={`font-bold ${totalPaid >= grandTotal ? "text-emerald-600" : "text-amber-600"}`}>
+                          {formatCurrency(totalPaid)}
+                        </span>
+                      </div>
+                      {paymentShortfall > 0.009 && (
+                        <div className="flex justify-between text-red-500 font-semibold">
+                          <span>Still needed:</span>
+                          <span>{formatCurrency(paymentShortfall)}</span>
+                        </div>
+                      )}
+                      {cashChange > 0 && (
+                        <div className="flex justify-between text-emerald-600 font-bold">
+                          <span>Change to return:</span>
+                          <span>{formatCurrency(cashChange)}</span>
+                        </div>
+                      )}
+                      {totalPaid >= grandTotal && paymentShortfall <= 0.009 && (
+                        <div className="flex items-center gap-1 text-emerald-600 font-semibold">
+                          <span>✓</span> Payment complete
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {typeof cashTendered === "number" && cashTendered > 0 && cashTendered < grandTotal && (
-                    <p className="text-xs text-red-500 px-1">Amount is less than total payable.</p>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
 
               {/* Hold + Checkout */}
               <div className="flex gap-2">
@@ -739,7 +902,12 @@ export default function PosBillingPage({
                 <Button
                   className="flex-[2] bg-purple-600 hover:bg-purple-700 text-white gap-1 h-11 shadow-md shadow-purple-600/20 font-bold disabled:opacity-60"
                   onClick={checkout}
-                  disabled={isCheckingOut || cart.length === 0 || selectedCustomer === WALK_IN_SENTINEL || (paymentMethod === "cash" && typeof cashTendered === "number" && cashTendered < grandTotal)}
+                  disabled={
+                    isCheckingOut ||
+                    cart.length === 0 ||
+                    selectedCustomer === WALK_IN_SENTINEL ||
+                    paymentShortfall > 0.009
+                  }
                 >
                   {isCheckingOut
                     ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing…</>
