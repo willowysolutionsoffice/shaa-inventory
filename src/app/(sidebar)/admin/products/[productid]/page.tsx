@@ -239,6 +239,7 @@ const Page = async ({ params }: PageParamsProps) => {
           <ProductQrPrint
             sku={product.sku}
             productName={product.product_name}
+            price={product.sellingPrice} 
           />
         </div>
       </div>

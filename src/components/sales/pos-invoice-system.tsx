@@ -168,7 +168,7 @@ function ThermalReceipt({ invoice }: { invoice: POSInvoice }) {
         <td
           style={{
             padding: "4px 4px 4px 0",
-            fontWeight: 500,
+            fontWeight: 700,
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -706,6 +706,14 @@ const generatePdfBlob = async (): Promise<{ blob: Blob; filename: string }> => {
 };
 
 const handleDownload = async () => {
+  if (printMode === "thermal") {
+    // For thermal, "download" = open print window → user saves as PDF from browser
+    // This avoids canvas rasterization and keeps text crisp
+    toast.info("Use your browser's 'Save as PDF' option in the print dialog.");
+setTimeout(() => handlePrint(), 800);
+    return;
+  }
+  // A4 download via canvas PDF (unchanged)
   const { blob, filename } = await generatePdfBlob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -716,23 +724,159 @@ const handleDownload = async () => {
 };
 
 const handlePrint = async () => {
+  if (printMode === "thermal") {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      toast.error("Failed to open print window. Please allow popups.");
+      return;
+    }
+
+    const { date, time } = fmtDate(invoice.date);
+
+    const itemRows = invoice.items.map((item, i) => `
+      <tr style="border-bottom: ${i < invoice.items.length - 1 ? "1px dashed #999" : "none"}; font-size: 11px;">
+        <td style="padding:4px 0;color:#000;">${i + 1}</td>
+        <td style="padding:4px 0;color:#000;font-size:10px;">${item.sku}</td>
+        <td style="padding:4px 4px 4px 0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.name}</td>
+        <td style="padding:4px 0;text-align:center;">${item.qty}</td>
+        <td style="padding:4px 0;text-align:right;">${item.unitPrice.toLocaleString("en-IN")}</td>
+        <td style="padding:4px 0;text-align:right;font-weight:600;">${item.total.toLocaleString("en-IN")}</td>
+      </tr>
+    `).join("");
+
+    const couponRow = invoice.couponDiscount > 0
+      ? `<div style="display:flex;justify-content:space-between;color:#1a7a4a;font-size:10px;"><span>Coupon (${invoice.couponCode}):</span><span>-${invoice.couponDiscount.toLocaleString("en-IN")}</span></div>`
+      : "";
+
+    const discountRow = invoice.manualDiscount > 0
+      ? `<div style="display:flex;justify-content:space-between;color:#1a7a4a;font-size:10px;"><span>Discount:</span><span>-${invoice.manualDiscount.toLocaleString("en-IN")}</span></div>`
+      : "";
+
+    const changeRow = invoice.change > 0
+      ? `<div style="display:flex;justify-content:space-between;color:#1a7a4a;font-weight:700;"><span>Change:</span><span>${invoice.change.toLocaleString("en-IN")}</span></div>`
+      : "";
+
+    const customerBlock = (invoice.customer.name && invoice.customer.name !== "Select a Customer")
+      ? `<div style="padding-left:8px;font-weight:600;">${invoice.customer.name}</div>` : "";
+
+    const phoneBlock = invoice.customer.phone
+      ? `<div style="padding-left:8px;font-size:10px;color:#000;">${invoice.customer.phone}</div>` : "";
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Thermal Receipt - ${invoice.invoiceNo}</title>
+          <style>
+            @page { size: 80mm auto; margin: 0; }
+            * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body {
+              font-family: 'Courier New', Courier, monospace;
+              font-size: 11px;
+              line-height: 1.55;
+              color: #000000;
+              background: #ffffff;
+              width: 80mm;
+              padding: 18px 16px;
+            }
+            table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+          </style>
+        </head>
+        <body>
+          <div style="text-align:center;margin-bottom:10px;">
+            <div style="font-weight:900;font-size:17px;letter-spacing:1.5px;text-transform:uppercase;">SHAASHOPY</div>
+            <div style="font-size:10px;margin-top:1px;">2ND FLOOR, HILITE MALL</div>
+            <div style="font-size:10px;">PH: +91 9847640052</div>
+            <div style="font-size:10px;">GSTIN: 32AFJFS9358F1ZN</div>
+          </div>
+
+          <div style="border-top:1px dashed #999;border-bottom:1px dashed #999;padding:5px 0;margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;">
+              <span>Bill No : <strong>${invoice.invoiceNo}</strong></span>
+              <span>Date : ${date}</span>
+            </div>
+            <div style="text-align:right;">Time : ${time}</div>
+          </div>
+
+          <div style="margin-bottom:6px;">
+            <div>To :</div>
+            ${customerBlock}
+            ${phoneBlock}
+          </div>
+
+          <table style="border-top:1px dashed #999;">
+            <colgroup>
+              <col style="width:18px"/><col style="width:42px"/><col/>
+              <col style="width:26px"/><col style="width:50px"/><col style="width:50px"/>
+            </colgroup>
+            <thead>
+              <tr style="border-bottom:1px dashed #999;font-size:10px;font-weight:700;">
+                <th style="text-align:left;padding:4px 0 3px;">Sn</th>
+                <th style="text-align:left;padding:4px 0 3px;">Code</th>
+                <th style="text-align:left;padding:4px 0 3px;">Item</th>
+                <th style="text-align:center;padding:4px 0 3px;">Qty</th>
+                <th style="text-align:right;padding:4px 0 3px;">Rate</th>
+                <th style="text-align:right;padding:4px 0 3px;">Total</th>
+              </tr>
+            </thead>
+            <tbody>${itemRows}</tbody>
+          </table>
+
+          <div style="border-top:1px dashed #999;padding-top:6px;margin-top:2px;">
+            ${couponRow}
+            ${discountRow}
+            <div style="display:flex;justify-content:space-between;font-weight:900;font-size:14px;border-top:1px solid #000;margin-top:4px;padding-top:4px;">
+              <span>Grand Total:</span>
+              <span>${toNum(invoice.grandTotal).toLocaleString("en-IN")}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:2px;">
+              <span>Paid via:</span>
+              <span style="font-weight:600;">${invoice.paymentMethod}</span>
+            </div>
+            ${changeRow}
+          </div>
+
+          <div style="border-top:1px dashed #999;margin-top:8px;padding-top:6px;text-align:center;font-size:10px;">
+            <div>SALESMAN :&nbsp;</div>
+            <div style="margin-top:2px;">Insta ID :&nbsp;<span style="font-weight:600;">shaashopy.hilitemall</span></div>
+          </div>
+
+          <div style="border-top:1px solid #000;border-bottom:1px solid #000;margin-top:10px;padding:8px 0;text-align:center;">
+            <div style="font-weight:700;font-size:11px;margin-bottom:6px;text-decoration:underline;">TERMS AND CONDITIONS</div>
+            <div style="text-align:left;font-size:10px;margin-bottom:2px;">* No Cash Refund</div>
+            <div style="text-align:left;font-size:10px;margin-bottom:2px;">* NO credit note will be issued</div>
+            <div style="text-align:left;font-size:10px;margin-bottom:2px;">* NO Guarantee is provided for fancy items</div>
+            <div style="text-align:left;font-size:10px;margin-bottom:2px;">* Exchange Within 3 Days (Only on Same Brand)</div>
+            <div style="text-align:left;font-size:10px;margin-bottom:2px;">* Only dry wash recommend for this material</div>
+            <div style="text-align:left;font-size:10px;margin-bottom:2px;">* We are under composition taxpayer, We are not collecting tax from customer</div>
+          </div>
+
+          <div style="text-align:center;margin-top:10px;font-weight:700;font-size:11px;letter-spacing:0.5px;">
+            THANK YOU VISIT AGAIN ;
+          </div>
+
+          <script>
+            window.onload = function () {
+              setTimeout(function () { window.print(); window.close(); }, 400);
+            };
+          <\/script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    return; // ← thermal done, skip A4 path below
+  }
+
+  // A4: canvas → PDF → iframe print (unchanged)
   const { blob } = await generatePdfBlob();
   const url = URL.createObjectURL(blob);
-
-  // Print via a hidden iframe so the browser's native PDF
-  // print pipeline handles it — page size comes from the PDF itself,
-  // not CSS @page, so it's honored consistently across printers/drivers.
   const iframe = document.createElement("iframe");
   iframe.style.display = "none";
   iframe.src = url;
   document.body.appendChild(iframe);
-
   iframe.onload = () => {
     iframe.contentWindow?.focus();
     iframe.contentWindow?.print();
   };
-
-  // Clean up well after the print dialog would have closed
   setTimeout(() => {
     document.body.removeChild(iframe);
     URL.revokeObjectURL(url);
