@@ -61,13 +61,211 @@ interface HeldBill {
   splitMode:             boolean;
 }
 
-// ── NEW: multi-payment entry ──────────────────────────────────────────────────
 interface PaymentEntry {
   method: "cash" | "card" | "upi";
   amount: number | "";
 }
 
 const WALK_IN_SENTINEL = "__walk_in__";
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const toNum = (v: unknown): number => {
+  const n = Number(v);
+  return isFinite(n) ? n : 0;
+};
+
+const fmtDate = (date: Date): { date: string; time: string } => {
+  const dateStr = new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit", month: "short", year: "numeric",
+  }).format(date);
+  const timeStr = new Intl.DateTimeFormat("en-IN", {
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  }).format(date);
+  return { date: dateStr, time: timeStr };
+};
+
+function methodLabel(method: string): string {
+  const m = method.toLowerCase();
+  if (m === "cash") return "Cash";
+  if (m === "card") return "Card";
+  if (m === "upi")  return "UPI";
+  return method;
+}
+
+// Matches buildPaymentHtml in pos-invoice.tsx exactly — takes normalized payments
+// (amounts are guaranteed numbers here since we filter before passing in)
+function buildPaymentHtml(
+  payments: { method: string; amount: number }[],
+  change: number
+): string {
+  const isSplit = payments.length > 1;
+
+  const changeRow = change > 0
+    ? `<div style="display:flex;justify-content:space-between;color:#000;font-weight:700;margin-top:2px;"><span>Change:</span><span>${change.toLocaleString("en-IN")}</span></div>`
+    : "";
+
+  if (!isSplit) {
+    return `
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:#000;margin-top:2px;">
+        <span>Paid via:</span>
+        <span style="font-weight:700;color:#000;">${methodLabel(payments[0].method)}</span>
+      </div>
+      ${changeRow}
+    `;
+  }
+
+  const rows = payments.map((p) => `
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:#000;padding-left:8px;">
+      <span>&#x21b3; ${methodLabel(p.method)}:</span>
+      <span style="font-weight:700;">${p.amount.toLocaleString("en-IN")}</span>
+    </div>`).join("");
+
+  return `
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:#000;margin-top:2px;font-weight:700;">
+      <span>Paid via:</span><span>Split Payment</span>
+    </div>
+    ${rows}
+    ${changeRow}
+  `;
+}
+
+// ── Thermal print function — identical HTML/CSS to pos-invoice.tsx printThermal ──
+
+interface PrintReceiptParams {
+  invoiceNo:      string;
+  date:           Date;
+  customerName:   string;
+  customerPhone:  string;
+  items:          { name: string; sku: string; qty: number; unitPrice: number; total: number }[];
+  couponDiscount: number;
+  couponCode:     string;
+  manualDiscount: number;
+  grandTotal:     number;
+  // only entries with a confirmed numeric amount (filtered before passing in)
+  payments:       { method: string; amount: number }[];
+  change:         number;
+}
+
+function printThermalReceipt(params: PrintReceiptParams) {
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    toast.error("Failed to open print window. Please allow popups.");
+    return;
+  }
+
+  const { date, time } = fmtDate(params.date);
+
+  const itemRows = params.items.map((item, i) => `
+    <tr style="border-bottom:${i < params.items.length - 1 ? "1px dashed #000" : "none"};font-size:11px;color:#000;">
+      <td style="padding:4px 0;color:#000;">${i + 1}</td>
+      <td style="padding:4px 0;color:#000;font-size:10px;">${item.sku}</td>
+      <td style="padding:4px 4px 4px 0;font-weight:700;color:#000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.name}</td>
+      <td style="padding:4px 0;text-align:center;color:#000;">${item.qty}</td>
+      <td style="padding:4px 0;text-align:right;color:#000;">${item.unitPrice.toLocaleString("en-IN")}</td>
+      <td style="padding:4px 0;text-align:right;font-weight:700;color:#000;">${item.total.toLocaleString("en-IN")}</td>
+    </tr>`).join("");
+
+  const couponRow = params.couponDiscount > 0
+    ? `<div style="display:flex;justify-content:space-between;color:#000;font-size:10px;"><span>Coupon (${params.couponCode}):</span><span>-${params.couponDiscount.toLocaleString("en-IN")}</span></div>`
+    : "";
+
+  const discountRow = params.manualDiscount > 0
+    ? `<div style="display:flex;justify-content:space-between;color:#000;font-size:10px;"><span>Discount:</span><span>-${params.manualDiscount.toLocaleString("en-IN")}</span></div>`
+    : "";
+
+  const customerBlock = params.customerName && params.customerName !== "Select a Customer"
+    ? `<div style="padding-left:8px;font-weight:700;color:#000;">${params.customerName}</div>`
+    : "";
+
+  const phoneBlock = params.customerPhone
+    ? `<div style="padding-left:8px;font-size:10px;color:#000;">${params.customerPhone}</div>`
+    : "";
+
+  const paymentHtml = buildPaymentHtml(params.payments, params.change);
+
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>Receipt - ${params.invoiceNo}</title>
+        <style>
+          @page { size: 80mm auto; margin: 0; }
+          * { box-sizing:border-box; margin:0; padding:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; color:#000000; }
+          body { font-family:'Courier New',Courier,monospace; font-size:11px; line-height:1.55; color:#000000; background:#ffffff; width:80mm; padding:14px 12px; }
+          table { width:100%; border-collapse:collapse; table-layout:fixed; }
+          th, td { color:#000000; }
+        </style>
+      </head>
+      <body>
+        <div style="text-align:center;margin-bottom:10px;">
+          <div style="font-weight:900;font-size:17px;letter-spacing:1.5px;text-transform:uppercase;color:#000;">SHAASHOPY</div>
+          <div style="font-size:10px;margin-top:1px;color:#000;">2ND FLOOR, HILITE MALL</div>
+          <div style="font-size:10px;color:#000;">PH: +91 9847640052</div>
+          <div style="font-size:10px;color:#000;">GSTIN: 32AFJFS9358F1ZN</div>
+        </div>
+        <div style="border-top:1px dashed #000;border-bottom:1px dashed #000;padding:5px 0;margin-bottom:8px;color:#000;">
+          <div style="display:flex;justify-content:space-between;">
+            <span>Bill No : <strong>${params.invoiceNo}</strong></span>
+            <span>Date : ${date}</span>
+          </div>
+          <div style="text-align:right;color:#000;">Time : ${time}</div>
+        </div>
+        <div style="margin-bottom:6px;color:#000;">
+          <div style="color:#000;">To :</div>
+          ${customerBlock}
+          ${phoneBlock}
+        </div>
+        <table style="border-top:1px dashed #000;">
+          <colgroup>
+            <col style="width:18px"/><col style="width:42px"/><col/>
+            <col style="width:26px"/><col style="width:50px"/><col style="width:50px"/>
+          </colgroup>
+          <thead>
+            <tr style="border-bottom:1px dashed #000;font-size:10px;font-weight:700;color:#000;">
+              <th style="text-align:left;padding:4px 0 3px;color:#000;">Sn</th>
+              <th style="text-align:left;padding:4px 0 3px;color:#000;">Code</th>
+              <th style="text-align:left;padding:4px 0 3px;color:#000;">Item</th>
+              <th style="text-align:center;padding:4px 0 3px;color:#000;">Qty</th>
+              <th style="text-align:right;padding:4px 0 3px;color:#000;">Rate</th>
+              <th style="text-align:right;padding:4px 0 3px;color:#000;">Total</th>
+            </tr>
+          </thead>
+          <tbody>${itemRows}</tbody>
+        </table>
+        <div style="border-top:1px dashed #000;padding-top:6px;margin-top:2px;color:#000;">
+          ${couponRow}
+          ${discountRow}
+          <div style="display:flex;justify-content:space-between;font-weight:900;font-size:14px;border-top:1px solid #000;margin-top:4px;padding-top:4px;color:#000;">
+            <span>Grand Total:</span>
+            <span>${toNum(params.grandTotal).toLocaleString("en-IN")}</span>
+          </div>
+          ${paymentHtml}
+        </div>
+        <div style="border-top:1px dashed #000;margin-top:8px;padding-top:6px;color:#000;">
+          <div style="display:flex;justify-content:center;">
+            <span style="font-size:10px;color:#000;font-weight:700;">SALESMAN : </span>
+            <span style="font-size:10px;font-weight:700;margin-left:4px;color:#000;">&nbsp;</span>
+          </div>
+          <div style="display:flex;justify-content:center;margin-top:2px;font-size:10px;color:#000;">
+            Insta ID :&nbsp;<span style="font-weight:700;color:#000;">shaashopy.hilitemall</span>
+          </div>
+        </div>
+        <div style="border-top:1px solid #000;border-bottom:1px solid #000;margin-top:10px;padding:8px 0;color:#000;">
+          <div style="font-weight:700;font-size:11px;margin-bottom:6px;text-decoration:underline;text-align:center;color:#000;">TERMS AND CONDITIONS</div>
+          <div style="text-align:left;font-size:10px;margin-bottom:2px;color:#000;">* No Cash Refund</div>
+          <div style="text-align:left;font-size:10px;margin-bottom:2px;color:#000;">* NO credit note will be issued</div>
+          <div style="text-align:left;font-size:10px;margin-bottom:2px;color:#000;">* NO Guarantee is provided for fancy items</div>
+          <div style="text-align:left;font-size:10px;margin-bottom:2px;color:#000;">* Exchange Within 3 Days (Only on Same Brand)</div>
+          <div style="text-align:left;font-size:10px;margin-bottom:2px;color:#000;">* Only dry wash recommend for this material</div>
+          <div style="text-align:left;font-size:10px;margin-bottom:2px;color:#000;">* We are under composition taxpayer, We are not collecting tax from customer</div>
+        </div>
+        <div style="text-align:center;margin-top:10px;font-weight:700;font-size:11px;letter-spacing:0.5px;color:#000;">THANK YOU VISIT AGAIN ;</div>
+        <script>window.onload=function(){setTimeout(function(){window.print();window.close();},400);};<\/script>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -155,26 +353,42 @@ export default function PosBillingPage({
   const [appliedCoupon,         setAppliedCoupon]         = useState("");
   const [heldBills,             setHeldBills]             = useState<HeldBill[]>([]);
 
-  // ── NEW: payment state ─────────────────────────────────────────────────────
+  // ── Payment state ──────────────────────────────────────────────────────────
   const [payments,  setPayments]  = useState<PaymentEntry[]>([{ method: "cash", amount: "" }]);
   const [splitMode, setSplitMode] = useState(false);
 
   // ── Server action ──────────────────────────────────────────────────────────
+
+  // We capture a snapshot of the cart/payment state at checkout time so the
+  // print popup can use it even after the cart has been reset.
+  const [pendingPrint, setPendingPrint] = useState<Omit<PrintReceiptParams, "invoiceNo"> | null>(null);
+
   const { execute: executeSale, isExecuting: isCheckingOut } = useAction(createSale, {
     onSuccess: ({ data }) => {
-      if ((data as any)?.error) { toast.error((data as any).error); return; }
-      const saleId = (data as any)?.id ?? (data as any)?.data?.id;
-      if (saleId) {
-        resetCart();
-        toast.success("Checkout complete! Opening receipt…");
-        router.push(`/sales/pos/invoice/${saleId}`);
-      } else {
-        toast.error("Sale saved but no ID returned.");
+      if ((data as any)?.error) {
+        toast.error((data as any).error);
+        setPendingPrint(null);
+        return;
       }
+
+      const invoiceNo: string =
+        (data as any)?.invoiceNo ??
+        (data as any)?.data?.invoiceNo ??
+        `INV-${Date.now().toString().slice(-6)}`;
+
+      // Fire the print window immediately with the snapshotted receipt data
+      if (pendingPrint) {
+        printThermalReceipt({ ...pendingPrint, invoiceNo });
+        setPendingPrint(null);
+      }
+
+      resetCart();
+      toast.success("Checkout complete! Receipt sent to printer.");
     },
     onError: (err) => {
       console.error("[POS checkout error]", err);
       toast.error("Checkout failed. Please try again.");
+      setPendingPrint(null);
     },
   });
 
@@ -317,17 +531,46 @@ export default function PosBillingPage({
       toast.error("Please select a customer before checking out.");
       return;
     }
-    if (paymentShortfall > 0.009) {
-      toast.error("Payment amount doesn't cover the total.");
-      return;
-    }
+    const now = new Date();
 
-    const now = new Date().toISOString();
+    // Build the customer object for the receipt from local state
+    const customer = customers.find((c) => c.id === selectedCustomer);
+
+    // Snapshot everything needed for the receipt BEFORE the cart resets.
+    // Filter payments to only those with confirmed numeric amounts.
+    const confirmedPayments = (() => {
+      const valid = payments.filter((p): p is { method: "cash" | "card" | "upi"; amount: number } =>
+        typeof p.amount === "number" && p.amount > 0
+      );
+      // If no amount entered, treat as exact payment for the receipt
+      return valid.length > 0 ? valid : [{ method: payments[0].method, amount: grandTotal }];
+    })();
+
+    const printSnapshot: Omit<PrintReceiptParams, "invoiceNo"> = {
+      date:           now,
+      customerName:   customer?.name  ?? "",
+      customerPhone:  customer?.phone ?? "",
+      items: cart.map((item) => ({
+        name:      item.product.name,
+        sku:       item.product.sku,
+        qty:       item.quantity,
+        unitPrice: item.product.price,
+        total:     item.product.price * item.quantity,
+      })),
+      couponDiscount: couponDiscountAmount,
+      couponCode:     appliedCoupon,
+      manualDiscount: manualDiscountAmount,
+      grandTotal,
+      payments:       confirmedPayments,
+      change:         cashChange,
+    };
+
+    setPendingPrint(printSnapshot);
 
     executeSale({
       customerId: selectedCustomer,
       branchId,
-      salesdate:  now,
+      salesdate:  now.toISOString(),
       status:     "Dispatched",
       invoiceNo:  "",
       grandTotal,
@@ -342,15 +585,18 @@ export default function PosBillingPage({
         total:         item.product.price * item.quantity,
         purchasePrice: item.product.purchasePrice,
       })),
-      salesPayment: payments
-        .filter((p) => typeof p.amount === "number" && p.amount > 0)
-        .map((p) => ({
+      salesPayment: (() => {
+        const validEntries = payments.filter((p) => typeof p.amount === "number" && (p.amount as number) > 0);
+        // If no amount was entered at all, treat as exact payment via selected method
+        const entries = validEntries.length > 0 ? validEntries : [{ method: payments[0].method, amount: grandTotal }];
+        return entries.map((p) => ({
           amount:        p.amount as number,
           paymentMethod: p.method,
-          paidOn:        now,
+          paidOn:        now.toISOString(),
           paymentNote:   appliedCoupon ? `Coupon: ${appliedCoupon}` : null,
           dueDate:       null,
-        })),
+        }));
+      })(),
     });
   };
 
@@ -725,7 +971,7 @@ export default function PosBillingPage({
                             <Input
                               type="number"
                               min={0}
-                              placeholder={`Cash tendered (min ${formatCurrency(grandTotal)})`}
+                              placeholder="Cash tendered (optional)"
                               value={payments[0].amount}
                               onChange={(e) => {
                                 const v = e.target.value;
@@ -747,26 +993,11 @@ export default function PosBillingPage({
                             <span>{formatCurrency(cashChange)}</span>
                           </div>
                         )}
-                        {typeof payments[0].amount === "number" && payments[0].amount > 0 && payments[0].amount < grandTotal && (
-                          <p className="text-xs text-red-500 px-1">Amount is less than total payable.</p>
-                        )}
+
                       </div>
                     )}
 
-                    {/* Card / UPI: quick exact-amount button */}
-                    {payments[0].method !== "cash" && (
-                      <div className="flex items-center gap-2 bg-muted/30 rounded-lg px-3 py-2 text-xs text-muted-foreground">
-                        <span>Amount:</span>
-                        <span className="font-bold text-foreground">{formatCurrency(grandTotal)}</span>
-                        <button
-                          type="button"
-                          className="ml-auto text-[10px] text-purple-600 underline"
-                          onClick={() => setPayments([{ ...payments[0], amount: grandTotal }])}
-                        >
-                          Set exact
-                        </button>
-                      </div>
-                    )}
+
                   </div>
                 )}
 
@@ -905,19 +1136,18 @@ export default function PosBillingPage({
                   disabled={
                     isCheckingOut ||
                     cart.length === 0 ||
-                    selectedCustomer === WALK_IN_SENTINEL ||
-                    paymentShortfall > 0.009
+                    selectedCustomer === WALK_IN_SENTINEL
                   }
                 >
                   {isCheckingOut
-                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing…</>
-                    : <><Receipt className="h-4 w-4" /> Complete Checkout</>
+                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving & Printing…</>
+                    : <><Receipt className="h-4 w-4" /> Checkout & Print</>
                   }
                 </Button>
               </div>
 
-              <Button variant="ghost" className="w-full text-xs text-muted-foreground gap-1" onClick={() => router.push("/sales/pos")}>
-                <Receipt className="h-3.5 w-3.5" /> New Transaction
+              <Button variant="ghost" className="w-full text-xs text-muted-foreground gap-1" onClick={resetCart}>
+                <Trash2 className="h-3.5 w-3.5" /> Clear Cart
               </Button>
             </div>
           </Card>

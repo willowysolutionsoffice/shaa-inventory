@@ -17,7 +17,8 @@ import { getSalesList } from "@/actions/sales-action";
 import { formatCurrency } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-
+import { printThermalDirect } from "@/lib/thermal-print";
+import { getSaleById } from "@/actions/sales-action";
 type PaymentStatus = "paid" | "partial" | "due";
 
 interface SaleRow {
@@ -103,7 +104,60 @@ export default function InvoicesPage() {
       }
     });
   };
+// Add this helper at the top of InvoicesPage component
+const handleThermalPrint = async (sale: SaleRow) => {
+  try {
+    const result = await getSaleById({ id: sale.id });
+    const full = result?.data?.data;
+    if (!full) { toast.error("Failed to load invoice data."); return; }
 
+    const fmtDateParts = (date: string | Date | null | undefined) => {
+      if (!date) return { date: "—", time: "—" };
+      const d = date instanceof Date ? date : new Date(date);
+      if (isNaN(d.getTime())) return { date: "—", time: "—" };
+      return {
+        date: new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(d),
+        time: new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(d),
+      };
+    };
+
+    const saleDate = (full as any).salesDate ?? (full as any).salesdate;
+    const { date, time } = fmtDateParts(saleDate);
+    const payments = (full.payments ?? []).map((p: any) => ({
+      method: (p.paymentMethod ?? "cash").toLowerCase(),
+      amount: Number(p.amount ?? 0),
+    }));
+    const safePayments = payments.length > 0
+      ? payments
+      : [{ method: "cash", amount: Number(full.grandTotal ?? 0) }];
+    const amountPaid = safePayments.reduce((s: number, p: any) => s + p.amount, 0);
+    const items = (full.items ?? []).map((item: any) => ({
+      sku:       item.product?.sku ?? "",
+      name:      item.product?.productName ?? item.product?.product_name ?? "Unknown",
+      qty:       Number(item.quantity ?? 0),
+      unitPrice: Number(item.unitPrice ?? 0),
+      total:     Number(item.total ?? 0),
+    }));
+    const itemDiscountTotal = (full.items ?? []).reduce((s: number, i: any) => s + Number(i.discount ?? 0), 0);
+
+    printThermalDirect({
+      invoiceNo:      full.invoiceNo ?? "—",
+      date,
+      time,
+      customerName:   full.customer?.name ?? "Walk-in",
+      customerPhone:  full.customer?.phone ?? "",
+      items,
+      couponDiscount: 0,
+      couponCode:     "",
+      manualDiscount: itemDiscountTotal,
+      grandTotal:     Number(full.grandTotal ?? 0),
+      payments:       safePayments,
+      change:         Math.max(0, amountPaid - Number(full.grandTotal ?? 0)),
+    });
+  } catch {
+    toast.error("Failed to print.");
+  }
+};
   useEffect(() => { fetchSales(); }, [page, dateFrom, dateTo]);
 
   const displayed = useMemo(() => {
@@ -318,9 +372,10 @@ export default function InvoicesPage() {
                           <Button size="icon" variant="ghost" className="h-7 w-7 hover:text-purple-600 hover:bg-purple-50" onClick={() => router.push(`/sales/pos/invoice/${sale.id}`)}>
                             <Eye size={13} />
                           </Button>
-                          <Button size="icon" variant="ghost" className="h-7 w-7 hover:text-blue-600 hover:bg-blue-50" onClick={() => { router.push(`/sales/pos/invoice/${sale.id}`); setTimeout(() => window.print(), 800); }}>
-                            <Printer size={13} />
-                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 hover:text-blue-600 hover:bg-blue-50"
+  onClick={() => handleThermalPrint(sale)}>
+  <Printer size={13} />
+</Button>
                         </div>
                       </td>
                     </tr>

@@ -19,7 +19,6 @@ export default async function POSInvoicePage({ params }: Props) {
 
   const result = await getSaleById({ id: saleid });
 
-  // getSaleById returns { data: { data: sale } } via next-safe-action wrapper
   const sale = result?.data?.data;
 
   if (!sale) notFound();
@@ -29,17 +28,25 @@ export default async function POSInvoicePage({ params }: Props) {
   const customer = sale.customer ?? { name: "Select a Customer" };
   const branch   = sale.branch   ?? { name: "Branch Central" };
 
-  const subtotal = items.reduce(
-    (s: number, i: any) => s + toNum(i.quantity) * toNum(i.unitPrice), 0
-  );
+  const subtotal          = items.reduce((s: number, i: any) => s + toNum(i.quantity) * toNum(i.unitPrice), 0);
   const itemDiscountTotal = items.reduce((s: number, i: any) => s + toNum(i.discount), 0);
-  const netAfterDiscount  = subtotal - itemDiscountTotal;
   const amountPaid        = payments.reduce((s: number, p: any) => s + toNum(p.amount), 0);
+
+  // ── Map each SalesPayment row → InvoicePayment ────────────────────────────
+  const invoicePayments = payments.map((p: any) => ({
+    method: (p.paymentMethod ?? "cash").toLowerCase(),  // "CASH" → "cash"
+    amount: toNum(p.amount),
+  }));
+
+  // Fallback: if no payments in DB yet, synthesise one from grandTotal
+  const safePayments = invoicePayments.length > 0
+    ? invoicePayments
+    : [{ method: "cash", amount: toNum(sale.grandTotal) }];
 
   const invoice = {
     saleId:    sale.id,
     invoiceNo: sale.invoiceNo ?? "—",
-    date:      sale.salesDate ?? sale.salesdate,   // backend returns salesDate (Prisma field)
+    date:      sale.salesDate ?? sale.salesdate,
 
     customer: {
       name:  customer.name  ?? "Select a Customer",
@@ -51,7 +58,13 @@ export default async function POSInvoicePage({ params }: Props) {
       phone:   (branch as any).phone   ?? "",
     },
 
-    paymentMethod: payments[0]?.paymentMethod ?? "Cash",
+    // kept for backward compat — invoice system now uses `payments` array instead
+    paymentMethod: safePayments.length > 1
+      ? "Split"
+      : safePayments[0].method,
+
+    // ── THIS is what the invoice system actually renders ──────────────────
+    payments: safePayments,
 
     items: items.map((item: any) => ({
       id:        item.id,
@@ -69,9 +82,10 @@ export default async function POSInvoicePage({ params }: Props) {
     couponCode:     "",
     manualDiscount: itemDiscountTotal,
     taxRate:        12,
-    grandTotal:  toNum(sale.grandTotal),
+    taxAmount:      0,
+    grandTotal:     toNum(sale.grandTotal),
     amountPaid,
-    change:      Math.max(0, amountPaid - toNum(sale.grandTotal)),
+    change:         Math.max(0, amountPaid - toNum(sale.grandTotal)),
   };
 
   return <POSInvoiceSystem invoice={invoice} />;

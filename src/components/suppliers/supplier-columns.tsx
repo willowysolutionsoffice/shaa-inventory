@@ -4,13 +4,14 @@ import { SupplierRow } from "@/types/supplier";
 import { SupplierFormDialog } from "./supplier-form";
 import { SupplierDeleteDialog } from "./supplier-delete-dailog";
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown, Clock1, Edit2, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Clock1, Edit2, ExternalLink, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { SupplierPayDialog } from "./supplier-pay-dialog";
 import { IconCash } from "@tabler/icons-react";
 import { SupplierPaymentHistoryModal } from "./supplier-payment-history-modal";
 import { formatCurrency } from "@/lib/utils";
+import { useRouter } from "next/navigation";
 
 export const supplierColumns: ColumnDef<SupplierRow>[] = [
   {
@@ -97,6 +98,7 @@ interface SupplierActionsProps {
 }
 
 export const SupplierActions = ({ supplier, branches }: SupplierActionsProps) => {
+  const router = useRouter();
   const [openDelete,  setOpenDelete]  = useState(false);
   const [openEdit,    setOpenEdit]    = useState(false);
   const [openPay,     setOpenPay]     = useState(false);
@@ -104,6 +106,17 @@ export const SupplierActions = ({ supplier, branches }: SupplierActionsProps) =>
 
   return (
     <div className="flex items-center gap-2">
+      {/* ✅ Details button */}
+      <Button
+        variant="ghost"
+        size="sm"
+onClick={() => router.push(`/admin/supplier/${supplier.id}`)}
+        className="h-8 w-8 p-0"
+        title="View details"
+      >
+        <ExternalLink className="h-4 w-4" />
+      </Button>
+
       <Button variant="ghost" size="sm" onClick={() => setOpenPay(true)} className="h-8 w-8 p-0">
         <IconCash className="h-4 w-4" />
       </Button>

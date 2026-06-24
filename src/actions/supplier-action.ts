@@ -5,6 +5,16 @@ import { api } from '@/lib/api';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
+const bankingFields = {
+  accountHolderName: z.string().optional(),
+  bankName:          z.string().optional(),
+  bankBranchName:    z.string().optional(),
+  accountNumber:     z.string().optional(),
+  ifscCode:          z.string().optional(),
+  upiId:             z.string().optional(),
+  bankNotes:         z.string().optional(),
+};
+
 const supplierSchema = z.object({
   SupplierId:     z.string().min(1, 'Supplier ID is required'),
   name:           z.string().min(1, 'Name is required'),
@@ -13,6 +23,7 @@ const supplierSchema = z.object({
   address:        z.string().optional(),
   openingBalance: z.coerce.number().optional().default(0),
   branchId:       z.string().min(1, 'Branch is required'),
+  ...bankingFields,
 });
 
 const updateSupplierSchema = supplierSchema.partial().extend({
@@ -44,7 +55,15 @@ export const createSupplier = actionClient
       return { error: error.message ?? 'Failed to create supplier' };
     }
   });
-
+export const getSupplierById = async (id: string) => {
+  try {
+    const raw = await api.get<any>(`/suppliers/${id}`);
+    const supplier = raw?.data ?? raw;
+    return { data: normalizeSupplier(supplier) };
+  } catch (error: any) {
+    return { error: error.message ?? 'Failed to fetch supplier' };
+  }
+};
 export const getSupplierList = actionClient
   .inputSchema(z.object({}))
   .action(async () => {

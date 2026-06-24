@@ -87,7 +87,6 @@ const toNum = (v: unknown): number => {
 // ── Normalize: always produce a valid payments array, even from old records ───
 function normalizePayments(invoice: POSInvoice): InvoicePayment[] {
   if (invoice.payments && invoice.payments.length > 0) return invoice.payments;
-  // Fall back to legacy single paymentMethod string
   return [{ method: invoice.paymentMethod ?? "cash", amount: toNum(invoice.grandTotal) }];
 }
 
@@ -203,7 +202,6 @@ function ThermalReceipt({ invoice, payments }: { invoice: POSInvoice; payments: 
         borderRadius: 4,
       }}
     >
-      {/* Store header */}
       <div style={{ textAlign: "center", marginBottom: 10 }}>
         <div style={{ fontWeight: 900, fontSize: 17, letterSpacing: 1.5, textTransform: "uppercase", color: "#000" }}>SHAASHOPY</div>
         <div style={{ fontSize: 10, marginTop: 1, color: "#000" }}>2ND FLOOR, HILITE MALL</div>
@@ -211,7 +209,6 @@ function ThermalReceipt({ invoice, payments }: { invoice: POSInvoice; payments: 
         <div style={{ fontSize: 10, color: "#000" }}>GSTIN: 32AFJFS9358F1ZN</div>
       </div>
 
-      {/* Bill No / Date / Time */}
       <div style={{ borderTop: dashed, borderBottom: dashed, padding: "5px 0", marginBottom: 8, color: "#000" }}>
         <div style={{ display: "flex", justifyContent: "space-between" }}>
           <span>Bill No : <strong>{invoice.invoiceNo}</strong></span>
@@ -220,7 +217,6 @@ function ThermalReceipt({ invoice, payments }: { invoice: POSInvoice; payments: 
         <div style={{ textAlign: "right" }}>Time : {time}</div>
       </div>
 
-      {/* Customer */}
       <div style={{ marginBottom: 6, color: "#000" }}>
         <div>To :</div>
         {invoice.customer.name && invoice.customer.name !== "Select a Customer" && (
@@ -231,7 +227,6 @@ function ThermalReceipt({ invoice, payments }: { invoice: POSInvoice; payments: 
         )}
       </div>
 
-      {/* Items table */}
       <table style={{ borderTop: dashed, width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
         <colgroup>
           <col style={{ width: 18 }} /><col style={{ width: 42 }} /><col />
@@ -261,7 +256,6 @@ function ThermalReceipt({ invoice, payments }: { invoice: POSInvoice; payments: 
         </tbody>
       </table>
 
-      {/* Totals */}
       <div style={{ borderTop: dashed, paddingTop: 6, marginTop: 2, color: "#000" }}>
         {invoice.couponDiscount > 0 && (
           <div style={{ display: "flex", justifyContent: "space-between", color: "#000", fontSize: 10 }}>
@@ -279,12 +273,9 @@ function ThermalReceipt({ invoice, payments }: { invoice: POSInvoice; payments: 
           <span>Grand Total:</span>
           <span>{toNum(invoice.grandTotal).toLocaleString("en-IN")}</span>
         </div>
-
-        {/* Split-aware payment breakdown */}
         <PaymentBreakdown payments={payments} change={invoice.change} />
       </div>
 
-      {/* Salesman */}
       <div style={{ borderTop: dashed, marginTop: 8, paddingTop: 6, color: "#000" }}>
         <div style={{ display: "flex", justifyContent: "center" }}>
           <span style={{ fontSize: 10, color: "#000", fontWeight: 700 }}>SALESMAN : </span>
@@ -295,7 +286,6 @@ function ThermalReceipt({ invoice, payments }: { invoice: POSInvoice; payments: 
         </div>
       </div>
 
-      {/* T&C */}
       <div style={{ borderTop: solid, borderBottom: solid, marginTop: 10, padding: "8px 0", color: "#000" }}>
         <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 6, textDecoration: "underline", textAlign: "center", color: "#000" }}>TERMS AND CONDITIONS</div>
         {[
@@ -310,7 +300,6 @@ function ThermalReceipt({ invoice, payments }: { invoice: POSInvoice; payments: 
         ))}
       </div>
 
-      {/* Footer */}
       <div style={{ textAlign: "center", marginTop: 10, fontWeight: 700, fontSize: 11, letterSpacing: 0.5, color: "#000" }}>
         THANK YOU VISIT AGAIN ;
       </div>
@@ -329,7 +318,6 @@ function A4Invoice({ invoice, payments }: { invoice: POSInvoice; payments: Invoi
       id="print-a4"
       style={{ fontFamily: "Georgia, serif", background: "white", color: "#1a1a1a", width: "100%", minHeight: 800, padding: "40px 48px", boxSizing: "border-box" }}
     >
-      {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 32, paddingBottom: 24, borderBottom: "2px solid #1a1a1a" }}>
         <div>
           <div style={{ fontFamily: "serif", fontWeight: 700, fontSize: 28, letterSpacing: 2, textTransform: "uppercase" }}>SHAASHOPY</div>
@@ -345,9 +333,7 @@ function A4Invoice({ invoice, payments }: { invoice: POSInvoice; payments: Invoi
         </div>
       </div>
 
-      {/* Bill-to / Payment */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 28 }}>
-        {/* Bill To */}
         <div style={{ background: "#f9f9f7", padding: "14px 16px", borderRadius: 6, border: "0.5px solid #e0e0d8" }}>
           <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: "#888", marginBottom: 6 }}>Bill To</div>
           <div style={{ fontWeight: 600, fontSize: 14 }}>{invoice.customer.name || "Walk-in Customer"}</div>
@@ -356,7 +342,6 @@ function A4Invoice({ invoice, payments }: { invoice: POSInvoice; payments: Invoi
           )}
         </div>
 
-        {/* Payment Details — split-aware */}
         <div style={{ background: "#f9f9f7", padding: "14px 16px", borderRadius: 6, border: "0.5px solid #e0e0d8" }}>
           <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: "#888", marginBottom: 6 }}>Payment Details</div>
           {isSplit ? (
@@ -384,7 +369,6 @@ function A4Invoice({ invoice, payments }: { invoice: POSInvoice; payments: Invoi
         </div>
       </div>
 
-      {/* Items table */}
       <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 24, fontSize: 13 }}>
         <thead>
           <tr style={{ background: "#1a1a1a", color: "white" }}>
@@ -410,7 +394,6 @@ function A4Invoice({ invoice, payments }: { invoice: POSInvoice; payments: Invoi
         </tbody>
       </table>
 
-      {/* Totals */}
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <div style={{ width: 300 }}>
           {[
@@ -428,7 +411,6 @@ function A4Invoice({ invoice, payments }: { invoice: POSInvoice; payments: Invoi
             <span>{fmt(toNum(invoice.grandTotal))}</span>
           </div>
 
-          {/* Split-aware paid badge */}
           {isSplit ? (
             <div style={{ background: "#f0f7f3", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#1a7a4a", fontWeight: 600, marginTop: 4 }}>
               <div style={{ marginBottom: 4 }}>✓ Split Payment</div>
@@ -453,7 +435,6 @@ function A4Invoice({ invoice, payments }: { invoice: POSInvoice; payments: Invoi
         </div>
       </div>
 
-      {/* Terms */}
       <div style={{ marginTop: 40, paddingTop: 16, borderTop: "0.5px solid #ddd", fontSize: 11, color: "#888" }}>
         <div style={{ fontWeight: 700, marginBottom: 6, color: "#555" }}>TERMS AND CONDITIONS</div>
         {[
@@ -520,7 +501,6 @@ function RefundScreen({ invoice, payments, onClose, onComplete }: RefundScreenPr
 
   const REASONS = ["Customer changed mind", "Wrong size / colour", "Defective product", "Duplicate billing", "Other"];
 
-  // Label adapts for split payments
   const originalLabel = payments.length > 1
     ? `Original (Split: ${payments.map((p) => methodLabel(p.method)).join(" + ")})`
     : `Original (${methodLabel(payments[0].method)})`;
@@ -685,14 +665,38 @@ function RefundScreen({ invoice, payments, onClose, onComplete }: RefundScreenPr
   );
 }
 
+// ── PrintModeToggle — shared sub-component ────────────────────────────────────
+
+function PrintModeToggle({ mode, onChange }: { mode: "thermal" | "a4"; onChange: (m: "thermal" | "a4") => void }) {
+  return (
+    <div style={{ display: "flex", gap: 6 }}>
+      {(["a4", "thermal"] as const).map((m) => (
+        <button key={m} onClick={() => onChange(m)}
+          style={{ padding: "5px 14px", border: mode === m ? "2px solid #7F77DD" : "0.5px solid var(--color-border-secondary)", borderRadius: 20, background: mode === m ? "#EEEDFE" : "transparent", color: mode === m ? "#534AB7" : "var(--color-text-secondary)", fontSize: 12, cursor: "pointer", fontWeight: mode === m ? 500 : 400 }}>
+          {m === "thermal" ? "Thermal" : "A4"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ── Main exported component ───────────────────────────────────────────────────
 
 export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"payment-done" | "invoice-preview" | "refund">("payment-done");
-  const [printMode, setPrintMode] = useState<"thermal" | "a4">("thermal");
 
-  // ── Normalize payments once — all children use this ──────────────────────
+  // Default tab: invoice-preview when coming from invoice list (eye btn),
+  // payment-done when coming straight from a new sale.
+  const [activeTab, setActiveTab] = useState<"payment-done" | "invoice-preview" | "refund">("invoice-preview");
+
+  // Each tab manages its own print mode so switching tabs doesn't reset the other.
+  const [paymentPrintMode, setPaymentPrintMode]   = useState<"thermal" | "a4">("thermal");
+  const [previewPrintMode, setPreviewPrintMode]   = useState<"thermal" | "a4">("a4");
+
+  // Convenience: which mode is active for the current tab
+  const activePrintMode = activeTab === "payment-done" ? paymentPrintMode : previewPrintMode;
+  const setActivePrintMode = activeTab === "payment-done" ? setPaymentPrintMode : setPreviewPrintMode;
+
   const payments = normalizePayments(invoice);
   const isSplit  = payments.length > 1;
 
@@ -702,20 +706,7 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
     { id: "refund"          as const, label: "Refund",           icon: <RotateCcw size={15} />   },
   ];
 
-  const generatePdfBlob = async (): Promise<{ blob: Blob; filename: string }> => {
-    const { default: html2canvas } = await import("html2canvas-pro");
-    const { default: jsPDF }       = await import("jspdf");
-    const el = document.getElementById("print-a4");
-    if (!el) throw new Error("A4 element not found");
-    const canvas  = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
-    const imgData = canvas.toDataURL("image/png");
-    const pdf     = new jsPDF({ unit: "mm", format: "a4" });
-    const pageW   = pdf.internal.pageSize.getWidth();
-    const pageH   = (canvas.height * pageW) / canvas.width;
-    pdf.addImage(imgData, "PNG", 0, 0, pageW, pageH);
-    return { blob: pdf.output("blob"), filename: `${invoice.invoiceNo}-invoice.pdf` };
-  };
-
+  // ── Thermal print (opens popup window) ────────────────────────────────────
   const printThermal = () => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) { toast.error("Failed to open print window. Please allow popups."); return; }
@@ -825,24 +816,76 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
     printWindow.document.close();
   };
 
-  const handleDownload = async () => {
-    if (printMode === "thermal") { toast.info("Use 'Save as PDF' in the print dialog to download."); setTimeout(() => printThermal(), 600); return; }
-    const { blob, filename } = await generatePdfBlob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
-    URL.revokeObjectURL(url);
+  // ── A4 PDF blob generation ─────────────────────────────────────────────────
+  const generatePdfBlob = async (): Promise<{ blob: Blob; filename: string }> => {
+    const { default: html2canvas } = await import("html2canvas-pro");
+    const { default: jsPDF }       = await import("jspdf");
+    const el = document.getElementById("print-a4");
+    if (!el) throw new Error("A4 element not found");
+    const canvas  = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
+    const imgData = canvas.toDataURL("image/png");
+    const pdf     = new jsPDF({ unit: "mm", format: "a4" });
+    const pageW   = pdf.internal.pageSize.getWidth();
+    const pageH   = (canvas.height * pageW) / canvas.width;
+    pdf.addImage(imgData, "PNG", 0, 0, pageW, pageH);
+    return { blob: pdf.output("blob"), filename: `${invoice.invoiceNo}-invoice.pdf` };
   };
 
-  const handlePrint = async () => {
-    if (printMode === "thermal") { printThermal(); return; }
-    const { blob } = await generatePdfBlob();
-    const url = URL.createObjectURL(blob);
-    const iframe = document.createElement("iframe");
-    iframe.style.display = "none"; iframe.src = url;
-    document.body.appendChild(iframe);
-    iframe.onload = () => { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); };
-    setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url); }, 60_000);
+  // ── Unified print handler — respects active print mode ────────────────────
+  const handlePrint = async (mode: "thermal" | "a4") => {
+    if (mode === "thermal") {
+      printThermal();
+      return;
+    }
+    // A4: generate PDF and open in iframe for printing
+    try {
+      const { blob } = await generatePdfBlob();
+      const url = URL.createObjectURL(blob);
+      const iframe = document.createElement("iframe");
+      iframe.style.display = "none";
+      iframe.src = url;
+      document.body.appendChild(iframe);
+      iframe.onload = () => { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); };
+      setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url); }, 60_000);
+    } catch (e) {
+      toast.error("Failed to generate PDF for printing.");
+    }
   };
+
+  // ── Unified download handler — respects active print mode ─────────────────
+  const handleDownload = async (mode: "thermal" | "a4") => {
+    if (mode === "thermal") {
+      toast.info("Use 'Save as PDF' in the print dialog to download thermal receipt.");
+      setTimeout(() => printThermal(), 600);
+      return;
+    }
+    // A4 download
+    try {
+      const { blob, filename } = await generatePdfBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error("Failed to generate PDF for download.");
+    }
+  };
+
+  // ── Preview area — shared between both tabs ────────────────────────────────
+  const renderPreview = (mode: "thermal" | "a4") => (
+    <div style={{ display: "flex", justifyContent: "center", marginBottom: 20, overflowX: "auto" }}>
+      {mode === "thermal"
+        ? <ThermalReceipt invoice={invoice} payments={payments} />
+        : (
+          <div style={{ width: "100%", border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-lg)", overflow: "hidden" }}>
+            <A4Invoice invoice={invoice} payments={payments} />
+          </div>
+        )
+      }
+    </div>
+  );
 
   return (
     <div style={{ padding: "1rem 0" }}>
@@ -858,9 +901,10 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
         ))}
       </div>
 
-      {/* Payment Done */}
+      {/* ── Payment Done tab ── */}
       {activeTab === "payment-done" && (
         <div>
+          {/* Success header */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingBottom: 20, marginBottom: 20, borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
             <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--color-background-success)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
               <CheckCircle size={32} color="var(--color-text-success)" />
@@ -868,7 +912,6 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
             <div style={{ fontSize: 20, fontWeight: 500 }}>Payment Successful</div>
             <div style={{ fontSize: 28, fontWeight: 700, color: "#7F77DD", marginTop: 4 }}>{fmt(toNum(invoice.grandTotal))}</div>
 
-            {/* Payment method line */}
             <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginTop: 6, display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
               <span>{invoice.invoiceNo}</span>
               <span>•</span>
@@ -887,7 +930,6 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
               )}
             </div>
 
-            {/* Split breakdown pills */}
             {isSplit && (
               <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", justifyContent: "center" }}>
                 {payments.map((p, i) => (
@@ -909,29 +951,17 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
           {/* Print mode toggle */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
             <div style={{ fontSize: 14, fontWeight: 500 }}>Print Receipt</div>
-            <div style={{ display: "flex", gap: 6 }}>
-              {(["thermal", "a4"] as const).map((m) => (
-                <button key={m} onClick={() => setPrintMode(m)}
-                  style={{ padding: "5px 14px", border: printMode === m ? "2px solid #7F77DD" : "0.5px solid var(--color-border-secondary)", borderRadius: 20, background: printMode === m ? "#EEEDFE" : "transparent", color: printMode === m ? "#534AB7" : "var(--color-text-secondary)", fontSize: 12, cursor: "pointer", fontWeight: printMode === m ? 500 : 400 }}>
-                  {m === "thermal" ? "Thermal" : "A4"}
-                </button>
-              ))}
-            </div>
+            <PrintModeToggle mode={paymentPrintMode} onChange={setPaymentPrintMode} />
           </div>
 
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 20, overflowX: "auto" }}>
-            {printMode === "thermal"
-              ? <ThermalReceipt invoice={invoice} payments={payments} />
-              : <div style={{ width: "100%", border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-lg)", overflow: "hidden" }}><A4Invoice invoice={invoice} payments={payments} /></div>
-            }
-          </div>
+          {renderPreview(paymentPrintMode)}
 
           <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={handleDownload} style={{ flex: 1, padding: "11px", border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", background: "transparent", color: "var(--color-text-primary)", cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
-              <Download size={15} /> Download PDF
+            <button onClick={() => handleDownload(paymentPrintMode)} style={{ flex: 1, padding: "11px", border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", background: "transparent", color: "var(--color-text-primary)", cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+              <Download size={15} /> Download {paymentPrintMode === "a4" ? "PDF" : "Receipt"}
             </button>
-            <button onClick={handlePrint} style={{ flex: 1, padding: "11px", background: "#7F77DD", border: "none", borderRadius: "var(--border-radius-md)", color: "white", cursor: "pointer", fontSize: 13, fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
-              <Printer size={15} /> Print
+            <button onClick={() => handlePrint(paymentPrintMode)} style={{ flex: 1, padding: "11px", background: "#7F77DD", border: "none", borderRadius: "var(--border-radius-md)", color: "white", cursor: "pointer", fontSize: 13, fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+              <Printer size={15} /> Print {paymentPrintMode === "a4" ? "A4" : "Thermal"}
             </button>
             <button onClick={() => setActiveTab("refund")} style={{ flex: 1, padding: "11px", border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
               <RotateCcw size={15} /> Refund
@@ -943,24 +973,29 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
         </div>
       )}
 
-      {/* Invoice Preview */}
+      {/* ── Invoice Preview tab ── */}
       {activeTab === "invoice-preview" && (
         <div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 16, justifyContent: "flex-end" }}>
-            <button onClick={handleDownload} style={{ padding: "8px 16px", border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-              <Download size={14} /> Download
-            </button>
-            <button onClick={handlePrint} style={{ padding: "8px 16px", background: "#7F77DD", border: "none", borderRadius: "var(--border-radius-md)", color: "white", cursor: "pointer", fontSize: 13, fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
-              <Printer size={14} /> Print A4
-            </button>
+          {/* Toolbar: mode toggle + action buttons */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 8, flexWrap: "wrap" }}>
+            <PrintModeToggle mode={previewPrintMode} onChange={setPreviewPrintMode} />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => handleDownload(previewPrintMode)}
+                style={{ padding: "8px 16px", border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                <Download size={14} /> Download {previewPrintMode === "a4" ? "PDF" : "Receipt"}
+              </button>
+              <button onClick={() => handlePrint(previewPrintMode)}
+                style={{ padding: "8px 16px", background: "#7F77DD", border: "none", borderRadius: "var(--border-radius-md)", color: "white", cursor: "pointer", fontSize: 13, fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                <Printer size={14} /> Print {previewPrintMode === "a4" ? "A4" : "Thermal"}
+              </button>
+            </div>
           </div>
-          <div style={{ border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-lg)", overflow: "hidden" }}>
-            <A4Invoice invoice={invoice} payments={payments} />
-          </div>
+
+          {renderPreview(previewPrintMode)}
         </div>
       )}
 
-      {/* Refund */}
+      {/* ── Refund tab ── */}
       {activeTab === "refund" && (
         <RefundScreen
           invoice={invoice}

@@ -1,5 +1,5 @@
 "use client";
-
+import { cn } from "@/lib/utils";
 import * as React from "react";
 import { useState } from "react";
 import { UseFormReturn, FieldValues } from "react-hook-form";
@@ -103,11 +103,16 @@ export function FormDialogContent({
   }
 
   return (
-    <DialogContent className={className}>
+    <DialogContent
+      className={cn(
+        "max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0",
+        className
+      )}
+    >
       <Form {...context.form}>
         <form
           onSubmit={context.form.handleSubmit(context.onSubmit)}
-          className="space-y-4"
+          className="flex flex-col min-h-0 max-h-[90vh]"  
         >
           {children}
         </form>
