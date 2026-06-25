@@ -102,34 +102,33 @@ function buildPaymentHtml(
   const isSplit = payments.length > 1;
 
   const changeRow = change > 0
-    ? `<div style="display:flex;justify-content:space-between;color:#000;font-weight:700;margin-top:2px;"><span>Change:</span><span>${change.toLocaleString("en-IN")}</span></div>`
+    ? `<div class="bold" style="display:flex;justify-content:space-between;margin-top:2px;font-size:11px;"><span>Change:</span><span>${change.toLocaleString("en-IN")}</span></div>`
     : "";
 
   if (!isSplit) {
     return `
-      <div style="display:flex;justify-content:space-between;font-size:10px;color:#000;margin-top:2px;">
+      <div class="bold" style="display:flex;justify-content:space-between;font-size:11px;margin-top:2px;">
         <span>Paid via:</span>
-        <span style="font-weight:700;color:#000;">${methodLabel(payments[0].method)}</span>
+        <span>${methodLabel(payments[0].method)}</span>
       </div>
       ${changeRow}
     `;
   }
 
   const rows = payments.map((p) => `
-    <div style="display:flex;justify-content:space-between;font-size:10px;color:#000;padding-left:8px;">
+    <div class="bold" style="display:flex;justify-content:space-between;font-size:11px;padding-left:8px;">
       <span>&#x21b3; ${methodLabel(p.method)}:</span>
-      <span style="font-weight:700;">${p.amount.toLocaleString("en-IN")}</span>
+      <span>${p.amount.toLocaleString("en-IN")}</span>
     </div>`).join("");
 
   return `
-    <div style="display:flex;justify-content:space-between;font-size:10px;color:#000;margin-top:2px;font-weight:700;">
+    <div class="bold" style="display:flex;justify-content:space-between;font-size:11px;margin-top:2px;">
       <span>Paid via:</span><span>Split Payment</span>
     </div>
     ${rows}
     ${changeRow}
   `;
 }
-
 // ── Thermal print function — identical HTML/CSS to pos-invoice.tsx printThermal ──
 
 interface PrintReceiptParams {
@@ -156,30 +155,30 @@ function printThermalReceipt(params: PrintReceiptParams) {
 
   const { date, time } = fmtDate(params.date);
 
-  const itemRows = params.items.map((item, i) => `
-    <tr style="border-bottom:${i < params.items.length - 1 ? "1px dashed #000" : "none"};font-size:11px;color:#000;">
-      <td style="padding:4px 0;color:#000;">${i + 1}</td>
-      <td style="padding:4px 0;color:#000;font-size:10px;">${item.sku}</td>
-      <td style="padding:4px 4px 4px 0;font-weight:700;color:#000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.name}</td>
-      <td style="padding:4px 0;text-align:center;color:#000;">${item.qty}</td>
-      <td style="padding:4px 0;text-align:right;color:#000;">${item.unitPrice.toLocaleString("en-IN")}</td>
-      <td style="padding:4px 0;text-align:right;font-weight:700;color:#000;">${item.total.toLocaleString("en-IN")}</td>
-    </tr>`).join("");
-
+  // itemRows — SKU full (no slice), name wraps, numbers at 9px to fit
+const itemRows = params.items.map((item, i) => `
+  <tr style="border-bottom:${i < params.items.length - 1 ? "1px dashed #000" : "none"};">
+    <td style="padding:4px 0;font-size:9px;">${i + 1}</td>
+    <td style="padding:4px 2px 4px 0;font-size:9px;word-break:break-all;line-height:1.3;">${item.sku}</td>
+    <td class="heavy" style="padding:4px 2px 4px 0;font-size:9px;word-break:break-word;line-height:1.3;">${item.name}</td>
+    <td style="padding:4px 0;text-align:center;font-size:9px;">${item.qty}</td>
+    <td style="padding:4px 0;text-align:right;font-size:9px;">${item.unitPrice.toLocaleString("en-IN")}</td>
+    <td class="heavy" style="padding:4px 0;text-align:right;font-size:9px;">${item.total.toLocaleString("en-IN")}</td>
+  </tr>`).join("");
   const couponRow = params.couponDiscount > 0
-    ? `<div style="display:flex;justify-content:space-between;color:#000;font-size:10px;"><span>Coupon (${params.couponCode}):</span><span>-${params.couponDiscount.toLocaleString("en-IN")}</span></div>`
+    ? `<div style="display:flex;justify-content:space-between;font-size:11px;"><span>Coupon (${params.couponCode}):</span><span>-${params.couponDiscount.toLocaleString("en-IN")}</span></div>`
     : "";
 
   const discountRow = params.manualDiscount > 0
-    ? `<div style="display:flex;justify-content:space-between;color:#000;font-size:10px;"><span>Discount:</span><span>-${params.manualDiscount.toLocaleString("en-IN")}</span></div>`
+    ? `<div style="display:flex;justify-content:space-between;font-size:11px;"><span>Discount:</span><span>-${params.manualDiscount.toLocaleString("en-IN")}</span></div>`
     : "";
 
   const customerBlock = params.customerName && params.customerName !== "Select a Customer"
-    ? `<div style="padding-left:8px;font-weight:700;color:#000;">${params.customerName}</div>`
+    ? `<div class="heavy" style="padding-left:8px;">${params.customerName}</div>`
     : "";
 
   const phoneBlock = params.customerPhone
-    ? `<div style="padding-left:8px;font-size:10px;color:#000;">${params.customerPhone}</div>`
+    ? `<div style="padding-left:8px;font-size:10px;">${params.customerPhone}</div>`
     : "";
 
   const paymentHtml = buildPaymentHtml(params.payments, params.change);
@@ -188,85 +187,118 @@ function printThermalReceipt(params: PrintReceiptParams) {
     <html>
       <head>
         <title>Receipt - ${params.invoiceNo}</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@500;700;800&display=swap" rel="stylesheet">
         <style>
-          @page { size: 80mm auto; margin: 0; }
-          * { box-sizing:border-box; margin:0; padding:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; color:#000000; }
-          body { font-family:'Courier New',Courier,monospace; font-size:11px; line-height:1.55; color:#000000; background:#ffffff; width:80mm; padding:14px 12px; }
-          table { width:100%; border-collapse:collapse; table-layout:fixed; }
-          th, td { color:#000000; }
-        </style>
+  @page { size: 80mm auto; margin: 0; }
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  body {
+    font-family: 'Roboto Mono', 'Courier New', Courier, monospace;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.55;
+    color: #000000;
+    background: #ffffff;
+    width: 80mm;
+    padding: 14px 12px;
+  }
+  div, span, p {
+    font-family: 'Roboto Mono', 'Courier New', Courier, monospace;
+    font-weight: 700;
+    color: #000000;
+  }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th { font-weight: 800; color: #000; font-family: 'Roboto Mono', 'Courier New', Courier, monospace; }
+  td { font-weight: 700; color: #000; font-family: 'Roboto Mono', 'Courier New', Courier, monospace; }
+  strong { font-weight: 900; }
+  .bold  { font-weight: 800 !important; }
+  .heavy { font-weight: 900 !important; }
+</style>
       </head>
       <body>
         <div style="text-align:center;margin-bottom:10px;">
-          <div style="font-weight:900;font-size:17px;letter-spacing:1.5px;text-transform:uppercase;color:#000;">SHAASHOPY</div>
-          <div style="font-size:10px;margin-top:1px;color:#000;">2ND FLOOR, HILITE MALL</div>
-          <div style="font-size:10px;color:#000;">PH: +91 9847640052</div>
-          <div style="font-size:10px;color:#000;">GSTIN: 32AFJFS9358F1ZN</div>
+          <div class="heavy" style="font-size:17px;letter-spacing:1.5px;text-transform:uppercase;">SHAASHOPY</div>
+          <div style="font-size:10px;margin-top:1px;">2ND FLOOR, HILITE MALL</div>
+          <div style="font-size:10px;">PH: +91 9847640052</div>
+          <div style="font-size:10px;">GSTIN: 32AFJFS9358F1ZN</div>
         </div>
-        <div style="border-top:1px dashed #000;border-bottom:1px dashed #000;padding:5px 0;margin-bottom:8px;color:#000;">
+
+        <div style="border-top:1px dashed #000;border-bottom:1px dashed #000;padding:5px 0;margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;">
             <span>Bill No : <strong>${params.invoiceNo}</strong></span>
             <span>Date : ${date}</span>
           </div>
-          <div style="text-align:right;color:#000;">Time : ${time}</div>
+          <div style="text-align:right;">Time : ${time}</div>
         </div>
-        <div style="margin-bottom:6px;color:#000;">
-          <div style="color:#000;">To :</div>
+
+        <div style="margin-bottom:6px;">
+          <div>To :</div>
           ${customerBlock}
           ${phoneBlock}
         </div>
+
         <table style="border-top:1px dashed #000;">
-          <colgroup>
-            <col style="width:18px"/><col style="width:42px"/><col/>
-            <col style="width:26px"/><col style="width:50px"/><col style="width:50px"/>
-          </colgroup>
-          <thead>
-            <tr style="border-bottom:1px dashed #000;font-size:10px;font-weight:700;color:#000;">
-              <th style="text-align:left;padding:4px 0 3px;color:#000;">Sn</th>
-              <th style="text-align:left;padding:4px 0 3px;color:#000;">Code</th>
-              <th style="text-align:left;padding:4px 0 3px;color:#000;">Item</th>
-              <th style="text-align:center;padding:4px 0 3px;color:#000;">Qty</th>
-              <th style="text-align:right;padding:4px 0 3px;color:#000;">Rate</th>
-              <th style="text-align:right;padding:4px 0 3px;color:#000;">Total</th>
-            </tr>
-          </thead>
+<colgroup>
+  <col style="width:12px"/>
+  <col style="width:55px"/>
+  <col/>
+  <col style="width:20px"/>
+  <col style="width:50px"/>
+  <col style="width:50px"/>
+</colgroup>
+
+<thead>
+  <tr style="border-bottom:1px dashed #000;font-size:9px;">
+    <th style="text-align:left;padding:4px 0 3px;">Sn</th>
+    <th style="text-align:left;padding:4px 0 3px;">Code</th>
+    <th style="text-align:left;padding:4px 0 3px;">Item</th>
+    <th style="text-align:center;padding:4px 0 3px;">Qty</th>
+    <th style="text-align:right;padding:4px 0 3px;">Rate</th>
+    <th style="text-align:right;padding:4px 0 3px;">Total</th>
+  </tr>
+</thead>
           <tbody>${itemRows}</tbody>
         </table>
-        <div style="border-top:1px dashed #000;padding-top:6px;margin-top:2px;color:#000;">
+
+        <div style="border-top:1px dashed #000;padding-top:6px;margin-top:2px;">
           ${couponRow}
           ${discountRow}
-          <div style="display:flex;justify-content:space-between;font-weight:900;font-size:14px;border-top:1px solid #000;margin-top:4px;padding-top:4px;color:#000;">
+          <div class="heavy" style="display:flex;justify-content:space-between;font-size:14px;border-top:1px solid #000;margin-top:4px;padding-top:4px;">
             <span>Grand Total:</span>
             <span>${toNum(params.grandTotal).toLocaleString("en-IN")}</span>
           </div>
           ${paymentHtml}
         </div>
-        <div style="border-top:1px dashed #000;margin-top:8px;padding-top:6px;color:#000;">
-          <div style="display:flex;justify-content:center;">
-            <span style="font-size:10px;color:#000;font-weight:700;">SALESMAN : </span>
-            <span style="font-size:10px;font-weight:700;margin-left:4px;color:#000;">&nbsp;</span>
-          </div>
-          <div style="display:flex;justify-content:center;margin-top:2px;font-size:10px;color:#000;">
-            Insta ID :&nbsp;<span style="font-weight:700;color:#000;">shaashopy.hilitemall</span>
-          </div>
+
+        <div style="border-top:1px dashed #000;margin-top:8px;padding-top:6px;text-align:center;font-size:10px;">
+          <div><span class="bold">SALESMAN :</span> &nbsp;</div>
+          <div style="margin-top:2px;">Insta ID :&nbsp;<span class="bold">shaashopy.hilitemall</span></div>
         </div>
-        <div style="border-top:1px solid #000;border-bottom:1px solid #000;margin-top:10px;padding:8px 0;color:#000;">
-          <div style="font-weight:700;font-size:11px;margin-bottom:6px;text-decoration:underline;text-align:center;color:#000;">TERMS AND CONDITIONS</div>
-          <div style="text-align:left;font-size:10px;margin-bottom:2px;color:#000;">* No Cash Refund</div>
-          <div style="text-align:left;font-size:10px;margin-bottom:2px;color:#000;">* NO credit note will be issued</div>
-          <div style="text-align:left;font-size:10px;margin-bottom:2px;color:#000;">* NO Guarantee is provided for fancy items</div>
-          <div style="text-align:left;font-size:10px;margin-bottom:2px;color:#000;">* Exchange Within 3 Days (Only on Same Brand)</div>
-          <div style="text-align:left;font-size:10px;margin-bottom:2px;color:#000;">* Only dry wash recommend for this material</div>
-          <div style="text-align:left;font-size:10px;margin-bottom:2px;color:#000;">* We are under composition taxpayer, We are not collecting tax from customer</div>
+
+        <div style="border-top:1px solid #000;border-bottom:1px solid #000;margin-top:10px;padding:8px 0;">
+          <div class="bold" style="font-size:11px;margin-bottom:6px;text-decoration:underline;text-align:center;">TERMS AND CONDITIONS</div>
+          <div style="font-size:10px;margin-bottom:2px;">* No Cash Refund</div>
+          <div style="font-size:10px;margin-bottom:2px;">* NO credit note will be issued</div>
+          <div style="font-size:10px;margin-bottom:2px;">* NO Guarantee is provided for fancy items</div>
+          <div style="font-size:10px;margin-bottom:2px;">* Exchange Within 3 Days (Only on Same Brand)</div>
+          <div style="font-size:10px;margin-bottom:2px;">* Only dry wash recommend for this material</div>
+          <div style="font-size:10px;margin-bottom:2px;">* We are under composition taxpayer, We are not collecting tax from customer</div>
         </div>
-        <div style="text-align:center;margin-top:10px;font-weight:700;font-size:11px;letter-spacing:0.5px;color:#000;">THANK YOU VISIT AGAIN ;</div>
+
+        <div class="bold" style="text-align:center;margin-top:10px;font-size:11px;letter-spacing:0.5px;">THANK YOU VISIT AGAIN ;</div>
+
         <script>window.onload=function(){setTimeout(function(){window.print();window.close();},400);};<\/script>
       </body>
     </html>
   `);
   printWindow.document.close();
 }
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function PosBillingPage({

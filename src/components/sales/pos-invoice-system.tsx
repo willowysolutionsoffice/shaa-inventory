@@ -94,7 +94,7 @@ function methodLabel(method: string): string {
   const m = method.toLowerCase();
   if (m === "cash") return "Cash";
   if (m === "card") return "Card";
-  if (m === "upi")  return "UPI";
+  if (m === "upi") return "UPI";
   return method;
 }
 
@@ -106,7 +106,7 @@ function paymentSummary(payments: InvoicePayment[]): string {
 
 function MethodIcon({ method, size = 13 }: { method: string; size?: number }) {
   const m = method.toLowerCase();
-  if (m === "upi")  return <Wallet size={size} />;
+  if (m === "upi") return <Wallet size={size} />;
   if (m === "card") return <CreditCard size={size} />;
   return <IndianRupee size={size} />;
 }
@@ -119,25 +119,25 @@ function PaymentBreakdown({ payments, change }: { payments: InvoicePayment[]; ch
     <div>
       {isSplit ? (
         <>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#000", marginTop: 2, fontWeight: 700 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#000", marginTop: 2, fontWeight: 900 }}>
             <span>Paid via:</span>
             <span>Split Payment</span>
           </div>
           {payments.map((p, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#000", paddingLeft: 8 }}>
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#000", paddingLeft: 8, fontWeight: 900 }}>
               <span>↳ {methodLabel(p.method)}:</span>
-              <span style={{ fontWeight: 700 }}>{p.amount.toLocaleString("en-IN")}</span>
+              <span>{p.amount.toLocaleString("en-IN")}</span>
             </div>
           ))}
         </>
       ) : (
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#000", marginTop: 2 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#000", marginTop: 2, fontWeight: 900 }}>
           <span>Paid via:</span>
-          <span style={{ fontWeight: 700 }}>{methodLabel(payments[0].method)}</span>
+          <span>{methodLabel(payments[0].method)}</span>
         </div>
       )}
       {change > 0 && (
-        <div style={{ display: "flex", justifyContent: "space-between", color: "#000", fontWeight: 700 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", color: "#000", fontWeight: 900 }}>
           <span>Change:</span>
           <span>{change.toLocaleString("en-IN")}</span>
         </div>
@@ -152,42 +152,42 @@ function buildPaymentHtml(payments: InvoicePayment[], change: number): string {
   const isSplit = payments.length > 1;
 
   const changeRow = change > 0
-    ? `<div style="display:flex;justify-content:space-between;color:#000;font-weight:700;margin-top:2px;"><span>Change:</span><span>${change.toLocaleString("en-IN")}</span></div>`
+    ? `<div style="display:flex;justify-content:space-between;color:#000;font-weight:900;margin-top:2px;font-size:11px;"><span>Change:</span><span>${change.toLocaleString("en-IN")}</span></div>`
     : "";
 
   if (!isSplit) {
     return `
-      <div style="display:flex;justify-content:space-between;font-size:10px;color:#000;margin-top:2px;">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#000;font-weight:900;margin-top:2px;">
         <span>Paid via:</span>
-        <span style="font-weight:700;color:#000;">${methodLabel(payments[0].method)}</span>
+        <span>${methodLabel(payments[0].method)}</span>
       </div>
       ${changeRow}
     `;
   }
 
   const rows = payments.map((p) => `
-    <div style="display:flex;justify-content:space-between;font-size:10px;color:#000;padding-left:8px;">
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:#000;font-weight:900;padding-left:8px;">
       <span>&#x21b3; ${methodLabel(p.method)}:</span>
-      <span style="font-weight:700;">${p.amount.toLocaleString("en-IN")}</span>
+      <span>${p.amount.toLocaleString("en-IN")}</span>
     </div>`).join("");
 
   return `
-    <div style="display:flex;justify-content:space-between;font-size:10px;color:#000;margin-top:2px;font-weight:700;">
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:#000;font-weight:900;margin-top:2px;">
       <span>Paid via:</span><span>Split Payment</span>
     </div>
     ${rows}
     ${changeRow}
   `;
 }
-
 // ── ThermalReceipt (on-screen preview) ───────────────────────────────────────
 
 function ThermalReceipt({ invoice, payments }: { invoice: POSInvoice; payments: InvoicePayment[] }) {
   const { date, time } = fmtDate(invoice.date);
   const dashed = "1px dashed #000";
-  const solid  = "1px solid #000";
+  const solid = "1px solid #000";
 
   return (
+    // Add fontWeight: 700 to the root div of ThermalReceipt:
     <div
       id="print-receipt"
       style={{
@@ -198,6 +198,7 @@ function ThermalReceipt({ invoice, payments }: { invoice: POSInvoice; payments: 
         background: "white",
         width: 300,
         padding: "18px 16px",
+        fontWeight: 800,        // ← ADD THIS
         boxShadow: "0 4px 24px rgba(0,0,0,0.13)",
         borderRadius: 4,
       }}
@@ -465,12 +466,12 @@ interface RefundScreenProps {
 }
 
 function RefundScreen({ invoice, payments, onClose, onComplete }: RefundScreenProps) {
-  const [search, setSearch]             = useState("");
-  const [refundItems, setRefundItems]   = useState<RefundItem[]>([]);
+  const [search, setSearch] = useState("");
+  const [refundItems, setRefundItems] = useState<RefundItem[]>([]);
   const [refundMethod, setRefundMethod] = useState<"original" | "cash" | "credit">("original");
-  const [reason, setReason]             = useState("");
-  const [step, setStep]                 = useState<"select" | "confirm" | "done">("select");
-  const [returnNo, setReturnNo]         = useState("");
+  const [reason, setReason] = useState("");
+  const [step, setStep] = useState<"select" | "confirm" | "done">("select");
+  const [returnNo, setReturnNo] = useState("");
 
   const { execute: executeRefund, isPending: isRefunding } = useAction(posRefund, {
     onSuccess: ({ data }) => {
@@ -571,8 +572,8 @@ function RefundScreen({ invoice, payments, onClose, onComplete }: RefundScreenPr
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
             {([
               { key: "original" as const, label: originalLabel, icon: <Receipt size={16} /> },
-              { key: "cash"     as const, label: "Cash",         icon: <IndianRupee size={16} /> },
-              { key: "credit"   as const, label: "Store Credit", icon: <CreditCard size={16} /> },
+              { key: "cash" as const, label: "Cash", icon: <IndianRupee size={16} /> },
+              { key: "credit" as const, label: "Store Credit", icon: <CreditCard size={16} /> },
             ]).map((opt) => (
               <button key={opt.key} onClick={() => setRefundMethod(opt.key)}
                 style={{ padding: "10px 8px", border: refundMethod === opt.key ? "2px solid #7F77DD" : "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", background: refundMethod === opt.key ? "#EEEDFE" : "var(--color-background-primary)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, fontSize: 12, color: refundMethod === opt.key ? "#534AB7" : "var(--color-text-secondary)" }}>
@@ -690,20 +691,20 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
   const [activeTab, setActiveTab] = useState<"payment-done" | "invoice-preview" | "refund">("invoice-preview");
 
   // Each tab manages its own print mode so switching tabs doesn't reset the other.
-  const [paymentPrintMode, setPaymentPrintMode]   = useState<"thermal" | "a4">("thermal");
-  const [previewPrintMode, setPreviewPrintMode]   = useState<"thermal" | "a4">("a4");
+  const [paymentPrintMode, setPaymentPrintMode] = useState<"thermal" | "a4">("thermal");
+  const [previewPrintMode, setPreviewPrintMode] = useState<"thermal" | "a4">("a4");
 
   // Convenience: which mode is active for the current tab
   const activePrintMode = activeTab === "payment-done" ? paymentPrintMode : previewPrintMode;
   const setActivePrintMode = activeTab === "payment-done" ? setPaymentPrintMode : setPreviewPrintMode;
 
   const payments = normalizePayments(invoice);
-  const isSplit  = payments.length > 1;
+  const isSplit = payments.length > 1;
 
   const tabs = [
-    { id: "payment-done"    as const, label: "Payment Complete", icon: <CheckCircle size={15} /> },
-    { id: "invoice-preview" as const, label: "Invoice Preview",  icon: <FileText size={15} />    },
-    { id: "refund"          as const, label: "Refund",           icon: <RotateCcw size={15} />   },
+    { id: "payment-done" as const, label: "Payment Complete", icon: <CheckCircle size={15} /> },
+    { id: "invoice-preview" as const, label: "Invoice Preview", icon: <FileText size={15} /> },
+    { id: "refund" as const, label: "Refund", icon: <RotateCcw size={15} /> },
   ];
 
   // ── Thermal print (opens popup window) ────────────────────────────────────
@@ -723,7 +724,7 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
         <td style="padding:4px 0;text-align:right;font-weight:700;color:#000;">${item.total.toLocaleString("en-IN")}</td>
       </tr>`).join("");
 
-    const couponRow   = invoice.couponDiscount > 0
+    const couponRow = invoice.couponDiscount > 0
       ? `<div style="display:flex;justify-content:space-between;color:#000;font-size:10px;"><span>Coupon (${invoice.couponCode}):</span><span>-${invoice.couponDiscount.toLocaleString("en-IN")}</span></div>`
       : "";
     const discountRow = invoice.manualDiscount > 0
@@ -744,10 +745,27 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
           <title>Receipt - ${invoice.invoiceNo}</title>
           <style>
             @page { size: 80mm auto; margin: 0; }
-            * { box-sizing:border-box; margin:0; padding:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; color:#000000; }
-            body { font-family:'Courier New',Courier,monospace; font-size:11px; line-height:1.55; color:#000000; background:#ffffff; width:80mm; padding:14px 12px; }
+            * { box-sizing:border-box; margin:0; padding:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; color: #000000 !important;
+    font-weight: 700 !important;        
+    font-family: 'Courier New', Courier, monospace !important;}
+            body { 
+  font-family:'Courier New',Courier,monospace; 
+  font-size:11px; 
+  line-height:1.55; 
+  color:#000000; 
+  background:#ffffff; 
+  width:80mm; 
+  padding:14px 12px;
+  font-weight:800;        
+  -webkit-font-smoothing: antialiased;
+}
             table { width:100%; border-collapse:collapse; table-layout:fixed; }
-            th, td { color:#000000; }
+           th, td { 
+    color: #000000 !important; 
+    font-weight: 700 !important;
+    font-family: 'Courier New', Courier, monospace !important;
+  }
+     strong { font-weight: 900 !important; }
           </style>
         </head>
         <body>
@@ -819,14 +837,14 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
   // ── A4 PDF blob generation ─────────────────────────────────────────────────
   const generatePdfBlob = async (): Promise<{ blob: Blob; filename: string }> => {
     const { default: html2canvas } = await import("html2canvas-pro");
-    const { default: jsPDF }       = await import("jspdf");
+    const { default: jsPDF } = await import("jspdf");
     const el = document.getElementById("print-a4");
     if (!el) throw new Error("A4 element not found");
-    const canvas  = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
+    const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
     const imgData = canvas.toDataURL("image/png");
-    const pdf     = new jsPDF({ unit: "mm", format: "a4" });
-    const pageW   = pdf.internal.pageSize.getWidth();
-    const pageH   = (canvas.height * pageW) / canvas.width;
+    const pdf = new jsPDF({ unit: "mm", format: "a4" });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = (canvas.height * pageW) / canvas.width;
     pdf.addImage(imgData, "PNG", 0, 0, pageW, pageH);
     return { blob: pdf.output("blob"), filename: `${invoice.invoiceNo}-invoice.pdf` };
   };
