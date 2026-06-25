@@ -138,6 +138,13 @@ const navMain: NavGroup[] = [
         icon: Undo2,
         permission: PERMISSIONS.MANAGE_RETURNS,
       },
+      {
+        title:"sales Report",
+        url: "/reports/sales-report",
+        icon: FileSpreadsheet,
+        permission: PERMISSIONS.MANAGE_SALES,
+      
+      }
     ],
   },
 
@@ -370,6 +377,13 @@ const admin: NavGroup[] = [
         url: "/reports/contact-reports",
         icon: FileSpreadsheet,
         permission: PERMISSIONS.VIEW_REPORTS,
+      },
+      {
+        title:"sales Report",
+        url: "/reports/sales-report",
+        icon: FileSpreadsheet,
+        permission: PERMISSIONS.MANAGE_SALES,
+      
       },
       {
         title: "Sales & Purchase Report",
