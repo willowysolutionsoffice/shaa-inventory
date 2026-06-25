@@ -13,6 +13,7 @@ import {
 import { Button }    from "@/components/ui/button";
 import { Input }     from "@/components/ui/input";
 import { Badge }     from "@/components/ui/badge";
+import { getBrandListForDropdown, getSubBrandsByBrand } from "@/actions/brand-actions";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -36,6 +37,10 @@ interface POSProduct {
   purchasePrice: number;
   stock:         number;
   category:      string;
+ brand:         string;
+  brandId:       string;
+  subBrand:      string;
+  subBrandId:    string;
 }
 
 interface POSCustomer {
@@ -334,19 +339,29 @@ export default function PosBillingPage({
   useEffect(() => {
     (async () => {
       try {
-        const [, prodRes] = await Promise.all([
+        const [, prodRes,brandRes] = await Promise.all([
           fetchCustomers(),
           getProductDropdown({ query: "" }),
+            getBrandListForDropdown(),
+
         ]);
+        setBrandOptions(brandRes ?? []);
+                console.log("[POS] raw product[0]:", JSON.stringify(prodRes?.[0], null, 2));
+
+
         setProducts((prodRes ?? []).map((p: any) => ({
-          id:            p.id,
-          name:          p.product_name ?? p.productName ?? "Unknown",
-          sku:           p.sku ?? "",
-          price:         Number(p.sellingPrice  ?? p.purchasePrice ?? 0),
-          purchasePrice: Number(p.purchasePrice ?? 0),
-          stock:         Number(p.stock         ?? 0),
-          category:      p.category?.name ?? p.category ?? "General",
-        })));
+  id:            p.id,
+  name:          p.product_name ?? p.productName ?? "Unknown",
+  sku:           p.sku ?? "",
+  price:         Number(p.sellingPrice  ?? p.purchasePrice ?? 0),
+  purchasePrice: Number(p.purchasePrice ?? 0),
+  stock:         Number(p.stock         ?? 0),
+  category:      p.category?.name ?? p.category ?? "General",
+ brand:         p.brand?.name    ?? p.brandName    ?? "",
+  brandId:       p.brand?.id      ?? p.brandId      ?? p.brand_id    ?? "",
+  subBrand:      p.subBrand?.name ?? p.subBrandName ?? "",
+  subBrandId:    p.subBrand?.id   ?? p.subBrandId   ?? p.sub_brand_id ?? "",
+})));
       } catch (err: any) {
         console.error("[POS load]", err);
         toast.error("Failed to load POS terminal data.");
@@ -377,6 +392,11 @@ export default function PosBillingPage({
   // ── UI state ───────────────────────────────────────────────────────────────
   const [searchTerm,            setSearchTerm]            = useState("");
   const [selectedCategory,      setSelectedCategory]      = useState("All");
+  const [selectedBrand,    setSelectedBrand]    = useState("All");
+const [selectedSubBrand, setSelectedSubBrand] = useState("All");
+const [subBrandOptions,  setSubBrandOptions]  = useState<{ id: string; name: string }[]>([]);
+const [brandOptions,     setBrandOptions]     = useState<{ id: string; name: string }[]>([]);
+const [barcodeNotFound,  setBarcodeNotFound]  = useState(false);
   const [barcodeInput,          setBarcodeInput]          = useState("");
   const [selectedCustomer,      setSelectedCustomer]      = useState(WALK_IN_SENTINEL);
   const [cart,                  setCart]                  = useState<CartItem[]>([]);
@@ -395,7 +415,13 @@ export default function PosBillingPage({
   // We capture a snapshot of the cart/payment state at checkout time so the
   // print popup can use it even after the cart has been reset.
   const [pendingPrint, setPendingPrint] = useState<Omit<PrintReceiptParams, "invoiceNo"> | null>(null);
-
+useEffect(() => {
+  if (selectedBrand === "All") { setSubBrandOptions([]); setSelectedSubBrand("All"); return; }
+  getSubBrandsByBrand(selectedBrand)
+    .then((res) => setSubBrandOptions(res ?? []))
+    .catch(() => setSubBrandOptions([]));
+  setSelectedSubBrand("All");
+}, [selectedBrand]);
   const { execute: executeSale, isExecuting: isCheckingOut } = useAction(createSale, {
     onSuccess: ({ data }) => {
       if ((data as any)?.error) {
@@ -432,13 +458,17 @@ export default function PosBillingPage({
   );
 
   const filteredProducts = useMemo(() => {
-    const q = searchTerm.toLowerCase();
-    return products.filter(
-      (p) =>
-        (p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)) &&
-        (selectedCategory === "All" || p.category === selectedCategory)
-    );
-  }, [products, searchTerm, selectedCategory]);
+  const q = searchTerm.toLowerCase();
+  return products.filter((p) => {
+    const matchesSearch = !q ||
+      p.name.toLowerCase().includes(q) ||
+      p.sku.toLowerCase().includes(q);
+    const matchesCategory = selectedCategory === "All" || p.category === selectedCategory;
+   const matchesBrand    = selectedBrand    === "All" || p.brandId    === selectedBrand;
+    const matchesSubBrand = selectedSubBrand === "All" || p.subBrandId === selectedSubBrand;
+    return matchesSearch && matchesCategory && matchesBrand && matchesSubBrand;
+  });
+}, [products, searchTerm, selectedCategory, selectedBrand, selectedSubBrand]);
 
   // ── Pricing ────────────────────────────────────────────────────────────────
   const subtotal             = useMemo(() => cart.reduce((s, i) => s + i.product.price * i.quantity, 0), [cart]);
@@ -503,11 +533,22 @@ export default function PosBillingPage({
 
   // ── Barcode ────────────────────────────────────────────────────────────────
   const handleBarcodeSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const found = products.find((p) => p.sku.toLowerCase() === barcodeInput.trim().toLowerCase());
-    if (found) { addToCart(found); setBarcodeInput(""); }
-    else toast.error("No product found for that SKU.");
-  };
+  e.preventDefault();
+  const q = barcodeInput.trim().toLowerCase();
+  if (!q) return;
+  // Try exact SKU first, then partial
+  const found =
+    products.find((p) => p.sku.toLowerCase() === q) ??
+    products.find((p) => p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q));
+  if (found) {
+    addToCart(found);
+    setBarcodeInput("");
+    setBarcodeNotFound(false);
+  } else {
+    setBarcodeNotFound(true);
+    toast.error(`No product found for "${barcodeInput.trim()}"`);
+  }
+};
 
   // ── Coupon ─────────────────────────────────────────────────────────────────
   const COUPONS: Record<string, number> = { WELCOME10: 10, SUPERERP: 20 };
@@ -669,51 +710,111 @@ export default function PosBillingPage({
         {/* ── Left – Products ─────────────────────────────────────────────── */}
         <div className="xl:col-span-7 flex flex-col gap-4">
 
-          {/* Search + Category */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="relative md:col-span-2">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by SKU or name…"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9 h-10 border-border bg-card shadow-sm"
-              />
+          
+          {/* Search + Filters */}
+          <div className="flex flex-col gap-2">
+            {/* Row 1: Search + Category */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="relative md:col-span-2">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by SKU or name…"
+                  value={searchTerm}
+                  onChange={(e) => { setSearchTerm(e.target.value); setBarcodeNotFound(false); }}
+                  className="pl-9 h-10 border-border bg-card shadow-sm"
+                />
+              </div>
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="h-10 border-border bg-card shadow-sm">
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((cat) => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="h-10 border-border bg-card shadow-sm">
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((cat) => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
-              </SelectContent>
-            </Select>
+
+            {/* Row 2: Brand + SubBrand */}
+            <div className="grid grid-cols-2 gap-1">
+              <Select value={selectedBrand} onValueChange={setSelectedBrand}>
+                <SelectTrigger className="h-9 border-border bg-card shadow-sm text-sm">
+                  <SelectValue placeholder="All Brands" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All Brands</SelectItem>
+                  {brandOptions.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={selectedSubBrand}
+                onValueChange={setSelectedSubBrand}
+                disabled={selectedBrand === "All" || subBrandOptions.length === 0}
+              >
+                <SelectTrigger className="h-9 border-border bg-card shadow-sm text-sm disabled:opacity-50">
+                  <SelectValue placeholder={selectedBrand === "All" ? "Select brand first" : "All Sub-brands"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All Sub-brands</SelectItem>
+                  {subBrandOptions.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
+         
           {/* Barcode */}
           <form
             onSubmit={handleBarcodeSubmit}
-            className="flex gap-2 bg-purple-50/50 dark:bg-purple-950/10 border border-purple-100 dark:border-purple-900/40 p-3 rounded-xl items-center shadow-sm"
+            className={`flex gap-2 p-3 rounded-xl items-center shadow-sm border transition-colors ${
+              barcodeNotFound
+                ? "bg-red-50/60 border-red-200 dark:bg-red-950/20 dark:border-red-900/40"
+                : "bg-purple-50/50 border-purple-100 dark:bg-purple-950/10 dark:border-purple-900/40"
+            }`}
           >
-            <span className="text-xs font-semibold text-purple-800 dark:text-purple-300 hidden sm:inline">
+            <span className="text-xs font-semibold text-purple-800 dark:text-purple-300 hidden sm:inline shrink-0">
               Barcode Scanner:
             </span>
             <Input
               placeholder="Scan / type SKU and hit Enter…"
               value={barcodeInput}
-              onChange={(e) => setBarcodeInput(e.target.value)}
-              className="h-8 text-xs border-purple-200 dark:border-purple-800 focus-visible:ring-purple-500 bg-card"
+              onChange={(e) => { setBarcodeInput(e.target.value); setBarcodeNotFound(false); }}
+              className={`h-8 text-xs bg-card ${
+                barcodeNotFound
+                  ? "border-red-300 focus-visible:ring-red-400"
+                  : "border-purple-200 dark:border-purple-800 focus-visible:ring-purple-500"
+              }`}
             />
-            <Button type="submit" size="sm" className="bg-purple-600 hover:bg-purple-700 h-8 text-xs text-white">
+            <Button
+              type="submit"
+              size="sm"
+              className={`h-8 text-xs text-white shrink-0 transition-colors ${
+                barcodeNotFound
+                  ? "bg-red-500 hover:bg-red-600"
+                  : "bg-purple-600 hover:bg-purple-700"
+              }`}
+            >
               Scan
             </Button>
           </form>
 
+          
           {/* Product grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-h-[520px] overflow-y-auto pr-1 no-scrollbar">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-h-[460px] overflow-y-auto pr-2
+            [&::-webkit-scrollbar]:w-1.5
+            [&::-webkit-scrollbar-track]:rounded-full
+            [&::-webkit-scrollbar-track]:bg-muted/40
+            [&::-webkit-scrollbar-thumb]:rounded-full
+            [&::-webkit-scrollbar-thumb]:bg-purple-300
+            dark:[&::-webkit-scrollbar-thumb]:bg-purple-700">
             {filteredProducts.length === 0 ? (
               <div className="col-span-3 text-center text-muted-foreground py-16 text-sm">
-                No products match your search.
+                {searchTerm || selectedCategory !== "All" || selectedBrand !== "All"
+                  ? "No products match your filters."
+                  : "No products available."}
               </div>
             ) : (
               filteredProducts.map((prod) => (
@@ -739,6 +840,11 @@ export default function PosBillingPage({
                       <h3 className="font-semibold text-sm line-clamp-2 group-hover:text-purple-600 transition-colors leading-tight">
                         {prod.name}
                       </h3>
+                      {prod.brand && (
+                        <p className="text-[10px] text-muted-foreground truncate">
+                          {prod.brand}{prod.subBrand ? ` › ${prod.subBrand}` : ""}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center justify-between mt-auto pt-2 border-t border-dashed border-border/80">
                       <span className="font-extrabold text-base text-purple-600">{formatCurrency(prod.price)}</span>
