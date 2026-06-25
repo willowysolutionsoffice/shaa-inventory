@@ -24,22 +24,22 @@ function methodLabel(method: string) {
 function buildPaymentHtml(payments: { method: string; amount: number }[], change: number): string {
   const isSplit = payments.length > 1;
   const changeRow = change > 0
-    ? `<div style="display:flex;justify-content:space-between;color:#000;font-weight:700;margin-top:2px;"><span>Change:</span><span>${change.toLocaleString("en-IN")}</span></div>`
+    ? `<div class="bold" style="display:flex;justify-content:space-between;margin-top:2px;font-size:11px;"><span>Change:</span><span>${change.toLocaleString("en-IN")}</span></div>`
     : "";
   if (!isSplit) {
     return `
-      <div style="display:flex;justify-content:space-between;font-size:10px;color:#000;margin-top:2px;">
+      <div class="bold" style="display:flex;justify-content:space-between;font-size:11px;margin-top:2px;">
         <span>Paid via:</span>
-        <span style="font-weight:700;">${methodLabel(payments[0].method)}</span>
+        <span>${methodLabel(payments[0].method)}</span>
       </div>${changeRow}`;
   }
   const rows = payments.map((p) => `
-    <div style="display:flex;justify-content:space-between;font-size:10px;color:#000;padding-left:8px;">
+    <div class="bold" style="display:flex;justify-content:space-between;font-size:11px;padding-left:8px;">
       <span>&#x21b3; ${methodLabel(p.method)}:</span>
-      <span style="font-weight:700;">${p.amount.toLocaleString("en-IN")}</span>
+      <span>${p.amount.toLocaleString("en-IN")}</span>
     </div>`).join("");
   return `
-    <div style="display:flex;justify-content:space-between;font-size:10px;color:#000;margin-top:2px;font-weight:700;">
+    <div class="bold" style="display:flex;justify-content:space-between;font-size:11px;margin-top:2px;">
       <span>Paid via:</span><span>Split Payment</span>
     </div>${rows}${changeRow}`;
 }
@@ -49,14 +49,14 @@ export function printThermalDirect(data: ThermalPrintData) {
   if (!printWindow) { alert("Allow popups to print."); return; }
 
   const itemRows = data.items.map((item, i) => `
-    <tr style="border-bottom:${i < data.items.length - 1 ? "1px dashed #000" : "none"};font-size:11px;color:#000;">
-      <td style="padding:4px 0;">${i + 1}</td>
-      <td style="padding:4px 0;font-size:10px;">${item.sku}</td>
-      <td style="padding:4px 4px 4px 0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.name}</td>
-      <td style="padding:4px 0;text-align:center;">${item.qty}</td>
-      <td style="padding:4px 0;text-align:right;">${item.unitPrice.toLocaleString("en-IN")}</td>
-      <td style="padding:4px 0;text-align:right;font-weight:700;">${item.total.toLocaleString("en-IN")}</td>
-    </tr>`).join("");
+  <tr style="border-bottom:${i < data.items.length - 1 ? "1px dashed #000" : "none"};">
+    <td style="padding:4px 0;font-size:9px;">${i + 1}</td>
+    <td style="padding:4px 2px 4px 0;font-size:9px;word-break:break-all;line-height:1.3;">${item.sku}</td>
+    <td class="heavy" style="padding:4px 2px 4px 0;font-size:9px;word-break:break-word;line-height:1.3;">${item.name}</td>
+    <td style="padding:4px 0;text-align:center;font-size:9px;">${item.qty}</td>
+    <td style="padding:4px 0;text-align:right;font-size:9px;">${item.unitPrice.toLocaleString("en-IN")}</td>
+    <td class="heavy" style="padding:4px 0;text-align:right;font-size:9px;">${item.total.toLocaleString("en-IN")}</td>
+  </tr>`).join("");
 
   const couponRow   = data.couponDiscount > 0
     ? `<div style="display:flex;justify-content:space-between;font-size:10px;color:#000;"><span>Coupon (${data.couponCode}):</span><span>-${data.couponDiscount.toLocaleString("en-IN")}</span></div>` : "";
@@ -69,14 +69,41 @@ export function printThermalDirect(data: ThermalPrintData) {
 
   printWindow.document.write(`
     <html><head>
-      <title>Receipt - ${data.invoiceNo}</title>
-      <style>
-        @page { size: 80mm auto; margin: 0; }
-        * { box-sizing:border-box; margin:0; padding:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; color:#000; }
-        body { font-family:'Courier New',Courier,monospace; font-size:11px; line-height:1.55; color:#000; background:#fff; width:80mm; padding:14px 12px; }
-        table { width:100%; border-collapse:collapse; table-layout:fixed; }
-      </style>
-    </head><body>
+  <title>Receipt - ${data.invoiceNo}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+  <style>
+    @page { size: 80mm auto; margin: 0; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    body {
+      font-family: 'Roboto Mono', 'Courier New', Courier, monospace;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.55;
+      color: #000000;
+      background: #ffffff;
+      width: 80mm;
+      padding: 14px 12px;
+    }
+    div, span, p {
+      font-family: 'Roboto Mono', 'Courier New', Courier, monospace;
+      font-weight: 800;
+      color: #000000;
+    }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th { font-weight: 900; color: #000; font-family: 'Roboto Mono', 'Courier New', Courier, monospace; }
+    td { font-weight: 800; color: #000; font-family: 'Roboto Mono', 'Courier New', Courier, monospace; }
+    strong { font-weight: 900; }
+    .bold  { font-weight: 900 !important; }
+    .heavy { font-weight: 900 !important; }
+  </style>
+</head><body>
       <div style="text-align:center;margin-bottom:10px;">
         <div style="font-weight:900;font-size:17px;letter-spacing:1.5px;text-transform:uppercase;">SHAASHOPY</div>
         <div style="font-size:10px;margin-top:1px;">2ND FLOOR, HILITE MALL</div>
@@ -95,19 +122,23 @@ export function printThermalDirect(data: ThermalPrintData) {
       </div>
       <table style="border-top:1px dashed #000;">
         <colgroup>
-          <col style="width:18px"/><col style="width:42px"/><col/>
-          <col style="width:26px"/><col style="width:50px"/><col style="width:50px"/>
-        </colgroup>
-        <thead>
-          <tr style="border-bottom:1px dashed #000;font-size:10px;font-weight:700;">
-            <th style="text-align:left;padding:4px 0 3px;">Sn</th>
-            <th style="text-align:left;padding:4px 0 3px;">Code</th>
-            <th style="text-align:left;padding:4px 0 3px;">Item</th>
-            <th style="text-align:center;padding:4px 0 3px;">Qty</th>
-            <th style="text-align:right;padding:4px 0 3px;">Rate</th>
-            <th style="text-align:right;padding:4px 0 3px;">Total</th>
-          </tr>
-        </thead>
+  <col style="width:12px"/>
+  <col style="width:55px"/>
+  <col/>
+  <col style="width:20px"/>
+  <col style="width:50px"/>
+  <col style="width:50px"/>
+</colgroup>
+<thead>
+  <tr style="border-bottom:1px dashed #000;font-size:9px;">
+    <th style="text-align:left;padding:4px 0 3px;">Sn</th>
+    <th style="text-align:left;padding:4px 0 3px;">Code</th>
+    <th style="text-align:left;padding:4px 0 3px;">Item</th>
+    <th style="text-align:center;padding:4px 0 3px;">Qty</th>
+    <th style="text-align:right;padding:4px 0 3px;">Rate</th>
+    <th style="text-align:right;padding:4px 0 3px;">Total</th>
+  </tr>
+</thead>
         <tbody>${itemRows}</tbody>
       </table>
       <div style="border-top:1px dashed #000;padding-top:6px;margin-top:2px;">

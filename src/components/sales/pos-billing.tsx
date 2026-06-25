@@ -189,7 +189,8 @@ const itemRows = params.items.map((item, i) => `
         <title>Receipt - ${params.invoiceNo}</title>
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@500;700;800&display=swap" rel="stylesheet">
-        <style>
+        // Replace the <style> block inside printWindow.document.write:
+<style>
   @page { size: 80mm auto; margin: 0; }
   * {
     box-sizing: border-box;
@@ -201,7 +202,7 @@ const itemRows = params.items.map((item, i) => `
   body {
     font-family: 'Roboto Mono', 'Courier New', Courier, monospace;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 800;
     line-height: 1.55;
     color: #000000;
     background: #ffffff;
@@ -210,14 +211,14 @@ const itemRows = params.items.map((item, i) => `
   }
   div, span, p {
     font-family: 'Roboto Mono', 'Courier New', Courier, monospace;
-    font-weight: 700;
+    font-weight: 800;
     color: #000000;
   }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  th { font-weight: 800; color: #000; font-family: 'Roboto Mono', 'Courier New', Courier, monospace; }
-  td { font-weight: 700; color: #000; font-family: 'Roboto Mono', 'Courier New', Courier, monospace; }
+  th { font-weight: 900; color: #000; font-family: 'Roboto Mono', 'Courier New', Courier, monospace; }
+  td { font-weight: 800; color: #000; font-family: 'Roboto Mono', 'Courier New', Courier, monospace; }
   strong { font-weight: 900; }
-  .bold  { font-weight: 800 !important; }
+  .bold  { font-weight: 900 !important; }
   .heavy { font-weight: 900 !important; }
 </style>
       </head>
