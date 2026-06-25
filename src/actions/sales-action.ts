@@ -206,3 +206,30 @@ export const deleteSale = actionClient
       return { error: error.message ?? 'Something went wrong' };
     }
   });
+
+  export async function getSalesReport(params: {
+  from?: string;
+  to?: string;
+  branchId?: string;
+  limit?: number;
+  page?: number;
+}): Promise<{ sales: any[] } | { error: string }> {  // ← explicit return type
+  try {
+    const query = new URLSearchParams({
+      page:  String(params.page  ?? 1),
+      limit: String(params.limit ?? 500),
+      ...(params.from     && { from:     params.from }),
+      ...(params.to       && { to:       params.to }),
+      ...(params.branchId && { branchId: params.branchId }),
+    });
+
+    const raw     = await api.get<any>(`/sales?${query}`);
+    const payload = raw?.data ?? raw;
+
+    return {
+      sales: payload?.sales ?? payload ?? [],
+    };
+  } catch (error: any) {
+    return { error: error.message ?? 'Failed to fetch sales report' };
+  }
+}
