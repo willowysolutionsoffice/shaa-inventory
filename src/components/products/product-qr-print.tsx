@@ -30,8 +30,8 @@ export function ProductQrPrint({ sku, productName, price }: ProductQrPrintProps)
       const JsBarcode = mod.default;
       JsBarcode(svgRef.current, sku, {
         format: "CODE128",
-        width: 1.5,
-        height: 44,
+        width: 1.2,
+        height: 30,
         displayValue: false,
         margin: 0,
         background: "#ffffff",
@@ -52,8 +52,11 @@ export function ProductQrPrint({ sku, productName, price }: ProductQrPrintProps)
       return;
     }
 
+    // Fill complete sheets — always print in multiples of 8
+    const totalLabels = printQty;
+
     let labelHtml = "";
-    for (let i = 0; i < printQty; i++) {
+    for (let i = 0; i < totalLabels; i++) {
       labelHtml += `
         <div class="label">
           <div class="brand-top">SHAASHOPY</div>
@@ -74,17 +77,25 @@ export function ProductQrPrint({ sku, productName, price }: ProductQrPrintProps)
           <title>Print Labels - ${sku}</title>
           <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
           <style>
-            @page { size: 76mm 100mm; margin: 0; }
+            @page {
+              size: 76mm 100mm portrait;
+              margin: 0;
+            }
 
-            * { box-sizing: border-box; margin: 0; padding: 0;
-                -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            * {
+              box-sizing: border-box;
+              margin: 0;
+              padding: 0;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
 
             body {
               width: 76mm;
               background: #fff;
               display: grid;
               grid-template-columns: repeat(2, 38mm);
-              grid-template-rows: repeat(4, 25mm);
+              grid-auto-rows: 25mm;
               gap: 0;
             }
 
@@ -94,9 +105,10 @@ export function ProductQrPrint({ sku, productName, price }: ProductQrPrintProps)
               display: flex;
               flex-direction: column;
               align-items: center;
-              /* no padding — controlled by margins on children only */
+              justify-content: center;
               overflow: hidden;
               background: #fff;
+              padding: 0.4mm 0.5mm;
             }
 
             .brand-top {
@@ -104,18 +116,22 @@ export function ProductQrPrint({ sku, productName, price }: ProductQrPrintProps)
               font-size: 7pt;
               font-weight: 900;
               color: #000;
-              letter-spacing: 0.3px;
+              letter-spacing: 0.5px;
               text-align: center;
-              margin-top: 0.7mm;
+              line-height: 1.1;
             }
 
             .product-name {
               font-family: Arial, Helvetica, sans-serif;
-              font-size: 5.5pt;
+              font-size: 5pt;
               font-weight: 700;
               color: #000;
               text-align: center;
-              margin-top: 0.2mm;   /* almost touching brand */
+              line-height: 1.1;
+              max-width: 37mm;
+              overflow: hidden;
+              white-space: nowrap;
+              text-overflow: ellipsis;
             }
 
             .barcode-row {
@@ -124,12 +140,12 @@ export function ProductQrPrint({ sku, productName, price }: ProductQrPrintProps)
               align-items: center;
               justify-content: center;
               width: 100%;
-              margin-top: 0.2mm;   /* almost touching product name */
+              margin: 0.3mm 0;
             }
 
             .sku-vertical {
               font-family: Arial, Helvetica, sans-serif;
-              font-size: 4.5pt;
+              font-size: 3.5pt;
               font-weight: 700;
               color: #000;
               writing-mode: vertical-rl;
@@ -137,35 +153,35 @@ export function ProductQrPrint({ sku, productName, price }: ProductQrPrintProps)
               white-space: nowrap;
               line-height: 1;
               flex-shrink: 0;
-              width: 3.5mm;
+              width: 3mm;
             }
 
             svg.barcode {
               display: block;
-              width: 27mm;
-              height: 12mm;
+              width: 30mm;
+              height: 10mm;
               flex-shrink: 0;
             }
 
             .fabstory-vertical {
               font-family: Arial, Helvetica, sans-serif;
-              font-size: 4.5pt;
+              font-size: 3.5pt;
               font-weight: 700;
               color: #000;
               writing-mode: vertical-rl;
               white-space: nowrap;
               line-height: 1;
               flex-shrink: 0;
-              width: 3.5mm;
+              width: 3mm;
             }
 
             .price {
               font-family: Arial, Helvetica, sans-serif;
-              font-size: 8.5pt;
+              font-size: 8pt;
               font-weight: 900;
               color: #000;
               text-align: center;
-              margin-top: 0.2mm;   /* almost touching barcode */
+              line-height: 1.1;
             }
           </style>
         </head>
@@ -176,8 +192,8 @@ export function ProductQrPrint({ sku, productName, price }: ProductQrPrintProps)
               document.querySelectorAll("svg.barcode").forEach(function (el) {
                 JsBarcode(el, ${JSON.stringify(sku)}, {
                   format: "CODE128",
-                  width: 1.5,
-                  height: 44,
+                  width: 1.2,
+                  height: 30,
                   displayValue: false,
                   margin: 0,
                   background: "#ffffff",
@@ -200,44 +216,44 @@ export function ProductQrPrint({ sku, productName, price }: ProductQrPrintProps)
           <Barcode className="h-4 w-4 text-purple-600" /> Barcode & Printing
         </CardTitle>
         <CardDescription className="text-xs">
-          Shaashopy label — 2×4 per sheet (38×25mm each)
+          Shaashopy label — 2×4 grid, 38×25mm each (TSC TTP-244 Pro)
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
 
-        {/* Preview — gaps mirror print (0.2mm → ~1px at 6×) */}
+        {/* Preview — 5× scale: 38mm→190px, 25mm→125px */}
         <div className="flex justify-center p-4 border border-dashed border-border/80 bg-muted/10 rounded-xl">
           <div
             style={{
-              width: 228,
-              height: 150,
+              width: 190,
+              height: 125,
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
+              justifyContent: "center",
               background: "#fff",
               overflow: "hidden",
               fontFamily: "Arial, Helvetica, sans-serif",
+              border: "1px solid #ddd",
+              padding: 3,
             }}
           >
-            <span style={{ fontSize: 11, fontWeight: 900, color: "#000", letterSpacing: 0.3, marginTop: 4 }}>
+            <span style={{ fontSize: 11, fontWeight: 900, color: "#000", letterSpacing: 0.5, lineHeight: 1.1 }}>
               SHAASHOPY
             </span>
-
-            <span style={{ fontSize: 9, fontWeight: 700, color: "#000", marginTop: 1 }}>
+            <span style={{ fontSize: 8, fontWeight: 700, color: "#000", lineHeight: 1.1, maxWidth: 184, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
               {productName}
             </span>
-
-            <div style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", width: "100%", marginTop: 1 }}>
-              <div style={{ fontSize: 7, fontWeight: 700, color: "#000", writingMode: "vertical-rl", transform: "rotate(180deg)", whiteSpace: "nowrap", width: 10, flexShrink: 0 }}>
+            <div style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", width: "100%", margin: "2px 0" }}>
+              <div style={{ fontSize: 6, fontWeight: 700, color: "#000", writingMode: "vertical-rl", transform: "rotate(180deg)", whiteSpace: "nowrap", width: 10, flexShrink: 0 }}>
                 {sku}
               </div>
-              <svg ref={svgRef} style={{ width: 162, height: 66, display: "block", flexShrink: 0 }} />
-              <div style={{ fontSize: 7, fontWeight: 700, color: "#000", writingMode: "vertical-rl", whiteSpace: "nowrap", width: 10, flexShrink: 0 }}>
+              <svg ref={svgRef} style={{ width: 150, height: 50, display: "block", flexShrink: 0 }} />
+              <div style={{ fontSize: 6, fontWeight: 700, color: "#000", writingMode: "vertical-rl", whiteSpace: "nowrap", width: 10, flexShrink: 0 }}>
                 FABSTORY
               </div>
             </div>
-
-            <span style={{ fontSize: 13, fontWeight: 900, color: "#000", marginTop: 1 }}>
+            <span style={{ fontSize: 13, fontWeight: 900, color: "#000", lineHeight: 1.1 }}>
               ₹ : {formattedPrice}
             </span>
           </div>
