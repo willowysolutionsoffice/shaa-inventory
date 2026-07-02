@@ -7,6 +7,7 @@ import { FileSpreadsheet, FileText } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { getBrandListForDropdown, getSubBrandsByBrand } from "@/actions/brand-actions";
 import { getBranchListForDropdown } from "@/actions/branch-action";
+import { getUserList } from "@/actions/user-action";
 import { getSalesReport } from "@/actions/sales-action"; // ← import the server action
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -40,6 +41,8 @@ interface Sale {
     paymentDue: number;
     customer: { id: string; name: string; phone?: string };
     branch: { id: string; name: string };
+    salesman?: { id: string; name: string } | null;
+    salesmanId?: string | null;
     items: SaleItem[];
 }
 
@@ -60,6 +63,7 @@ interface Filters {
     brandId: string;
     subBrandId: string;
     branchId: string;
+    salesmanId: string;
 }
 
 interface ReportRow {
@@ -79,6 +83,8 @@ interface ReportRow {
     total: number;
     customerName: string;
     branchName: string;
+    salesmanName: string;
+    salesmanId: string;
     paymentStatus: string;
     productId: string;
 }
@@ -105,7 +111,7 @@ const YEARS = Array.from({ length: 5 }, (_, i) => String(currentYear - i));
 
 const DEFAULT_FILTERS: Filters = {
     from: "", to: "", month: "", year: String(currentYear),
-    brandId: "", subBrandId: "", branchId: "",
+    brandId: "", subBrandId: "", branchId: "", salesmanId: "",
 };
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -168,7 +174,7 @@ function exportToCSV(
         "Sl.No", "Invoice", "Date", "Year", "Month",
         "Item Code", "Item Name", "Qty", "Unit",
         "Unit Price", "Amount", "Discount", "Subtotal", "Net Amount",
-        "Customer", "Branch", "Status",
+        "Customer", "Branch", "Salesman", "Status",
     ];
     const esc = (v: string | number) => {
         const s = String(v);
@@ -179,13 +185,13 @@ function exportToCSV(
         [r.slNo, r.invoiceNo, r.date, r.year, r.month,
         r.itemCode, r.itemName, r.qty, r.baseUnit,
         r.unitPrice, r.amount, r.discount, r.subtotal, r.total,
-        r.customerName, r.branchName, r.paymentStatus].map(esc).join(",")
+        r.customerName, r.branchName, r.salesmanName, r.paymentStatus].map(esc).join(",")
     );
     const totalsRow = [
         "Total", "", "", "", "", "", "",
         totals.qty, "", "",
         totals.amount, totals.discount, totals.subtotal, totals.total,
-        "", "", "",
+        "", "", "", "",
     ].map(esc).join(",");
     const csv = [headers.join(","), ...dataRows, totalsRow].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -221,7 +227,7 @@ function exportToPDF(
       <td class="r">${r.discount > 0 ? r.discount.toFixed(2) : "—"}</td>
       <td class="r">${r.subtotal.toFixed(2)}</td>
       <td class="r">${r.total.toFixed(2)}</td>
-      <td>${r.customerName}</td><td>${r.branchName}</td>
+      <td>${r.customerName}</td><td>${r.branchName}</td><td>${r.salesmanName}</td>
       <td><span class="badge ${r.paymentStatus}">${r.paymentStatus}</span></td>
     </tr>`).join("");
 
@@ -246,7 +252,7 @@ td{border:1px solid #e5e7eb;padding:4px 6px}
   <th>Code</th><th>Item Name</th><th class="r">Qty</th><th>Unit</th>
   <th class="r">Unit Price</th><th class="r">Amount</th>
   <th class="r">Discount</th><th class="r">Subtotal</th>
-  <th class="r">Net Amount</th><th>Customer</th><th>Branch</th><th>Status</th>
+  <th class="r">Net Amount</th><th>Customer</th><th>Branch</th><th>Salesman</th><th>Status</th>
 </tr></thead><tbody>
 ${rowsHtml}
 <tr class="tot">
@@ -256,7 +262,7 @@ ${rowsHtml}
   <td class="r">${totals.discount.toFixed(2)}</td>
   <td class="r">${totals.subtotal.toFixed(2)}</td>
   <td class="r">${totals.total.toFixed(2)}</td>
-  <td colspan="3"></td>
+  <td colspan="4"></td>
 </tr></tbody></table></body></html>`;
 
     const win = window.open("", "_blank");
@@ -285,6 +291,7 @@ export default function SalesReportPage() {
     const [brands, setBrands] = useState<DropdownItem[]>([]);
     const [subBrands, setSubBrands] = useState<DropdownItem[]>([]);
     const [branches, setBranches] = useState<DropdownItem[]>([]);
+    const [salesmen, setSalesmen] = useState<DropdownItem[]>([]);
 
     // productId → { brandId, subBrandId, supplierId } built from sale item payloads
     const [productMap, setProductMap] = useState<Map<string, ProductMeta>>(new Map());
@@ -294,12 +301,15 @@ export default function SalesReportPage() {
         async function loadMasters() {
             setMastersLoading(true);
             try {
-                const [b, br] = await Promise.all([
+                const [b, br, usersRes] = await Promise.all([
                     getBrandListForDropdown(),
                     getBranchListForDropdown(),
+                    getUserList(),
                 ]);
+                const users: any[] = Array.isArray(usersRes) ? usersRes : (usersRes as any)?.data ?? [];
                 setBrands(b);
                 setBranches(br);
+                setSalesmen(users.map((u: any) => ({ id: u.id, name: u.name })).filter((u: DropdownItem) => u.id && u.name));
             } catch { /* non-fatal */ }
             finally { setMastersLoading(false); }
         }
@@ -343,6 +353,7 @@ export default function SalesReportPage() {
         from:     from || undefined,
         to:       to   || undefined,
         branchId: f.branchId || undefined,
+        salesmanId: f.salesmanId || undefined,
         limit:    500,
         page:     1,
       });
@@ -397,6 +408,8 @@ export default function SalesReportPage() {
             total:         Number(item.total),
             customerName:  sale.customer?.name ?? "—",
             branchName:    sale.branch?.name   ?? "—",
+            salesmanName:  sale.salesman?.name ?? "—",
+            salesmanId:    sale.salesman?.id ?? sale.salesmanId ?? "",
             paymentStatus: sale.paymentStatus,
             productId:     item.productId,
           });
@@ -431,7 +444,9 @@ export default function SalesReportPage() {
     // Runs instantly against allRows without a new API call.
     // Uses appliedFilters (committed state), not filters (pending state).
     const filteredRows = allRows.filter((row) => {
-        const { brandId, subBrandId } = appliedFilters;
+        const { brandId, subBrandId, salesmanId } = appliedFilters;
+
+        if (salesmanId && row.salesmanId !== salesmanId) return false;
 
         if (!brandId && !subBrandId) return true;
 
@@ -556,6 +571,15 @@ export default function SalesReportPage() {
                             disabled={mastersLoading}
                         />
 
+                        <FilterSelect
+                            label={mastersLoading ? "Salesman (loading…)" : "Salesman"}
+                            value={filters.salesmanId}
+                            onChange={(v) => setFilter("salesmanId", v)}
+                            options={salesmen.map((s) => ({ value: s.id, label: s.name }))}
+                            placeholder="All Salesmen"
+                            disabled={mastersLoading}
+                        />
+
                         <div className="flex gap-2 items-end">
                             <Button onClick={handleApply} disabled={loading} size="sm">
                                 {loading ? "Loading…" : "Apply"}
@@ -635,6 +659,7 @@ export default function SalesReportPage() {
                                     <th className="px-3 py-2.5 text-right font-semibold">Net Amount</th>
                                     <th className="px-3 py-2.5 text-left font-semibold">Customer</th>
                                     <th className="px-3 py-2.5 text-left font-semibold">Branch</th>
+                                    <th className="px-3 py-2.5 text-left font-semibold">Salesman</th>
                                     <th className="px-3 py-2.5 text-left font-semibold">Status</th>
                                 </tr>
                             </thead>
@@ -659,6 +684,7 @@ export default function SalesReportPage() {
                                         <td className="px-3 py-2 text-right font-medium">{formatCurrency(row.total)}</td>
                                         <td className="px-3 py-2 max-w-[130px] truncate" title={row.customerName}>{row.customerName}</td>
                                         <td className="px-3 py-2">{row.branchName}</td>
+                                        <td className="px-3 py-2 max-w-[130px] truncate" title={row.salesmanName}>{row.salesmanName}</td>
                                         <td className="px-3 py-2">
                                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColor[row.paymentStatus] ?? "bg-gray-100 text-gray-700"}`}>
                                                 {row.paymentStatus}
@@ -676,7 +702,7 @@ export default function SalesReportPage() {
                                     <td className="px-3 py-2.5 text-right text-orange-600">{formatCurrency(totals.discount)}</td>
                                     <td className="px-3 py-2.5 text-right">{formatCurrency(totals.subtotal)}</td>
                                     <td className="px-3 py-2.5 text-right">{formatCurrency(totals.total)}</td>
-                                    <td colSpan={3} />
+                                    <td colSpan={4} />
                                 </tr>
                             </tbody>
                         </table>

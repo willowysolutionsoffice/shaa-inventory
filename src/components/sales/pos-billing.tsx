@@ -1,11 +1,11 @@
 // src/components/sales/pos-billing.tsx
 "use client";
 
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   Search, Trash2, Plus, Minus, Percent, CreditCard, Wallet, Receipt,
   UserPlus, PauseCircle, ShoppingBag, Tag, Sparkles,
-  Loader2, IndianRupee,
+  Loader2, IndianRupee, UserCog
 } from "lucide-react";
 import {
   Card, CardContent, CardHeader, CardTitle, CardDescription,
@@ -14,6 +14,8 @@ import { Button }    from "@/components/ui/button";
 import { Input }     from "@/components/ui/input";
 import { Badge }     from "@/components/ui/badge";
 import { getBrandListForDropdown, getSubBrandsByBrand } from "@/actions/brand-actions";
+import { getUserList }                from "@/actions/user-action";
+
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -23,7 +25,7 @@ import { formatCurrency } from "@/lib/utils";
 import { useRouter }      from "next/navigation";
 import { useAction }      from "next-safe-action/hooks";
 import { createSale }     from "@/actions/sales-action";
-import { getCustomerListForDropdown } from "@/actions/customer-action";
+import { getCustomerListForDropdown, createCustomer } from "@/actions/customer-action";
 import { getProductDropdown }         from "@/actions/product-actions";
 import { CustomerFormDialog } from "@/components/customers/customer-form";
 
@@ -37,7 +39,7 @@ interface POSProduct {
   purchasePrice: number;
   stock:         number;
   category:      string;
- brand:         string;
+  brand:         string;
   brandId:       string;
   subBrand:      string;
   subBrandId:    string;
@@ -66,12 +68,19 @@ interface HeldBill {
   splitMode:             boolean;
 }
 
+// method can be "" only in split mode, for an auto-created "remaining" row
+// that hasn't had its payment method chosen yet.
 interface PaymentEntry {
-  method: "cash" | "card" | "upi";
+  method: "cash" | "card" | "upi" | "";
   amount: number | "";
 }
+interface POSSalesman {
+  id:   string;
+  name: string;
+}
 
-const WALK_IN_SENTINEL = "__walk_in__";
+const WALK_IN_SENTINEL     = "__walk_in__";
+const NO_SALESMAN_SENTINEL = "__no_salesman__";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -100,6 +109,7 @@ function methodLabel(method: string): string {
 
 // Matches buildPaymentHtml in pos-invoice.tsx exactly — takes normalized payments
 // (amounts are guaranteed numbers here since we filter before passing in)
+// ── NOT MODIFIED — invoice print logic left exactly as-is ──────────────────────
 function buildPaymentHtml(
   payments: { method: string; amount: number }[],
   change: number
@@ -135,18 +145,19 @@ function buildPaymentHtml(
   `;
 }
 // ── Thermal print function — identical HTML/CSS to pos-invoice.tsx printThermal ──
+// ── NOT MODIFIED — invoice print logic left exactly as-is ──────────────────────
 
 interface PrintReceiptParams {
   invoiceNo:      string;
   date:           Date;
   customerName:   string;
   customerPhone:  string;
+  salesmanName?:  string;
   items:          { name: string; sku: string; qty: number; unitPrice: number; total: number }[];
   couponDiscount: number;
   couponCode:     string;
   manualDiscount: number;
   grandTotal:     number;
-  // only entries with a confirmed numeric amount (filtered before passing in)
   payments:       { method: string; amount: number }[];
   change:         number;
 }
@@ -160,8 +171,7 @@ function printThermalReceipt(params: PrintReceiptParams) {
 
   const { date, time } = fmtDate(params.date);
 
-  // itemRows — SKU full (no slice), name wraps, numbers at 9px to fit
-const itemRows = params.items.map((item, i) => `
+  const itemRows = params.items.map((item, i) => `
   <tr style="border-bottom:${i < params.items.length - 1 ? "1px dashed #000" : "none"};">
     <td style="padding:4px 0;font-size:9px;">${i + 1}</td>
     <td style="padding:4px 2px 4px 0;font-size:9px;word-break:break-all;line-height:1.3;">${item.sku}</td>
@@ -194,7 +204,6 @@ const itemRows = params.items.map((item, i) => `
         <title>Receipt - ${params.invoiceNo}</title>
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@500;700;800&display=swap" rel="stylesheet">
-        // Replace the <style> block inside printWindow.document.write:
 <style>
   @page { size: 80mm auto; margin: 0; }
   * {
@@ -283,7 +292,7 @@ const itemRows = params.items.map((item, i) => `
         </div>
 
         <div style="border-top:1px dashed #000;margin-top:8px;padding-top:6px;text-align:center;font-size:10px;">
-          <div><span class="bold">SALESMAN :</span> &nbsp;</div>
+<div><span class="bold">SALESMAN :</span> &nbsp;${params.salesmanName || ""}</div>
           <div style="margin-top:2px;">Insta ID :&nbsp;<span class="bold">shaashopy.hilitemall</span></div>
         </div>
 
@@ -322,6 +331,43 @@ export default function PosBillingPage({
   const [loadingData, setLoadingData] = useState(true);
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
 
+  // Moved up: needed by callbacks declared right below
+  const [salesmen,         setSalesmen]         = useState<POSSalesman[]>([]);
+  const [selectedSalesman, setSelectedSalesman] = useState(NO_SALESMAN_SENTINEL);
+  const [walkInCustomerId, setWalkInCustomerId]  = useState<string | null>(null);
+
+  // ── Barcode scanner auto-focus ────────────────────────────────────────────
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const focusBarcodeInput = useCallback(() => {
+    // setTimeout lets any pending re-render (state updates, dialogs closing) settle first
+    setTimeout(() => barcodeInputRef.current?.focus(), 0);
+  }, []);
+
+  const ensureWalkInCustomer = useCallback(
+    async (existing: POSCustomer[]): Promise<string | null> => {
+      const found = existing.find((c) => /walk[\s-]?in/i.test(c.name));
+      if (found) return found.id;
+      if (!branchId) return null;
+
+      try {
+        const res: any = await createCustomer({
+          name: "Walk-in Customer",
+          branchId,
+        });
+        if (res?.data?.error) {
+          console.error("[POS] Walk-in customer create failed", res.data.error);
+          return null;
+        }
+        const newCust = res?.data?.data ?? res?.data;
+        return newCust?.id ?? null;
+      } catch (err) {
+        console.error("[POS] Failed to auto-create walk-in customer", err);
+        return null;
+      }
+    },
+    [branchId]
+  );
+
   const fetchCustomers = useCallback(async () => {
     const custRes = await getCustomerListForDropdown();
     const remoteCustomers: POSCustomer[] = (custRes ?? []).map((c: any) => ({
@@ -329,39 +375,55 @@ export default function PosBillingPage({
       name:  c.name,
       phone: c.phone ?? "",
     }));
+
+    const walkInId = await ensureWalkInCustomer(remoteCustomers);
+    setWalkInCustomerId(walkInId);
+
     setCustomers([
-      { id: WALK_IN_SENTINEL, name: "Select a Customer", phone: "" },
-      ...remoteCustomers,
+      { id: WALK_IN_SENTINEL, name: "Walk-in Customer", phone: "" },
+      ...remoteCustomers.filter((c) => c.id !== walkInId),
     ]);
     return remoteCustomers;
-  }, []);
+  }, [ensureWalkInCustomer]);
+
+  const fetchSalesmen = useCallback(async () => {
+    try {
+      const res: any = await getUserList();
+      const list: any[] = Array.isArray(res) ? res : res?.data ?? [];
+      const scoped = branchId
+        ? list.filter((u) => u.branch?.id === branchId || u.branchId === branchId)
+        : list;
+      setSalesmen((scoped.length ? scoped : list).map((u: any) => ({ id: u.id, name: u.name })));
+    } catch (err) {
+      console.error("[POS] Failed to load salesmen", err);
+    }
+  }, [branchId]);
 
   useEffect(() => {
     (async () => {
       try {
-        const [, prodRes,brandRes] = await Promise.all([
+        const [, prodRes, brandRes] = await Promise.all([
           fetchCustomers(),
           getProductDropdown({ query: "" }),
-            getBrandListForDropdown(),
-
+          getBrandListForDropdown(),
+          fetchSalesmen(),
         ]);
         setBrandOptions(brandRes ?? []);
-                console.log("[POS] raw product[0]:", JSON.stringify(prodRes?.[0], null, 2));
-
+        console.log("[POS] raw product[0]:", JSON.stringify(prodRes?.[0], null, 2));
 
         setProducts((prodRes ?? []).map((p: any) => ({
-  id:            p.id,
-  name:          p.product_name ?? p.productName ?? "Unknown",
-  sku:           p.sku ?? "",
-  price:         Number(p.sellingPrice  ?? p.purchasePrice ?? 0),
-  purchasePrice: Number(p.purchasePrice ?? 0),
-  stock:         Number(p.stock         ?? 0),
-  category:      p.category?.name ?? p.category ?? "General",
- brand:         p.brand?.name    ?? p.brandName    ?? "",
-  brandId:       p.brand?.id      ?? p.brandId      ?? p.brand_id    ?? "",
-  subBrand:      p.subBrand?.name ?? p.subBrandName ?? "",
-  subBrandId:    p.subBrand?.id   ?? p.subBrandId   ?? p.sub_brand_id ?? "",
-})));
+          id:            p.id,
+          name:          p.product_name ?? p.productName ?? "Unknown",
+          sku:           p.sku ?? "",
+          price:         Number(p.sellingPrice  ?? p.purchasePrice ?? 0),
+          purchasePrice: Number(p.purchasePrice ?? 0),
+          stock:         Number(p.stock         ?? 0),
+          category:      p.category?.name ?? p.category ?? "General",
+          brand:         p.brand?.name    ?? p.brandName    ?? "",
+          brandId:       p.brand?.id      ?? p.brandId      ?? p.brand_id    ?? "",
+          subBrand:      p.subBrand?.name ?? p.subBrandName ?? "",
+          subBrandId:    p.subBrand?.id   ?? p.subBrandId   ?? p.sub_brand_id ?? "",
+        })));
       } catch (err: any) {
         console.error("[POS load]", err);
         toast.error("Failed to load POS terminal data.");
@@ -369,7 +431,12 @@ export default function PosBillingPage({
         setLoadingData(false);
       }
     })();
-  }, [fetchCustomers]);
+  }, [fetchCustomers, fetchSalesmen]);
+
+  // Auto-focus the barcode scanner once initial load completes
+  useEffect(() => {
+    if (!loadingData) focusBarcodeInput();
+  }, [loadingData, focusBarcodeInput]);
 
   const handleAddCustomerClose = useCallback(
     async (open: boolean) => {
@@ -377,26 +444,31 @@ export default function PosBillingPage({
       if (!open) {
         try {
           const prevIds = new Set(customers.map((c) => c.id));
-          const fresh   = await fetchCustomers();
-          const newEntry = fresh.find((c) => !prevIds.has(c.id));
+          if (walkInCustomerId) prevIds.add(walkInCustomerId);
+
+          const fresh    = await fetchCustomers();
+          const newEntry = fresh.find(
+            (c) => !prevIds.has(c.id) && c.id !== walkInCustomerId
+          );
           if (newEntry) {
             setSelectedCustomer(newEntry.id);
             toast.success(`"${newEntry.name}" added and selected.`);
           }
         } catch {}
+        focusBarcodeInput();
       }
     },
-    [fetchCustomers, customers]
+    [fetchCustomers, customers, walkInCustomerId, focusBarcodeInput]
   );
 
   // ── UI state ───────────────────────────────────────────────────────────────
   const [searchTerm,            setSearchTerm]            = useState("");
   const [selectedCategory,      setSelectedCategory]      = useState("All");
   const [selectedBrand,    setSelectedBrand]    = useState("All");
-const [selectedSubBrand, setSelectedSubBrand] = useState("All");
-const [subBrandOptions,  setSubBrandOptions]  = useState<{ id: string; name: string }[]>([]);
-const [brandOptions,     setBrandOptions]     = useState<{ id: string; name: string }[]>([]);
-const [barcodeNotFound,  setBarcodeNotFound]  = useState(false);
+  const [selectedSubBrand, setSelectedSubBrand] = useState("All");
+  const [subBrandOptions,  setSubBrandOptions]  = useState<{ id: string; name: string }[]>([]);
+  const [brandOptions,     setBrandOptions]     = useState<{ id: string; name: string }[]>([]);
+  const [barcodeNotFound,  setBarcodeNotFound]  = useState(false);
   const [barcodeInput,          setBarcodeInput]          = useState("");
   const [selectedCustomer,      setSelectedCustomer]      = useState(WALK_IN_SENTINEL);
   const [cart,                  setCart]                  = useState<CartItem[]>([]);
@@ -412,16 +484,16 @@ const [barcodeNotFound,  setBarcodeNotFound]  = useState(false);
 
   // ── Server action ──────────────────────────────────────────────────────────
 
-  // We capture a snapshot of the cart/payment state at checkout time so the
-  // print popup can use it even after the cart has been reset.
   const [pendingPrint, setPendingPrint] = useState<Omit<PrintReceiptParams, "invoiceNo"> | null>(null);
-useEffect(() => {
-  if (selectedBrand === "All") { setSubBrandOptions([]); setSelectedSubBrand("All"); return; }
-  getSubBrandsByBrand(selectedBrand)
-    .then((res) => setSubBrandOptions(res ?? []))
-    .catch(() => setSubBrandOptions([]));
-  setSelectedSubBrand("All");
-}, [selectedBrand]);
+
+  useEffect(() => {
+    if (selectedBrand === "All") { setSubBrandOptions([]); setSelectedSubBrand("All"); return; }
+    getSubBrandsByBrand(selectedBrand)
+      .then((res) => setSubBrandOptions(res ?? []))
+      .catch(() => setSubBrandOptions([]));
+    setSelectedSubBrand("All");
+  }, [selectedBrand]);
+
   const { execute: executeSale, isExecuting: isCheckingOut } = useAction(createSale, {
     onSuccess: ({ data }) => {
       if ((data as any)?.error) {
@@ -435,7 +507,6 @@ useEffect(() => {
         (data as any)?.data?.invoiceNo ??
         `INV-${Date.now().toString().slice(-6)}`;
 
-      // Fire the print window immediately with the snapshotted receipt data
       if (pendingPrint) {
         printThermalReceipt({ ...pendingPrint, invoiceNo });
         setPendingPrint(null);
@@ -458,17 +529,17 @@ useEffect(() => {
   );
 
   const filteredProducts = useMemo(() => {
-  const q = searchTerm.toLowerCase();
-  return products.filter((p) => {
-    const matchesSearch = !q ||
-      p.name.toLowerCase().includes(q) ||
-      p.sku.toLowerCase().includes(q);
-    const matchesCategory = selectedCategory === "All" || p.category === selectedCategory;
-   const matchesBrand    = selectedBrand    === "All" || p.brandId    === selectedBrand;
-    const matchesSubBrand = selectedSubBrand === "All" || p.subBrandId === selectedSubBrand;
-    return matchesSearch && matchesCategory && matchesBrand && matchesSubBrand;
-  });
-}, [products, searchTerm, selectedCategory, selectedBrand, selectedSubBrand]);
+    const q = searchTerm.toLowerCase();
+    return products.filter((p) => {
+      const matchesSearch = !q ||
+        p.name.toLowerCase().includes(q) ||
+        p.sku.toLowerCase().includes(q);
+      const matchesCategory = selectedCategory === "All" || p.category === selectedCategory;
+      const matchesBrand    = selectedBrand    === "All" || p.brandId    === selectedBrand;
+      const matchesSubBrand = selectedSubBrand === "All" || p.subBrandId === selectedSubBrand;
+      return matchesSearch && matchesCategory && matchesBrand && matchesSubBrand;
+    });
+  }, [products, searchTerm, selectedCategory, selectedBrand, selectedSubBrand]);
 
   // ── Pricing ────────────────────────────────────────────────────────────────
   const subtotal             = useMemo(() => cart.reduce((s, i) => s + i.product.price * i.quantity, 0), [cart]);
@@ -493,6 +564,65 @@ useEffect(() => {
 
   const paymentShortfall = Math.max(0, grandTotal - totalPaid);
 
+  // A split-mode row has an amount but no method chosen yet — checkout must block on this
+  const hasUnselectedSplitMethod = splitMode && payments.some(
+    (p) => typeof p.amount === "number" && p.amount > 0 && p.method === ""
+  );
+
+  // ── Split payment: auto-remaining logic ───────────────────────────────────
+  // Editing the FIRST row's amount auto-creates/syncs a second "remaining" row.
+  // The remaining row's method is left unselected ("") until the user picks one.
+  const updateSplitAmount = useCallback((idx: number, raw: string) => {
+    const value: number | "" = raw === "" ? "" : Math.max(Number(raw), 0);
+
+    setPayments((prev) => {
+      let next = [...prev];
+      next[idx] = { ...next[idx], amount: value };
+
+      if (idx === 0) {
+        if (typeof value === "number") {
+          const clamped = Math.min(value, grandTotal);
+          next[0] = { ...next[0], amount: clamped };
+          const remaining = Math.max(0, grandTotal - clamped);
+
+          if (next.length === 1) {
+            // First time an amount is entered — auto-create the remaining row
+            if (remaining > 0) {
+              next.push({ method: "", amount: remaining });
+            }
+          } else {
+            // Keep row 1's amount synced to whatever remains
+            next[1] = { ...next[1], amount: remaining };
+          }
+        } else {
+          // Row 0 cleared — reset row 1's amount back to empty if it was auto-managed
+          if (next.length > 1) {
+            next[1] = { ...next[1], amount: "" };
+          }
+        }
+      }
+
+      return next;
+    });
+  }, [grandTotal]);
+
+  // Keep the auto "remaining" row in sync if grandTotal itself changes
+  // (e.g. a coupon or manual discount is applied/edited while split mode is on).
+  useEffect(() => {
+    if (!splitMode) return;
+    setPayments((prev) => {
+      if (prev.length < 2) return prev;
+      if (typeof prev[0].amount !== "number") return prev;
+      const clamped = Math.min(prev[0].amount, grandTotal);
+      const remaining = Math.max(0, grandTotal - clamped);
+      if (prev[0].amount === clamped && prev[1].amount === remaining) return prev;
+      const next = [...prev];
+      next[0] = { ...next[0], amount: clamped };
+      next[1] = { ...next[1], amount: remaining };
+      return next;
+    });
+  }, [grandTotal, splitMode]);
+
   // ── Cart helpers ───────────────────────────────────────────────────────────
   const addToCart = (product: POSProduct) => {
     const existing = cart.find((i) => i.product.id === product.id);
@@ -504,6 +634,7 @@ useEffect(() => {
       setCart([...cart, { product, quantity: 1 }]);
     }
     toast.success(`${product.name} added.`);
+    focusBarcodeInput();
   };
 
   const updateQuantity = (productId: string, delta: number) => {
@@ -527,28 +658,30 @@ useEffect(() => {
     setCouponCode("");
     setAppliedCoupon("");
     setSelectedCustomer(WALK_IN_SENTINEL);
+    setSelectedSalesman(NO_SALESMAN_SENTINEL);
     setPayments([{ method: "cash", amount: "" }]);
     setSplitMode(false);
+    focusBarcodeInput();
   };
 
   // ── Barcode ────────────────────────────────────────────────────────────────
   const handleBarcodeSubmit = (e: React.FormEvent) => {
-  e.preventDefault();
-  const q = barcodeInput.trim().toLowerCase();
-  if (!q) return;
-  // Try exact SKU first, then partial
-  const found =
-    products.find((p) => p.sku.toLowerCase() === q) ??
-    products.find((p) => p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q));
-  if (found) {
-    addToCart(found);
-    setBarcodeInput("");
-    setBarcodeNotFound(false);
-  } else {
-    setBarcodeNotFound(true);
-    toast.error(`No product found for "${barcodeInput.trim()}"`);
-  }
-};
+    e.preventDefault();
+    const q = barcodeInput.trim().toLowerCase();
+    if (!q) { focusBarcodeInput(); return; }
+    const found =
+      products.find((p) => p.sku.toLowerCase() === q) ??
+      products.find((p) => p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q));
+    if (found) {
+      addToCart(found);
+      setBarcodeInput("");
+      setBarcodeNotFound(false);
+    } else {
+      setBarcodeNotFound(true);
+      toast.error(`No product found for "${barcodeInput.trim()}"`);
+    }
+    focusBarcodeInput();
+  };
 
   // ── Coupon ─────────────────────────────────────────────────────────────────
   const COUPONS: Record<string, number> = { WELCOME10: 10, SUPERERP: 20 };
@@ -596,34 +729,45 @@ useEffect(() => {
     setSplitMode(ticket.splitMode);
     setHeldBills(heldBills.filter((h) => h.id !== holdId));
     toast.success(`Restored: ${holdId}`);
+    focusBarcodeInput();
   };
 
   // ── Checkout ───────────────────────────────────────────────────────────────
   const checkout = () => {
     if (!cart.length) { toast.warning("Cart is empty."); return; }
-    if (selectedCustomer === WALK_IN_SENTINEL) {
-      toast.error("Please select a customer before checking out.");
+
+    if (hasUnselectedSplitMethod) {
+      toast.error("Select a payment method for the remaining amount.");
       return;
     }
+
+    let customerIdForSale = selectedCustomer;
+    if (selectedCustomer === WALK_IN_SENTINEL) {
+      if (!walkInCustomerId) {
+        toast.error('No "Walk-in Customer" record found. Add one via the customer form, or pick a specific customer.');
+        return;
+      }
+      customerIdForSale = walkInCustomerId;
+    }
+
     const now = new Date();
-
-    // Build the customer object for the receipt from local state
     const customer = customers.find((c) => c.id === selectedCustomer);
+    const salesmanName = selectedSalesman !== NO_SALESMAN_SENTINEL
+      ? salesmen.find((s) => s.id === selectedSalesman)?.name ?? ""
+      : "";
 
-    // Snapshot everything needed for the receipt BEFORE the cart resets.
-    // Filter payments to only those with confirmed numeric amounts.
     const confirmedPayments = (() => {
       const valid = payments.filter((p): p is { method: "cash" | "card" | "upi"; amount: number } =>
-        typeof p.amount === "number" && p.amount > 0
+        typeof p.amount === "number" && p.amount > 0 && p.method !== ""
       );
-      // If no amount entered, treat as exact payment for the receipt
-      return valid.length > 0 ? valid : [{ method: payments[0].method, amount: grandTotal }];
+      return valid.length > 0 ? valid : [{ method: (payments[0].method || "cash") as "cash" | "card" | "upi", amount: grandTotal }];
     })();
 
     const printSnapshot: Omit<PrintReceiptParams, "invoiceNo"> = {
       date:           now,
       customerName:   customer?.name  ?? "",
       customerPhone:  customer?.phone ?? "",
+      salesmanName,
       items: cart.map((item) => ({
         name:      item.product.name,
         sku:       item.product.sku,
@@ -642,8 +786,9 @@ useEffect(() => {
     setPendingPrint(printSnapshot);
 
     executeSale({
-      customerId: selectedCustomer,
+      customerId: customerIdForSale,
       branchId,
+      salesmanId: selectedSalesman !== NO_SALESMAN_SENTINEL ? selectedSalesman : null,
       salesdate:  now.toISOString(),
       status:     "Dispatched",
       invoiceNo:  "",
@@ -660,9 +805,12 @@ useEffect(() => {
         purchasePrice: item.product.purchasePrice,
       })),
       salesPayment: (() => {
-        const validEntries = payments.filter((p) => typeof p.amount === "number" && (p.amount as number) > 0);
-        // If no amount was entered at all, treat as exact payment via selected method
-        const entries = validEntries.length > 0 ? validEntries : [{ method: payments[0].method, amount: grandTotal }];
+        const validEntries = payments.filter(
+          (p) => typeof p.amount === "number" && (p.amount as number) > 0 && p.method !== ""
+        );
+        const entries = validEntries.length > 0
+          ? validEntries
+          : [{ method: (payments[0].method || "cash") as "cash" | "card" | "upi", amount: grandTotal }];
         return entries.map((p) => ({
           amount:        p.amount as number,
           paymentMethod: p.method,
@@ -707,15 +855,460 @@ useEffect(() => {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        {/* ── Left – Products ─────────────────────────────────────────────── */}
-        <div className="xl:col-span-7 flex flex-col gap-4">
 
-          
+        {/* ── Left – Cart & Checkout (was on the right) ───────────────────── */}
+        <div className="xl:col-span-7 flex flex-col gap-3 min-h-0">
+          <Card className="border-border shadow-md bg-card flex h-[calc(100vh-170px)] min-h-[680px] max-h-[860px] flex-col overflow-hidden">
+
+            {/* Cart header */}
+            <CardHeader className="px-4 py-2.5 border-b border-border shrink-0">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base font-bold">
+                    Active Cart ({cart.reduce((s, i) => s + i.quantity, 0)})
+                  </CardTitle>
+                  <CardDescription className="text-xs">Manage quantities and finalise</CardDescription>
+                </div>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-red-500" onClick={() => setCart([])}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Customer + salesman selectors */}
+              <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1.1fr)_auto_minmax(0,0.9fr)] md:items-center">
+                <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
+                  <SelectTrigger className="h-8 border-border bg-muted/30 text-xs">
+                    <SelectValue placeholder="Select customer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customers.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}{c.phone ? ` • ${c.phone}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-8 w-8 shrink-0"
+                  title="Add new customer"
+                  onClick={() => setAddCustomerOpen(true)}
+                >
+                  <UserPlus className="h-3.5 w-3.5 text-purple-600" />
+                </Button>
+                <Select value={selectedSalesman} onValueChange={setSelectedSalesman}>
+                  <SelectTrigger className="h-8 border-border bg-muted/30 text-xs gap-1.5">
+                    <UserCog className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <SelectValue placeholder="Select salesman" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_SALESMAN_SENTINEL}>No Salesman</SelectItem>
+                    {salesmen.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedCustomer === WALK_IN_SENTINEL && !walkInCustomerId && cart.length > 0 && (
+                <p className="text-xs text-red-600 mt-1 bg-red-50 dark:bg-red-950/20 rounded px-2 py-1">
+                  Couldn't set up a walk-in customer for this branch. Try refreshing, or pick a specific customer.
+                </p>
+              )}
+            </CardHeader>
+
+            {/* Cart items */}
+            <CardContent className="min-h-0 flex-1 overflow-y-auto px-4 py-2 space-y-1.5 pr-2 no-scrollbar">
+              {cart.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full min-h-[260px] text-center text-muted-foreground">
+                  <ShoppingBag className="h-12 w-12 text-muted-foreground/30 mb-2 stroke-[1.5]" />
+                  <p className="text-sm font-semibold">POS Cart is Empty</p>
+                  <p className="text-xs opacity-70">Scan barcode or click products to add items</p>
+                </div>
+              ) : (
+                cart.map((item) => (
+                  <div
+                    key={item.product.id}
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border/60 bg-card px-3 py-2 shadow-sm transition-colors hover:bg-muted/20"
+                  >
+                    <div className="min-w-0 space-y-0.5">
+                      <h4 className="line-clamp-1 text-sm font-semibold leading-tight text-foreground">{item.product.name}</h4>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        SKU: <span className="font-medium">{item.product.sku || "—"}</span> • {formatCurrency(item.product.price)} / unit
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="text-right min-w-[76px]">
+                        <p className="text-[10px] text-muted-foreground">Total</p>
+                        <p className="text-sm font-extrabold text-purple-600">{formatCurrency(item.product.price * item.quantity)}</p>
+                      </div>
+                      <div className="flex items-center overflow-hidden rounded-md border border-border bg-card">
+                        <button type="button" className="px-2 py-1.5 bg-muted hover:bg-muted/80 text-muted-foreground transition-colors" onClick={() => updateQuantity(item.product.id, -1)}>
+                          <Minus className="h-3 w-3" />
+                        </button>
+                        <span className="min-w-7 px-2 text-center text-xs font-bold text-foreground">{item.quantity}</span>
+                        <button type="button" className="px-2 py-1.5 bg-muted hover:bg-muted/80 text-muted-foreground transition-colors" onClick={() => updateQuantity(item.product.id, 1)}>
+                          <Plus className="h-3 w-3" />
+                        </button>
+                      </div>
+                      <button type="button" className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/20" onClick={() => removeFromCart(item.product.id)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+
+            {/* ── Totals + Payment + Checkout ── */}
+            <div className="shrink-0 border-t border-border bg-muted/20 p-3 space-y-1.5 rounded-b-xl">
+
+              {/* Coupon */}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Tag className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Coupon code…"
+                    value={couponCode}
+                    onChange={(e) => setCouponCode(e.target.value)}
+                    disabled={couponDiscountPercent > 0}
+                    className="pl-7 h-8 text-xs bg-card disabled:opacity-60"
+                  />
+                </div>
+                {couponDiscountPercent > 0 ? (
+                  <Button size="sm" variant="outline" className="h-8 px-2.5 text-xs text-red-500 border-red-200 hover:bg-red-50"
+                    onClick={() => { setCouponDiscountPercent(0); setCouponCode(""); setAppliedCoupon(""); }}>
+                    Remove
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="outline" className="h-8 px-2.5 text-xs" onClick={applyCoupon}>Apply</Button>
+                )}
+              </div>
+
+              {/* Manual discount */}
+              <div className="flex gap-2 items-center">
+                <div className="relative flex-1">
+                  <Percent className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    type="number" min={0} max={100}
+                    placeholder="Instant discount %"
+                    value={manualDiscountPercent}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setManualDiscountPercent(v === "" ? "" : Math.min(Math.max(Number(v), 0), 100));
+                    }}
+                    className="pl-7 h-8 text-xs bg-card"
+                  />
+                </div>
+                {manualPct > 0 && (
+                  <button type="button" onClick={() => setManualDiscountPercent("")} className="text-[10px] text-muted-foreground hover:text-destructive underline whitespace-nowrap">
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {/* Price breakdown */}
+              <div className="space-y-1 text-[11px] text-muted-foreground">
+                <div className="flex justify-between">
+                  <span>Cart Total:</span>
+                  <span className="font-semibold text-foreground">{formatCurrency(subtotal)}</span>
+                </div>
+                {couponDiscountPercent > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span className="flex items-center gap-1">
+                      <Sparkles className="h-3 w-3" /> Coupon ({appliedCoupon} – {couponDiscountPercent}%):
+                    </span>
+                    <span className="font-semibold">−{formatCurrency(couponDiscountAmount)}</span>
+                  </div>
+                )}
+                {manualPct > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span className="flex items-center gap-1">
+                      <Percent className="h-3 w-3" /> Instant Discount ({manualPct}%):
+                    </span>
+                    <span className="font-semibold">−{formatCurrency(manualDiscountAmount)}</span>
+                  </div>
+                )}
+                {totalDiscountAmount > 0 && (
+                  <div className="flex justify-between text-green-700 font-medium border-t border-dashed border-green-200 pt-1">
+                    <span>Total Savings:</span>
+                    <span>−{formatCurrency(totalDiscountAmount)}</span>
+                  </div>
+                )}
+                <Separator className="my-1 bg-border" />
+                <div className="flex justify-between text-sm font-extrabold text-purple-700 dark:text-purple-400">
+                  <span>Total Payable:</span>
+                  <span>{formatCurrency(grandTotal)}</span>
+                </div>
+              </div>
+
+              {/* ── Payment Section ── */}
+              <div className="space-y-1.5">
+                {/* Header + Split toggle */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Payment</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSplitMode(!splitMode);
+                      setPayments([{ method: "cash", amount: "" }]);
+                    }}
+                    className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-all ${
+                      splitMode
+                        ? "bg-purple-600 text-white border-purple-600"
+                        : "bg-card text-purple-600 border-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/20"
+                    }`}
+                  >
+                    {splitMode ? "✓ Split ON" : "Split Payment"}
+                  </button>
+                </div>
+
+                {/* ── Single payment mode ── */}
+                {!splitMode && (
+                  <div className="space-y-1.5">
+                    {/* Method picker */}
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["cash", "card", "upi"] as const).map((method) => (
+                        <button
+                          key={method}
+                          type="button"
+                          onClick={() => setPayments([{ method, amount: payments[0].amount }])}
+                          className={`flex flex-col items-center p-1.5 border rounded-lg gap-1 text-[11px] font-bold transition-all ${
+                            payments[0].method === method
+                              ? "border-purple-600 bg-purple-50 text-purple-700 dark:bg-purple-950/20"
+                              : "border-border bg-card text-muted-foreground hover:bg-muted"
+                          }`}
+                        >
+                          {method === "cash" && <IndianRupee className="h-4 w-4" />}
+                          {method === "card" && <CreditCard className="h-4 w-4" />}
+                          {method === "upi"  && <Wallet className="h-4 w-4" />}
+                          <span>{method === "cash" ? "Cash" : method === "card" ? "Card" : "UPI"}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Cash: tendered amount input */}
+                    {payments[0].method === "cash" && (
+                      <div className="space-y-1">
+                        <div className="flex gap-2 items-center">
+                          <div className="relative flex-1">
+                            <IndianRupee className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                            <Input
+                              type="number"
+                              min={0}
+                              placeholder="Cash tendered (optional)"
+                              value={payments[0].amount}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setPayments([{ method: "cash", amount: v === "" ? "" : Math.max(Number(v), 0) }]);
+                              }}
+                              className="pl-7 h-8 text-xs bg-card"
+                            />
+                          </div>
+                          {payments[0].amount !== "" && (
+                            <button type="button" onClick={() => setPayments([{ method: "cash", amount: "" }])}
+                              className="text-[10px] text-muted-foreground hover:text-destructive underline whitespace-nowrap">
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                        {cashChange > 0 && (
+                          <div className="flex justify-between text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 rounded px-2 py-1.5">
+                            <span>Change to return:</span>
+                            <span>{formatCurrency(cashChange)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Split payment mode ── */}
+                {splitMode && (
+                  <div className="space-y-1.5">
+                    {payments.map((entry, idx) => (
+                      <div key={idx} className="flex gap-2 items-center">
+                        {/* Compact method toggle */}
+                        <div className="flex border border-border rounded-lg overflow-hidden shrink-0">
+                          {(["cash", "card", "upi"] as const).map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => {
+                                const next = [...payments];
+                                next[idx] = { ...next[idx], method: m };
+                                setPayments(next);
+                              }}
+                              className={`px-2 py-1.5 text-[10px] font-bold transition-all ${
+                                entry.method === m
+                                  ? "bg-purple-600 text-white"
+                                  : "bg-card text-muted-foreground hover:bg-muted"
+                              }`}
+                            >
+                              {m === "cash" ? "₹" : m === "card" ? "Card" : "UPI"}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Amount */}
+                        <div className="relative flex-1">
+                          <IndianRupee className="absolute left-2 top-2.5 h-3 w-3 text-muted-foreground" />
+                          <Input
+                            type="number"
+                            min={0}
+                            placeholder={idx === 1 && entry.method === "" ? "Remaining (auto)" : "Amount"}
+                            value={entry.amount}
+                            onChange={(e) => updateSplitAmount(idx, e.target.value)}
+                            className="pl-6 h-8 text-xs bg-card"
+                          />
+                        </div>
+
+                        {/* Fill remaining */}
+                        <button
+                          type="button"
+                          title="Fill remaining balance"
+                          onClick={() => {
+                            const otherTotal = payments
+                              .filter((_, i) => i !== idx)
+                              .reduce((s, p) => s + (typeof p.amount === "number" ? p.amount : 0), 0);
+                            const remaining = Math.max(0, grandTotal - otherTotal);
+                            const next = [...payments];
+                            next[idx] = { ...next[idx], amount: remaining };
+                            setPayments(next);
+                          }}
+                          className="text-[10px] text-purple-600 border border-purple-200 rounded px-1.5 py-1 hover:bg-purple-50 dark:hover:bg-purple-950/20 shrink-0 whitespace-nowrap"
+                        >
+                          Rem.
+                        </button>
+
+                        {/* Remove row */}
+                        {payments.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setPayments(payments.filter((_, i) => i !== idx))}
+                            className="text-muted-foreground hover:text-red-500 shrink-0"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+
+                    {/* Add method (max 3) */}
+                    {payments.length < 3 && (
+                      <button
+                        type="button"
+                        onClick={() => setPayments([...payments, { method: "cash", amount: "" }])}
+                        className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 font-semibold px-1"
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Add payment method
+                      </button>
+                    )}
+
+                    {hasUnselectedSplitMethod && (
+                      <p className="text-[11px] text-amber-600 bg-amber-50 dark:bg-amber-950/20 rounded px-2 py-1">
+                        Select a payment method for the remaining amount.
+                      </p>
+                    )}
+
+                    {/* Split summary */}
+                    <div className="rounded-md border border-border bg-muted/20 px-2.5 py-1.5 space-y-0.5 text-[11px]">
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Total entered:</span>
+                        <span className={`font-bold ${totalPaid >= grandTotal ? "text-emerald-600" : "text-amber-600"}`}>
+                          {formatCurrency(totalPaid)}
+                        </span>
+                      </div>
+                      {paymentShortfall > 0.009 && (
+                        <div className="flex justify-between text-red-500 font-semibold">
+                          <span>Still needed:</span>
+                          <span>{formatCurrency(paymentShortfall)}</span>
+                        </div>
+                      )}
+                      {cashChange > 0 && (
+                        <div className="flex justify-between text-emerald-600 font-bold">
+                          <span>Change to return:</span>
+                          <span>{formatCurrency(cashChange)}</span>
+                        </div>
+                      )}
+                      {totalPaid >= grandTotal && paymentShortfall <= 0.009 && !hasUnselectedSplitMethod && (
+                        <div className="flex items-center gap-1 text-emerald-600 font-semibold">
+                          <span>✓</span> Payment complete
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Hold + Checkout */}
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1 gap-1 h-9 hover:bg-yellow-50 hover:text-yellow-800 dark:hover:bg-yellow-950/20"
+                  onClick={holdBill}
+                  disabled={isCheckingOut}
+                >
+                  <PauseCircle className="h-4 w-4" /> Hold
+                </Button>
+                <Button
+                  className="flex-[2] bg-purple-600 hover:bg-purple-700 text-white gap-1 h-9 shadow-md shadow-purple-600/20 font-bold disabled:opacity-60"
+                  onClick={checkout}
+                  disabled={
+                    isCheckingOut ||
+                    cart.length === 0 ||
+                    (selectedCustomer === WALK_IN_SENTINEL && !walkInCustomerId) ||
+                    hasUnselectedSplitMethod
+                  }
+                >
+                  {isCheckingOut
+                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving & Printing…</>
+                    : <><Receipt className="h-4 w-4" /> Checkout & Print</>
+                  }
+                </Button>
+              </div>
+
+              <Button variant="ghost" className="w-full h-7 text-xs text-muted-foreground gap-1" onClick={resetCart}>
+                <Trash2 className="h-3.5 w-3.5" /> Clear Cart
+              </Button>
+            </div>
+          </Card>
+
+          {/* Held bills — grouped with cart/checkout since it's part of the billing flow */}
+          {heldBills.length > 0 && (
+            <Card className="border border-yellow-200 bg-yellow-50/50 dark:bg-yellow-950/10 dark:border-yellow-900/30">
+              <CardHeader className="py-2.5 px-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-1.5 text-yellow-800 dark:text-yellow-400">
+                  <PauseCircle className="h-4 w-4" /> Held Transactions ({heldBills.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 py-2 flex flex-wrap gap-2">
+                {heldBills.map((h) => (
+                  <Button
+                    key={h.id}
+                    variant="outline"
+                    size="sm"
+                    className="border-yellow-300 bg-card hover:bg-yellow-100 hover:text-yellow-900 dark:border-yellow-800"
+                    onClick={() => restoreBill(h.id)}
+                  >
+                    {h.id}
+                    <span className="text-[10px] opacity-75 font-normal ml-2">({formatCurrency(h.subtotal)})</span>
+                  </Button>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* ── Right – Products (was on the left) ──────────────────────────── */}
+        <div className="xl:col-span-5 flex flex-col gap-4">
+
           {/* Search + Filters */}
           <div className="flex flex-col gap-2">
             {/* Row 1: Search + Category */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="relative md:col-span-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search by SKU or name…"
@@ -765,7 +1358,6 @@ useEffect(() => {
             </div>
           </div>
 
-         
           {/* Barcode */}
           <form
             onSubmit={handleBarcodeSubmit}
@@ -779,6 +1371,8 @@ useEffect(() => {
               Barcode Scanner:
             </span>
             <Input
+              ref={barcodeInputRef}
+              autoFocus
               placeholder="Scan / type SKU and hit Enter…"
               value={barcodeInput}
               onChange={(e) => { setBarcodeInput(e.target.value); setBarcodeNotFound(false); }}
@@ -801,9 +1395,8 @@ useEffect(() => {
             </Button>
           </form>
 
-          
           {/* Product grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-h-[460px] overflow-y-auto pr-2
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[600px] overflow-y-auto pr-2
             [&::-webkit-scrollbar]:w-1.5
             [&::-webkit-scrollbar-track]:rounded-full
             [&::-webkit-scrollbar-track]:bg-muted/40
@@ -811,7 +1404,7 @@ useEffect(() => {
             [&::-webkit-scrollbar-thumb]:bg-purple-300
             dark:[&::-webkit-scrollbar-thumb]:bg-purple-700">
             {filteredProducts.length === 0 ? (
-              <div className="col-span-3 text-center text-muted-foreground py-16 text-sm">
+              <div className="col-span-2 text-center text-muted-foreground py-16 text-sm">
                 {searchTerm || selectedCategory !== "All" || selectedBrand !== "All"
                   ? "No products match your filters."
                   : "No products available."}
@@ -857,440 +1450,8 @@ useEffect(() => {
               ))
             )}
           </div>
-
-          {/* Held bills */}
-          {heldBills.length > 0 && (
-            <Card className="border border-yellow-200 bg-yellow-50/50 dark:bg-yellow-950/10 dark:border-yellow-900/30">
-              <CardHeader className="py-2.5 px-4">
-                <CardTitle className="text-sm font-semibold flex items-center gap-1.5 text-yellow-800 dark:text-yellow-400">
-                  <PauseCircle className="h-4 w-4" /> Held Transactions ({heldBills.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="px-4 py-2 flex flex-wrap gap-2">
-                {heldBills.map((h) => (
-                  <Button
-                    key={h.id}
-                    variant="outline"
-                    size="sm"
-                    className="border-yellow-300 bg-card hover:bg-yellow-100 hover:text-yellow-900 dark:border-yellow-800"
-                    onClick={() => restoreBill(h.id)}
-                  >
-                    {h.id}
-                    <span className="text-[10px] opacity-75 font-normal ml-2">({formatCurrency(h.subtotal)})</span>
-                  </Button>
-                ))}
-              </CardContent>
-            </Card>
-          )}
         </div>
 
-        {/* ── Right – Cart & Checkout ──────────────────────────────────────── */}
-        <div className="xl:col-span-5">
-          <Card className="border-border shadow-md bg-card flex flex-col h-[820px] justify-between">
-
-            {/* Cart header */}
-            <CardHeader className="py-4 border-b border-border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-lg font-bold">
-                    Active Cart ({cart.reduce((s, i) => s + i.quantity, 0)})
-                  </CardTitle>
-                  <CardDescription className="text-xs">Manage quantities and finalise</CardDescription>
-                </div>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-red-500" onClick={() => setCart([])}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-
-              {/* Customer selector */}
-              <div className="mt-4 flex gap-2">
-                <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
-                  <SelectTrigger className="h-9 border-border bg-muted/30">
-                    <SelectValue placeholder="Select customer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customers.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}{c.phone ? ` • ${c.phone}` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  className="h-9 w-9 shrink-0"
-                  title="Add new customer"
-                  onClick={() => setAddCustomerOpen(true)}
-                >
-                  <UserPlus className="h-4 w-4 text-purple-600" />
-                </Button>
-              </div>
-
-              {selectedCustomer === WALK_IN_SENTINEL && cart.length > 0 && (
-                <p className="text-xs text-amber-600 mt-2 bg-amber-50 dark:bg-amber-950/20 rounded px-2 py-1">
-                  Select a customer above before checking out.
-                </p>
-              )}
-            </CardHeader>
-
-            {/* Cart items */}
-            <CardContent className="flex-1 overflow-y-auto py-3 space-y-3 pr-1 no-scrollbar">
-              {cart.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
-                  <ShoppingBag className="h-12 w-12 text-muted-foreground/30 mb-2 stroke-[1.5]" />
-                  <p className="text-sm font-semibold">POS Cart is Empty</p>
-                  <p className="text-xs opacity-70">Scan barcode or click products to add items</p>
-                </div>
-              ) : (
-                cart.map((item) => (
-                  <div
-                    key={item.product.id}
-                    className="flex justify-between items-center p-2.5 rounded-lg border border-border/60 bg-muted/10 hover:bg-muted/20 transition-colors"
-                  >
-                    <div className="space-y-1 min-w-0 flex-1 mr-3">
-                      <h4 className="font-semibold text-xs text-foreground line-clamp-1">{item.product.name}</h4>
-                      <p className="text-[10px] text-muted-foreground">
-                        {formatCurrency(item.product.price)} / unit •{" "}
-                        <span className="text-purple-600 font-medium">{formatCurrency(item.product.price * item.quantity)}</span>
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div className="flex items-center border border-border rounded-lg bg-card overflow-hidden">
-                        <button type="button" className="px-2 py-1 bg-muted hover:bg-muted/80 text-muted-foreground transition-colors" onClick={() => updateQuantity(item.product.id, -1)}>
-                          <Minus className="h-3 w-3" />
-                        </button>
-                        <span className="px-2.5 font-bold text-xs text-foreground">{item.quantity}</span>
-                        <button type="button" className="px-2 py-1 bg-muted hover:bg-muted/80 text-muted-foreground transition-colors" onClick={() => updateQuantity(item.product.id, 1)}>
-                          <Plus className="h-3 w-3" />
-                        </button>
-                      </div>
-                      <button type="button" className="p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-md transition-colors" onClick={() => removeFromCart(item.product.id)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </CardContent>
-
-            {/* ── Totals + Payment + Checkout ── */}
-            <div className="border-t border-border bg-muted/20 p-4 space-y-3 rounded-b-xl">
-
-              {/* Coupon */}
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Tag className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input
-                    placeholder="Coupon code…"
-                    value={couponCode}
-                    onChange={(e) => setCouponCode(e.target.value)}
-                    disabled={couponDiscountPercent > 0}
-                    className="pl-8 h-9 text-xs bg-card disabled:opacity-60"
-                  />
-                </div>
-                {couponDiscountPercent > 0 ? (
-                  <Button size="sm" variant="outline" className="h-9 px-3 text-xs text-red-500 border-red-200 hover:bg-red-50"
-                    onClick={() => { setCouponDiscountPercent(0); setCouponCode(""); setAppliedCoupon(""); }}>
-                    Remove
-                  </Button>
-                ) : (
-                  <Button size="sm" variant="outline" className="h-9 px-3 text-xs" onClick={applyCoupon}>Apply</Button>
-                )}
-              </div>
-
-              {/* Manual discount */}
-              <div className="flex gap-2 items-center">
-                <div className="relative flex-1">
-                  <Percent className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input
-                    type="number" min={0} max={100}
-                    placeholder="Instant discount %"
-                    value={manualDiscountPercent}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setManualDiscountPercent(v === "" ? "" : Math.min(Math.max(Number(v), 0), 100));
-                    }}
-                    className="pl-8 h-9 text-xs bg-card"
-                  />
-                </div>
-                {manualPct > 0 && (
-                  <button type="button" onClick={() => setManualDiscountPercent("")} className="text-[10px] text-muted-foreground hover:text-destructive underline whitespace-nowrap">
-                    Clear
-                  </button>
-                )}
-              </div>
-
-              {/* Price breakdown */}
-              <div className="space-y-1.5 text-xs text-muted-foreground">
-                <div className="flex justify-between">
-                  <span>Cart Total:</span>
-                  <span className="font-semibold text-foreground">{formatCurrency(subtotal)}</span>
-                </div>
-                {couponDiscountPercent > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span className="flex items-center gap-1">
-                      <Sparkles className="h-3 w-3" /> Coupon ({appliedCoupon} – {couponDiscountPercent}%):
-                    </span>
-                    <span className="font-semibold">−{formatCurrency(couponDiscountAmount)}</span>
-                  </div>
-                )}
-                {manualPct > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span className="flex items-center gap-1">
-                      <Percent className="h-3 w-3" /> Instant Discount ({manualPct}%):
-                    </span>
-                    <span className="font-semibold">−{formatCurrency(manualDiscountAmount)}</span>
-                  </div>
-                )}
-                {totalDiscountAmount > 0 && (
-                  <div className="flex justify-between text-green-700 font-medium border-t border-dashed border-green-200 pt-1">
-                    <span>Total Savings:</span>
-                    <span>−{formatCurrency(totalDiscountAmount)}</span>
-                  </div>
-                )}
-                <Separator className="my-1 bg-border" />
-                <div className="flex justify-between text-base font-extrabold text-purple-700 dark:text-purple-400">
-                  <span>Total Payable:</span>
-                  <span>{formatCurrency(grandTotal)}</span>
-                </div>
-              </div>
-
-              {/* ── Payment Section ── */}
-              <div className="space-y-2">
-                {/* Header + Split toggle */}
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Payment</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSplitMode(!splitMode);
-                      setPayments([{ method: "cash", amount: "" }]);
-                    }}
-                    className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-all ${
-                      splitMode
-                        ? "bg-purple-600 text-white border-purple-600"
-                        : "bg-card text-purple-600 border-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/20"
-                    }`}
-                  >
-                    {splitMode ? "✓ Split ON" : "Split Payment"}
-                  </button>
-                </div>
-
-                {/* ── Single payment mode ── */}
-                {!splitMode && (
-                  <div className="space-y-2">
-                    {/* Method picker */}
-                    <div className="grid grid-cols-3 gap-2">
-                      {(["cash", "card", "upi"] as const).map((method) => (
-                        <button
-                          key={method}
-                          type="button"
-                          onClick={() => setPayments([{ method, amount: payments[0].amount }])}
-                          className={`flex flex-col items-center p-2.5 border rounded-xl gap-1 text-[11px] font-bold transition-all ${
-                            payments[0].method === method
-                              ? "border-purple-600 bg-purple-50 text-purple-700 dark:bg-purple-950/20"
-                              : "border-border bg-card text-muted-foreground hover:bg-muted"
-                          }`}
-                        >
-                          {method === "cash" && <IndianRupee className="h-4 w-4" />}
-                          {method === "card" && <CreditCard className="h-4 w-4" />}
-                          {method === "upi"  && <Wallet className="h-4 w-4" />}
-                          <span>{method === "cash" ? "Cash" : method === "card" ? "Card" : "UPI"}</span>
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Cash: tendered amount input */}
-                    {payments[0].method === "cash" && (
-                      <div className="space-y-1">
-                        <div className="flex gap-2 items-center">
-                          <div className="relative flex-1">
-                            <IndianRupee className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                            <Input
-                              type="number"
-                              min={0}
-                              placeholder="Cash tendered (optional)"
-                              value={payments[0].amount}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                setPayments([{ method: "cash", amount: v === "" ? "" : Math.max(Number(v), 0) }]);
-                              }}
-                              className="pl-8 h-9 text-xs bg-card"
-                            />
-                          </div>
-                          {payments[0].amount !== "" && (
-                            <button type="button" onClick={() => setPayments([{ method: "cash", amount: "" }])}
-                              className="text-[10px] text-muted-foreground hover:text-destructive underline whitespace-nowrap">
-                              Clear
-                            </button>
-                          )}
-                        </div>
-                        {cashChange > 0 && (
-                          <div className="flex justify-between text-sm font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 rounded px-2 py-1.5">
-                            <span>Change to return:</span>
-                            <span>{formatCurrency(cashChange)}</span>
-                          </div>
-                        )}
-
-                      </div>
-                    )}
-
-
-                  </div>
-                )}
-
-                {/* ── Split payment mode ── */}
-                {splitMode && (
-                  <div className="space-y-2">
-                    {payments.map((entry, idx) => (
-                      <div key={idx} className="flex gap-2 items-center">
-                        {/* Compact method toggle */}
-                        <div className="flex border border-border rounded-lg overflow-hidden shrink-0">
-                          {(["cash", "card", "upi"] as const).map((m) => (
-                            <button
-                              key={m}
-                              type="button"
-                              onClick={() => {
-                                const next = [...payments];
-                                next[idx] = { ...next[idx], method: m };
-                                setPayments(next);
-                              }}
-                              className={`px-2 py-1.5 text-[10px] font-bold transition-all ${
-                                entry.method === m
-                                  ? "bg-purple-600 text-white"
-                                  : "bg-card text-muted-foreground hover:bg-muted"
-                              }`}
-                            >
-                              {m === "cash" ? "₹" : m === "card" ? "Card" : "UPI"}
-                            </button>
-                          ))}
-                        </div>
-
-                        {/* Amount */}
-                        <div className="relative flex-1">
-                          <IndianRupee className="absolute left-2 top-2.5 h-3 w-3 text-muted-foreground" />
-                          <Input
-                            type="number"
-                            min={0}
-                            placeholder="Amount"
-                            value={entry.amount}
-                            onChange={(e) => {
-                              const next = [...payments];
-                              next[idx] = {
-                                ...next[idx],
-                                amount: e.target.value === "" ? "" : Math.max(Number(e.target.value), 0),
-                              };
-                              setPayments(next);
-                            }}
-                            className="pl-6 h-8 text-xs bg-card"
-                          />
-                        </div>
-
-                        {/* Fill remaining */}
-                        <button
-                          type="button"
-                          title="Fill remaining balance"
-                          onClick={() => {
-                            const otherTotal = payments
-                              .filter((_, i) => i !== idx)
-                              .reduce((s, p) => s + (typeof p.amount === "number" ? p.amount : 0), 0);
-                            const remaining = Math.max(0, grandTotal - otherTotal);
-                            const next = [...payments];
-                            next[idx] = { ...next[idx], amount: remaining };
-                            setPayments(next);
-                          }}
-                          className="text-[10px] text-purple-600 border border-purple-200 rounded px-1.5 py-1 hover:bg-purple-50 dark:hover:bg-purple-950/20 shrink-0 whitespace-nowrap"
-                        >
-                          Rem.
-                        </button>
-
-                        {/* Remove row */}
-                        {payments.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => setPayments(payments.filter((_, i) => i !== idx))}
-                            className="text-muted-foreground hover:text-red-500 shrink-0"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-
-                    {/* Add method (max 3) */}
-                    {payments.length < 3 && (
-                      <button
-                        type="button"
-                        onClick={() => setPayments([...payments, { method: "cash", amount: "" }])}
-                        className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 font-semibold px-1"
-                      >
-                        <Plus className="h-3.5 w-3.5" /> Add payment method
-                      </button>
-                    )}
-
-                    {/* Split summary */}
-                    <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 space-y-1 text-xs">
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>Total entered:</span>
-                        <span className={`font-bold ${totalPaid >= grandTotal ? "text-emerald-600" : "text-amber-600"}`}>
-                          {formatCurrency(totalPaid)}
-                        </span>
-                      </div>
-                      {paymentShortfall > 0.009 && (
-                        <div className="flex justify-between text-red-500 font-semibold">
-                          <span>Still needed:</span>
-                          <span>{formatCurrency(paymentShortfall)}</span>
-                        </div>
-                      )}
-                      {cashChange > 0 && (
-                        <div className="flex justify-between text-emerald-600 font-bold">
-                          <span>Change to return:</span>
-                          <span>{formatCurrency(cashChange)}</span>
-                        </div>
-                      )}
-                      {totalPaid >= grandTotal && paymentShortfall <= 0.009 && (
-                        <div className="flex items-center gap-1 text-emerald-600 font-semibold">
-                          <span>✓</span> Payment complete
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Hold + Checkout */}
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1 gap-1 h-11 hover:bg-yellow-50 hover:text-yellow-800 dark:hover:bg-yellow-950/20"
-                  onClick={holdBill}
-                  disabled={isCheckingOut}
-                >
-                  <PauseCircle className="h-4 w-4" /> Hold
-                </Button>
-                <Button
-                  className="flex-[2] bg-purple-600 hover:bg-purple-700 text-white gap-1 h-11 shadow-md shadow-purple-600/20 font-bold disabled:opacity-60"
-                  onClick={checkout}
-                  disabled={
-                    isCheckingOut ||
-                    cart.length === 0 ||
-                    selectedCustomer === WALK_IN_SENTINEL
-                  }
-                >
-                  {isCheckingOut
-                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving & Printing…</>
-                    : <><Receipt className="h-4 w-4" /> Checkout & Print</>
-                  }
-                </Button>
-              </div>
-
-              <Button variant="ghost" className="w-full text-xs text-muted-foreground gap-1" onClick={resetCart}>
-                <Trash2 className="h-3.5 w-3.5" /> Clear Cart
-              </Button>
-            </div>
-          </Card>
-        </div>
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ export const SalesStatusEnum       = z.enum(["Ordered", "Dispatched", "Cancelled
 export const salesSchema = z.object({
   invoiceNo:  z.string().optional().default(""),
   branchId:   z.string().min(1, "Branch is required"),
+  salesmanId: z.string().min(1).nullable().optional(),   // ← add
   salesdate:  z.coerce.date(),
   customerId: z.string().min(1, "Customer is required"),
   status:     SalesStatusEnum.default("Ordered"),

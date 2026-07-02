@@ -112,7 +112,7 @@ export function FormDialogContent({
       <Form {...context.form}>
         <form
           onSubmit={context.form.handleSubmit(context.onSubmit)}
-          className="flex flex-col min-h-0 max-h-[90vh]"  
+          className="flex flex-col min-h-0 max-h-[90vh] gap-4 px-6 py-6"
         >
           {children}
         </form>
