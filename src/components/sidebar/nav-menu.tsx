@@ -55,9 +55,11 @@ export const NavMenu = ({ items, ...rest }: NavMenuProps) => {
               "
             >
               <Link
-                href={item.url}
-                className="flex items-center gap-3 w-full group-data-[collapsible=icon]:justify-center"
-              >
+  href={item.url}
+  target={item.newTab ? "_blank" : undefined}
+  rel={item.newTab ? "noopener noreferrer" : undefined}
+  className="flex items-center gap-3 w-full group-data-[collapsible=icon]:justify-center"
+>
                 {item.icon && (
                   <item.icon className="h-5 w-5 shrink-0 text-white/75" />
                 )}
@@ -130,9 +132,11 @@ const SubMenu = ({ item }: { item: NavItem }) => {
 
           {item.children!.map((subItem) => (
             <Link
-              key={subItem.url}
-              href={subItem.url}
-              className={`
+  key={subItem.url}
+  href={subItem.url}
+  target={subItem.newTab ? "_blank" : undefined}
+  rel={subItem.newTab ? "noopener noreferrer" : undefined}
+  className={`
                 flex items-center gap-2.5
                 h-9 px-3 rounded-xl
                 text-[13px] font-medium
@@ -214,7 +218,12 @@ const SubMenu = ({ item }: { item: NavItem }) => {
                       data-[active=true]:bg-white/15 data-[active=true]:text-white
                     "
                   >
-                    <Link href={subItem.url} className="flex items-center gap-2">
+                    <Link
+  href={subItem.url}
+  target={subItem.newTab ? "_blank" : undefined}
+  rel={subItem.newTab ? "noopener noreferrer" : undefined}
+  className="flex items-center gap-2"
+>
                       {subItem.icon && (
                         <subItem.icon className="h-4 w-4 shrink-0" />
                       )}

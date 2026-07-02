@@ -1,71 +1,104 @@
 // src/components/sales/pos-billing.tsx
 "use client";
 
-import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useMemo,
+  useEffect,
+  useCallback,
+  useRef,
+} from "react";
 import {
-  Search, Trash2, Plus, Minus, Percent, CreditCard, Wallet, Receipt,
-  UserPlus, PauseCircle, ShoppingBag, Tag, Sparkles,
-  Loader2, IndianRupee, UserCog
+  Search,
+  Trash2,
+  Plus,
+  Minus,
+  Percent,
+  CreditCard,
+  Wallet,
+  Receipt,
+  UserPlus,
+  PauseCircle,
+  ShoppingBag,
+  Tag,
+  Sparkles,
+  Loader2,
+  IndianRupee,
+  UserCog,
 } from "lucide-react";
 import {
-  Card, CardContent, CardHeader, CardTitle, CardDescription,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
 } from "@/components/ui/card";
-import { Button }    from "@/components/ui/button";
-import { Input }     from "@/components/ui/input";
-import { Badge }     from "@/components/ui/badge";
-import { getBrandListForDropdown, getSubBrandsByBrand } from "@/actions/brand-actions";
-import { getUserList }                from "@/actions/user-action";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  getBrandListForDropdown,
+  getSubBrandsByBrand,
+} from "@/actions/brand-actions";
+import { getUserList } from "@/actions/user-action";
 
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { toast }     from "sonner";
+import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
-import { useRouter }      from "next/navigation";
-import { useAction }      from "next-safe-action/hooks";
-import { createSale }     from "@/actions/sales-action";
-import { getCustomerListForDropdown, createCustomer } from "@/actions/customer-action";
-import { getProductDropdown }         from "@/actions/product-actions";
+import { useRouter } from "next/navigation";
+import { useAction } from "next-safe-action/hooks";
+import { createSale } from "@/actions/sales-action";
+import {
+  getCustomerListForDropdown,
+  createCustomer,
+} from "@/actions/customer-action";
+import { getProductDropdown } from "@/actions/product-actions";
 import { CustomerFormDialog } from "@/components/customers/customer-form";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface POSProduct {
-  id:            string;
-  name:          string;
-  sku:           string;
-  price:         number;
+  id: string;
+  name: string;
+  sku: string;
+  price: number;
   purchasePrice: number;
-  stock:         number;
-  category:      string;
-  brand:         string;
-  brandId:       string;
-  subBrand:      string;
-  subBrandId:    string;
+  stock: number;
+  category: string;
+  brand: string;
+  brandId: string;
+  subBrand: string;
+  subBrandId: string;
 }
 
 interface POSCustomer {
-  id:    string;
-  name:  string;
+  id: string;
+  name: string;
   phone: string;
 }
 
 interface CartItem {
-  product:  POSProduct;
+  product: POSProduct;
   quantity: number;
 }
 
 interface HeldBill {
-  id:                    string;
-  cart:                  CartItem[];
-  customerId:            string;
-  subtotal:              number;
-  couponCode:            string;
+  id: string;
+  cart: CartItem[];
+  customerId: string;
+  subtotal: number;
+  couponCode: string;
   couponDiscountPercent: number;
   manualDiscountPercent: number | "";
-  payments:              PaymentEntry[];
-  splitMode:             boolean;
+  payments: PaymentEntry[];
+  splitMode: boolean;
 }
 
 // method can be "" only in split mode, for an auto-created "remaining" row
@@ -75,12 +108,19 @@ interface PaymentEntry {
   amount: number | "";
 }
 interface POSSalesman {
-  id:   string;
+  id: string;
   name: string;
 }
 
-const WALK_IN_SENTINEL     = "__walk_in__";
+const WALK_IN_SENTINEL = "__walk_in__";
 const NO_SALESMAN_SENTINEL = "__no_salesman__";
+
+const DEFAULT_SINGLE_PAYMENT: PaymentEntry[] = [{ method: "cash", amount: "" }];
+const DEFAULT_SPLIT_PAYMENTS: PaymentEntry[] = [
+  { method: "upi", amount: "" },
+  { method: "cash", amount: "" },
+  { method: "card", amount: "" },
+];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -91,10 +131,15 @@ const toNum = (v: unknown): number => {
 
 const fmtDate = (date: Date): { date: string; time: string } => {
   const dateStr = new Intl.DateTimeFormat("en-IN", {
-    day: "2-digit", month: "short", year: "numeric",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
   }).format(date);
   const timeStr = new Intl.DateTimeFormat("en-IN", {
-    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
   }).format(date);
   return { date: dateStr, time: timeStr };
 };
@@ -103,7 +148,7 @@ function methodLabel(method: string): string {
   const m = method.toLowerCase();
   if (m === "cash") return "Cash";
   if (m === "card") return "Card";
-  if (m === "upi")  return "UPI";
+  if (m === "upi") return "UPI";
   return method;
 }
 
@@ -112,13 +157,14 @@ function methodLabel(method: string): string {
 // ── NOT MODIFIED — invoice print logic left exactly as-is ──────────────────────
 function buildPaymentHtml(
   payments: { method: string; amount: number }[],
-  change: number
+  change: number,
 ): string {
   const isSplit = payments.length > 1;
 
-  const changeRow = change > 0
-    ? `<div class="bold" style="display:flex;justify-content:space-between;margin-top:2px;font-size:11px;"><span>Change:</span><span>${change.toLocaleString("en-IN")}</span></div>`
-    : "";
+  const changeRow =
+    change > 0
+      ? `<div class="bold" style="display:flex;justify-content:space-between;margin-top:2px;font-size:11px;"><span>Change:</span><span>${change.toLocaleString("en-IN")}</span></div>`
+      : "";
 
   if (!isSplit) {
     return `
@@ -130,11 +176,15 @@ function buildPaymentHtml(
     `;
   }
 
-  const rows = payments.map((p) => `
+  const rows = payments
+    .map(
+      (p) => `
     <div class="bold" style="display:flex;justify-content:space-between;font-size:11px;padding-left:8px;">
       <span>&#x21b3; ${methodLabel(p.method)}:</span>
       <span>${p.amount.toLocaleString("en-IN")}</span>
-    </div>`).join("");
+    </div>`,
+    )
+    .join("");
 
   return `
     <div class="bold" style="display:flex;justify-content:space-between;font-size:11px;margin-top:2px;">
@@ -148,18 +198,24 @@ function buildPaymentHtml(
 // ── NOT MODIFIED — invoice print logic left exactly as-is ──────────────────────
 
 interface PrintReceiptParams {
-  invoiceNo:      string;
-  date:           Date;
-  customerName:   string;
-  customerPhone:  string;
-  salesmanName?:  string;
-  items:          { name: string; sku: string; qty: number; unitPrice: number; total: number }[];
+  invoiceNo: string;
+  date: Date;
+  customerName: string;
+  customerPhone: string;
+  salesmanName?: string;
+  items: {
+    name: string;
+    sku: string;
+    qty: number;
+    unitPrice: number;
+    total: number;
+  }[];
   couponDiscount: number;
-  couponCode:     string;
+  couponCode: string;
   manualDiscount: number;
-  grandTotal:     number;
-  payments:       { method: string; amount: number }[];
-  change:         number;
+  grandTotal: number;
+  payments: { method: string; amount: number }[];
+  change: number;
 }
 
 function printThermalReceipt(params: PrintReceiptParams) {
@@ -171,7 +227,9 @@ function printThermalReceipt(params: PrintReceiptParams) {
 
   const { date, time } = fmtDate(params.date);
 
-  const itemRows = params.items.map((item, i) => `
+  const itemRows = params.items
+    .map(
+      (item, i) => `
   <tr style="border-bottom:${i < params.items.length - 1 ? "1px dashed #000" : "none"};">
     <td style="padding:4px 0;font-size:9px;">${i + 1}</td>
     <td style="padding:4px 2px 4px 0;font-size:9px;word-break:break-all;line-height:1.3;">${item.sku}</td>
@@ -179,18 +237,23 @@ function printThermalReceipt(params: PrintReceiptParams) {
     <td style="padding:4px 0;text-align:center;font-size:9px;">${item.qty}</td>
     <td style="padding:4px 0;text-align:right;font-size:9px;">${item.unitPrice.toLocaleString("en-IN")}</td>
     <td class="heavy" style="padding:4px 0;text-align:right;font-size:9px;">${item.total.toLocaleString("en-IN")}</td>
-  </tr>`).join("");
-  const couponRow = params.couponDiscount > 0
-    ? `<div style="display:flex;justify-content:space-between;font-size:11px;"><span>Coupon (${params.couponCode}):</span><span>-${params.couponDiscount.toLocaleString("en-IN")}</span></div>`
-    : "";
+  </tr>`,
+    )
+    .join("");
+  const couponRow =
+    params.couponDiscount > 0
+      ? `<div style="display:flex;justify-content:space-between;font-size:11px;"><span>Coupon (${params.couponCode}):</span><span>-${params.couponDiscount.toLocaleString("en-IN")}</span></div>`
+      : "";
 
-  const discountRow = params.manualDiscount > 0
-    ? `<div style="display:flex;justify-content:space-between;font-size:11px;"><span>Discount:</span><span>-${params.manualDiscount.toLocaleString("en-IN")}</span></div>`
-    : "";
+  const discountRow =
+    params.manualDiscount > 0
+      ? `<div style="display:flex;justify-content:space-between;font-size:11px;"><span>Discount:</span><span>-${params.manualDiscount.toLocaleString("en-IN")}</span></div>`
+      : "";
 
-  const customerBlock = params.customerName && params.customerName !== "Select a Customer"
-    ? `<div class="heavy" style="padding-left:8px;">${params.customerName}</div>`
-    : "";
+  const customerBlock =
+    params.customerName && params.customerName !== "Select a Customer"
+      ? `<div class="heavy" style="padding-left:8px;">${params.customerName}</div>`
+      : "";
 
   const phoneBlock = params.customerPhone
     ? `<div style="padding-left:8px;font-size:10px;">${params.customerPhone}</div>`
@@ -317,24 +380,25 @@ function printThermalReceipt(params: PrintReceiptParams) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function PosBillingPage({
-  branchId   = "",
+  branchId = "",
   branchName = "Branch",
 }: {
-  branchId?:   string;
+  branchId?: string;
   branchName?: string;
 }) {
   const router = useRouter();
 
   // ── Remote data ────────────────────────────────────────────────────────────
-  const [products,    setProducts]    = useState<POSProduct[]>([]);
-  const [customers,   setCustomers]   = useState<POSCustomer[]>([]);
+  const [products, setProducts] = useState<POSProduct[]>([]);
+  const [customers, setCustomers] = useState<POSCustomer[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
 
   // Moved up: needed by callbacks declared right below
-  const [salesmen,         setSalesmen]         = useState<POSSalesman[]>([]);
-  const [selectedSalesman, setSelectedSalesman] = useState(NO_SALESMAN_SENTINEL);
-  const [walkInCustomerId, setWalkInCustomerId]  = useState<string | null>(null);
+  const [salesmen, setSalesmen] = useState<POSSalesman[]>([]);
+  const [selectedSalesman, setSelectedSalesman] =
+    useState(NO_SALESMAN_SENTINEL);
+  const [walkInCustomerId, setWalkInCustomerId] = useState<string | null>(null);
 
   // ── Barcode scanner auto-focus ────────────────────────────────────────────
   const barcodeInputRef = useRef<HTMLInputElement>(null);
@@ -365,14 +429,14 @@ export default function PosBillingPage({
         return null;
       }
     },
-    [branchId]
+    [branchId],
   );
 
   const fetchCustomers = useCallback(async () => {
     const custRes = await getCustomerListForDropdown();
     const remoteCustomers: POSCustomer[] = (custRes ?? []).map((c: any) => ({
-      id:    c.id,
-      name:  c.name,
+      id: c.id,
+      name: c.name,
       phone: c.phone ?? "",
     }));
 
@@ -389,11 +453,18 @@ export default function PosBillingPage({
   const fetchSalesmen = useCallback(async () => {
     try {
       const res: any = await getUserList();
-      const list: any[] = Array.isArray(res) ? res : res?.data ?? [];
+      const list: any[] = Array.isArray(res) ? res : (res?.data ?? []);
       const scoped = branchId
-        ? list.filter((u) => u.branch?.id === branchId || u.branchId === branchId)
+        ? list.filter(
+            (u) => u.branch?.id === branchId || u.branchId === branchId,
+          )
         : list;
-      setSalesmen((scoped.length ? scoped : list).map((u: any) => ({ id: u.id, name: u.name })));
+      setSalesmen(
+        (scoped.length ? scoped : list).map((u: any) => ({
+          id: u.id,
+          name: u.name,
+        })),
+      );
     } catch (err) {
       console.error("[POS] Failed to load salesmen", err);
     }
@@ -409,21 +480,26 @@ export default function PosBillingPage({
           fetchSalesmen(),
         ]);
         setBrandOptions(brandRes ?? []);
-        console.log("[POS] raw product[0]:", JSON.stringify(prodRes?.[0], null, 2));
+        console.log(
+          "[POS] raw product[0]:",
+          JSON.stringify(prodRes?.[0], null, 2),
+        );
 
-        setProducts((prodRes ?? []).map((p: any) => ({
-          id:            p.id,
-          name:          p.product_name ?? p.productName ?? "Unknown",
-          sku:           p.sku ?? "",
-          price:         Number(p.sellingPrice  ?? p.purchasePrice ?? 0),
-          purchasePrice: Number(p.purchasePrice ?? 0),
-          stock:         Number(p.stock         ?? 0),
-          category:      p.category?.name ?? p.category ?? "General",
-          brand:         p.brand?.name    ?? p.brandName    ?? "",
-          brandId:       p.brand?.id      ?? p.brandId      ?? p.brand_id    ?? "",
-          subBrand:      p.subBrand?.name ?? p.subBrandName ?? "",
-          subBrandId:    p.subBrand?.id   ?? p.subBrandId   ?? p.sub_brand_id ?? "",
-        })));
+        setProducts(
+          (prodRes ?? []).map((p: any) => ({
+            id: p.id,
+            name: p.product_name ?? p.productName ?? "Unknown",
+            sku: p.sku ?? "",
+            price: Number(p.sellingPrice ?? p.purchasePrice ?? 0),
+            purchasePrice: Number(p.purchasePrice ?? 0),
+            stock: Number(p.stock ?? 0),
+            category: p.category?.name ?? p.category ?? "General",
+            brand: p.brand?.name ?? p.brandName ?? "",
+            brandId: p.brand?.id ?? p.brandId ?? p.brand_id ?? "",
+            subBrand: p.subBrand?.name ?? p.subBrandName ?? "",
+            subBrandId: p.subBrand?.id ?? p.subBrandId ?? p.sub_brand_id ?? "",
+          })),
+        );
       } catch (err: any) {
         console.error("[POS load]", err);
         toast.error("Failed to load POS terminal data.");
@@ -446,9 +522,9 @@ export default function PosBillingPage({
           const prevIds = new Set(customers.map((c) => c.id));
           if (walkInCustomerId) prevIds.add(walkInCustomerId);
 
-          const fresh    = await fetchCustomers();
+          const fresh = await fetchCustomers();
           const newEntry = fresh.find(
-            (c) => !prevIds.has(c.id) && c.id !== walkInCustomerId
+            (c) => !prevIds.has(c.id) && c.id !== walkInCustomerId,
           );
           if (newEntry) {
             setSelectedCustomer(newEntry.id);
@@ -458,167 +534,218 @@ export default function PosBillingPage({
         focusBarcodeInput();
       }
     },
-    [fetchCustomers, customers, walkInCustomerId, focusBarcodeInput]
+    [fetchCustomers, customers, walkInCustomerId, focusBarcodeInput],
   );
 
   // ── UI state ───────────────────────────────────────────────────────────────
-  const [searchTerm,            setSearchTerm]            = useState("");
-  const [selectedCategory,      setSelectedCategory]      = useState("All");
-  const [selectedBrand,    setSelectedBrand]    = useState("All");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [selectedBrand, setSelectedBrand] = useState("All");
   const [selectedSubBrand, setSelectedSubBrand] = useState("All");
-  const [subBrandOptions,  setSubBrandOptions]  = useState<{ id: string; name: string }[]>([]);
-  const [brandOptions,     setBrandOptions]     = useState<{ id: string; name: string }[]>([]);
-  const [barcodeNotFound,  setBarcodeNotFound]  = useState(false);
-  const [barcodeInput,          setBarcodeInput]          = useState("");
-  const [selectedCustomer,      setSelectedCustomer]      = useState(WALK_IN_SENTINEL);
-  const [cart,                  setCart]                  = useState<CartItem[]>([]);
+  const [subBrandOptions, setSubBrandOptions] = useState<
+    { id: string; name: string }[]
+  >([]);
+  const [brandOptions, setBrandOptions] = useState<
+    { id: string; name: string }[]
+  >([]);
+  const [barcodeNotFound, setBarcodeNotFound] = useState(false);
+  const [barcodeInput, setBarcodeInput] = useState("");
+  const [selectedCustomer, setSelectedCustomer] = useState(WALK_IN_SENTINEL);
+  const [cart, setCart] = useState<CartItem[]>([]);
   const [couponDiscountPercent, setCouponDiscountPercent] = useState(0);
-  const [manualDiscountPercent, setManualDiscountPercent] = useState<number | "">("");
-  const [couponCode,            setCouponCode]            = useState("");
-  const [appliedCoupon,         setAppliedCoupon]         = useState("");
-  const [heldBills,             setHeldBills]             = useState<HeldBill[]>([]);
+  const [manualDiscountPercent, setManualDiscountPercent] = useState<
+    number | ""
+  >("");
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState("");
+  const [heldBills, setHeldBills] = useState<HeldBill[]>([]);
 
   // ── Payment state ──────────────────────────────────────────────────────────
-  const [payments,  setPayments]  = useState<PaymentEntry[]>([{ method: "cash", amount: "" }]);
+  const [payments, setPayments] = useState<PaymentEntry[]>(
+    DEFAULT_SINGLE_PAYMENT,
+  );
   const [splitMode, setSplitMode] = useState(false);
 
   // ── Server action ──────────────────────────────────────────────────────────
 
-  const [pendingPrint, setPendingPrint] = useState<Omit<PrintReceiptParams, "invoiceNo"> | null>(null);
+  const [pendingPrint, setPendingPrint] = useState<Omit<
+    PrintReceiptParams,
+    "invoiceNo"
+  > | null>(null);
 
   useEffect(() => {
-    if (selectedBrand === "All") { setSubBrandOptions([]); setSelectedSubBrand("All"); return; }
+    if (selectedBrand === "All") {
+      setSubBrandOptions([]);
+      setSelectedSubBrand("All");
+      return;
+    }
     getSubBrandsByBrand(selectedBrand)
       .then((res) => setSubBrandOptions(res ?? []))
       .catch(() => setSubBrandOptions([]));
     setSelectedSubBrand("All");
   }, [selectedBrand]);
 
-  const { execute: executeSale, isExecuting: isCheckingOut } = useAction(createSale, {
-    onSuccess: ({ data }) => {
-      if ((data as any)?.error) {
-        toast.error((data as any).error);
+  const { execute: executeSale, isExecuting: isCheckingOut } = useAction(
+    createSale,
+    {
+      onSuccess: ({ data }) => {
+        if ((data as any)?.error) {
+          toast.error((data as any).error);
+          setPendingPrint(null);
+          return;
+        }
+
+        const invoiceNo: string =
+          (data as any)?.invoiceNo ??
+          (data as any)?.data?.invoiceNo ??
+          `INV-${Date.now().toString().slice(-6)}`;
+
+        if (pendingPrint) {
+          printThermalReceipt({ ...pendingPrint, invoiceNo });
+          setPendingPrint(null);
+        }
+
+        resetCart();
+        toast.success("Checkout complete! Receipt sent to printer.");
+      },
+      onError: (err) => {
+        console.error("[POS checkout error]", err);
+        toast.error("Checkout failed. Please try again.");
         setPendingPrint(null);
-        return;
-      }
-
-      const invoiceNo: string =
-        (data as any)?.invoiceNo ??
-        (data as any)?.data?.invoiceNo ??
-        `INV-${Date.now().toString().slice(-6)}`;
-
-      if (pendingPrint) {
-        printThermalReceipt({ ...pendingPrint, invoiceNo });
-        setPendingPrint(null);
-      }
-
-      resetCart();
-      toast.success("Checkout complete! Receipt sent to printer.");
+      },
     },
-    onError: (err) => {
-      console.error("[POS checkout error]", err);
-      toast.error("Checkout failed. Please try again.");
-      setPendingPrint(null);
-    },
-  });
+  );
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const categories = useMemo(
     () => ["All", ...Array.from(new Set(products.map((p) => p.category)))],
-    [products]
+    [products],
   );
 
   const filteredProducts = useMemo(() => {
     const q = searchTerm.toLowerCase();
     return products.filter((p) => {
-      const matchesSearch = !q ||
+      if (p.stock <= 0) return false;
+      const matchesSearch =
+        !q ||
         p.name.toLowerCase().includes(q) ||
         p.sku.toLowerCase().includes(q);
-      const matchesCategory = selectedCategory === "All" || p.category === selectedCategory;
-      const matchesBrand    = selectedBrand    === "All" || p.brandId    === selectedBrand;
-      const matchesSubBrand = selectedSubBrand === "All" || p.subBrandId === selectedSubBrand;
-      return matchesSearch && matchesCategory && matchesBrand && matchesSubBrand;
+      const matchesCategory =
+        selectedCategory === "All" || p.category === selectedCategory;
+      const matchesBrand =
+        selectedBrand === "All" || p.brandId === selectedBrand;
+      const matchesSubBrand =
+        selectedSubBrand === "All" || p.subBrandId === selectedSubBrand;
+      return (
+        matchesSearch && matchesCategory && matchesBrand && matchesSubBrand
+      );
     });
   }, [products, searchTerm, selectedCategory, selectedBrand, selectedSubBrand]);
 
   // ── Pricing ────────────────────────────────────────────────────────────────
-  const subtotal             = useMemo(() => cart.reduce((s, i) => s + i.product.price * i.quantity, 0), [cart]);
+  const subtotal = useMemo(
+    () => cart.reduce((s, i) => s + i.product.price * i.quantity, 0),
+    [cart],
+  );
   const couponDiscountAmount = (subtotal * couponDiscountPercent) / 100;
-  const afterCoupon          = subtotal - couponDiscountAmount;
-  const manualPct            = typeof manualDiscountPercent === "number" ? Math.min(Math.max(manualDiscountPercent, 0), 100) : 0;
+  const afterCoupon = subtotal - couponDiscountAmount;
+  const manualPct =
+    typeof manualDiscountPercent === "number"
+      ? Math.min(Math.max(manualDiscountPercent, 0), 100)
+      : 0;
   const manualDiscountAmount = (afterCoupon * manualPct) / 100;
-  const totalDiscountAmount  = couponDiscountAmount + manualDiscountAmount;
-  const grandTotal           = subtotal - totalDiscountAmount;
+  const totalDiscountAmount = couponDiscountAmount + manualDiscountAmount;
+  const grandTotal = subtotal - totalDiscountAmount;
 
   // ── Payment derived ────────────────────────────────────────────────────────
-  const totalPaid = payments.reduce((s, p) => s + (typeof p.amount === "number" ? p.amount : 0), 0);
+  const totalPaid = payments.reduce(
+    (s, p) => s + (typeof p.amount === "number" ? p.amount : 0),
+    0,
+  );
 
   const cashChange = (() => {
-    if (!splitMode) {
-      const p = payments[0];
-      return p.method === "cash" && typeof p.amount === "number" && p.amount > grandTotal
-        ? p.amount - grandTotal : 0;
-    }
+    if (!splitMode) return 0;
     return totalPaid > grandTotal ? totalPaid - grandTotal : 0;
   })();
 
   const paymentShortfall = Math.max(0, grandTotal - totalPaid);
 
   // A split-mode row has an amount but no method chosen yet — checkout must block on this
-  const hasUnselectedSplitMethod = splitMode && payments.some(
-    (p) => typeof p.amount === "number" && p.amount > 0 && p.method === ""
+  const hasUnselectedSplitMethod =
+    splitMode &&
+    payments.some(
+      (p) => typeof p.amount === "number" && p.amount > 0 && p.method === "",
+    );
+
+  // ── Split payment: fixed 3-row layout ──────────────────────────────────────
+  // Row 1 is editable. Row 2 is always the auto-calculated remaining amount.
+  // Row 3 is always available for optional card/extra payment entry.
+  const updateSplitAmount = useCallback(
+    (idx: number, raw: string) => {
+      const value: number | "" = raw === "" ? "" : Math.max(Number(raw), 0);
+
+      setPayments((prev) => {
+        const next: PaymentEntry[] = [
+          prev[0] ?? { method: "upi", amount: "" },
+          prev[1] ?? { method: "cash", amount: "" },
+          prev[2] ?? { method: "card", amount: "" },
+        ];
+
+        next[idx] = { ...next[idx], amount: value };
+
+        const firstAmount =
+          typeof next[0].amount === "number"
+            ? Math.min(next[0].amount, grandTotal)
+            : 0;
+        const thirdAmount =
+          typeof next[2].amount === "number" ? next[2].amount : 0;
+
+        next[0] = {
+          ...next[0],
+          amount: next[0].amount === "" ? "" : firstAmount,
+        };
+
+        // Cash row is editable. It auto-fills when UPI/Card changes,
+        // but manual cash edits are preserved.
+        if (idx !== 1) {
+          next[1] = {
+            ...next[1],
+            amount: Math.max(0, grandTotal - firstAmount - thirdAmount),
+          };
+        }
+
+        return next;
+      });
+    },
+    [grandTotal],
   );
 
-  // ── Split payment: auto-remaining logic ───────────────────────────────────
-  // Editing the FIRST row's amount auto-creates/syncs a second "remaining" row.
-  // The remaining row's method is left unselected ("") until the user picks one.
-  const updateSplitAmount = useCallback((idx: number, raw: string) => {
-    const value: number | "" = raw === "" ? "" : Math.max(Number(raw), 0);
-
-    setPayments((prev) => {
-      let next = [...prev];
-      next[idx] = { ...next[idx], amount: value };
-
-      if (idx === 0) {
-        if (typeof value === "number") {
-          const clamped = Math.min(value, grandTotal);
-          next[0] = { ...next[0], amount: clamped };
-          const remaining = Math.max(0, grandTotal - clamped);
-
-          if (next.length === 1) {
-            // First time an amount is entered — auto-create the remaining row
-            if (remaining > 0) {
-              next.push({ method: "", amount: remaining });
-            }
-          } else {
-            // Keep row 1's amount synced to whatever remains
-            next[1] = { ...next[1], amount: remaining };
-          }
-        } else {
-          // Row 0 cleared — reset row 1's amount back to empty if it was auto-managed
-          if (next.length > 1) {
-            next[1] = { ...next[1], amount: "" };
-          }
-        }
-      }
-
-      return next;
-    });
-  }, [grandTotal]);
-
-  // Keep the auto "remaining" row in sync if grandTotal itself changes
-  // (e.g. a coupon or manual discount is applied/edited while split mode is on).
+  // Keep fixed split rows and the cash remaining amount synced when total changes.
   useEffect(() => {
     if (!splitMode) return;
     setPayments((prev) => {
-      if (prev.length < 2) return prev;
-      if (typeof prev[0].amount !== "number") return prev;
-      const clamped = Math.min(prev[0].amount, grandTotal);
-      const remaining = Math.max(0, grandTotal - clamped);
-      if (prev[0].amount === clamped && prev[1].amount === remaining) return prev;
-      const next = [...prev];
-      next[0] = { ...next[0], amount: clamped };
-      next[1] = { ...next[1], amount: remaining };
+      const next: PaymentEntry[] = [
+        prev[0] ?? { method: "upi", amount: "" },
+        prev[1] ?? { method: "cash", amount: "" },
+        prev[2] ?? { method: "card", amount: "" },
+      ];
+      const firstAmount =
+        typeof next[0].amount === "number"
+          ? Math.min(next[0].amount, grandTotal)
+          : 0;
+      const thirdAmount =
+        typeof next[2].amount === "number" ? next[2].amount : 0;
+      next[0] = {
+        ...next[0],
+        method: next[0].method || "upi",
+        amount: next[0].amount === "" ? "" : firstAmount,
+      };
+      next[1] = {
+        ...next[1],
+        method: next[1].method || "cash",
+        amount: Math.max(0, grandTotal - firstAmount - thirdAmount),
+      };
+      next[2] = { ...next[2], method: next[2].method || "card" };
       return next;
     });
   }, [grandTotal, splitMode]);
@@ -627,10 +754,20 @@ export default function PosBillingPage({
   const addToCart = (product: POSProduct) => {
     const existing = cart.find((i) => i.product.id === product.id);
     if (existing) {
-      if (existing.quantity >= product.stock) { toast.warning(`Stock limit: ${product.stock}`); return; }
-      setCart(cart.map((i) => i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i));
+      if (existing.quantity >= product.stock) {
+        toast.warning(`Stock limit: ${product.stock}`);
+        return;
+      }
+      setCart(
+        cart.map((i) =>
+          i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i,
+        ),
+      );
     } else {
-      if (product.stock <= 0) { toast.warning("Out of stock."); return; }
+      if (product.stock <= 0) {
+        toast.warning("Out of stock.");
+        return;
+      }
       setCart([...cart, { product, quantity: 1 }]);
     }
     toast.success(`${product.name} added.`);
@@ -639,17 +776,23 @@ export default function PosBillingPage({
 
   const updateQuantity = (productId: string, delta: number) => {
     setCart(
-      cart.map((item) => {
-        if (item.product.id !== productId) return item;
-        const next = item.quantity + delta;
-        if (next <= 0) return null as any;
-        if (next > item.product.stock) { toast.warning(`Stock limit: ${item.product.stock}`); return item; }
-        return { ...item, quantity: next };
-      }).filter(Boolean) as CartItem[]
+      cart
+        .map((item) => {
+          if (item.product.id !== productId) return item;
+          const next = item.quantity + delta;
+          if (next <= 0) return null as any;
+          if (next > item.product.stock) {
+            toast.warning(`Stock limit: ${item.product.stock}`);
+            return item;
+          }
+          return { ...item, quantity: next };
+        })
+        .filter(Boolean) as CartItem[],
     );
   };
 
-  const removeFromCart = (productId: string) => setCart(cart.filter((i) => i.product.id !== productId));
+  const removeFromCart = (productId: string) =>
+    setCart(cart.filter((i) => i.product.id !== productId));
 
   const resetCart = () => {
     setCart([]);
@@ -659,7 +802,7 @@ export default function PosBillingPage({
     setAppliedCoupon("");
     setSelectedCustomer(WALK_IN_SENTINEL);
     setSelectedSalesman(NO_SALESMAN_SENTINEL);
-    setPayments([{ method: "cash", amount: "" }]);
+    setPayments(DEFAULT_SINGLE_PAYMENT);
     setSplitMode(false);
     focusBarcodeInput();
   };
@@ -668,10 +811,16 @@ export default function PosBillingPage({
   const handleBarcodeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const q = barcodeInput.trim().toLowerCase();
-    if (!q) { focusBarcodeInput(); return; }
+    if (!q) {
+      focusBarcodeInput();
+      return;
+    }
     const found =
       products.find((p) => p.sku.toLowerCase() === q) ??
-      products.find((p) => p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q));
+      products.find(
+        (p) =>
+          p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q),
+      );
     if (found) {
       addToCart(found);
       setBarcodeInput("");
@@ -699,13 +848,16 @@ export default function PosBillingPage({
 
   // ── Hold / Restore ─────────────────────────────────────────────────────────
   const holdBill = () => {
-    if (!cart.length) { toast.warning("Cart is empty."); return; }
+    if (!cart.length) {
+      toast.warning("Cart is empty.");
+      return;
+    }
     const hold: HeldBill = {
       id: `HOLD-${Date.now().toString().slice(-4)}`,
       cart,
-      customerId:            selectedCustomer,
+      customerId: selectedCustomer,
       subtotal,
-      couponCode:            appliedCoupon,
+      couponCode: appliedCoupon,
       couponDiscountPercent,
       manualDiscountPercent,
       payments,
@@ -734,7 +886,10 @@ export default function PosBillingPage({
 
   // ── Checkout ───────────────────────────────────────────────────────────────
   const checkout = () => {
-    if (!cart.length) { toast.warning("Cart is empty."); return; }
+    if (!cart.length) {
+      toast.warning("Cart is empty.");
+      return;
+    }
 
     if (hasUnselectedSplitMethod) {
       toast.error("Select a payment method for the remaining amount.");
@@ -744,7 +899,9 @@ export default function PosBillingPage({
     let customerIdForSale = selectedCustomer;
     if (selectedCustomer === WALK_IN_SENTINEL) {
       if (!walkInCustomerId) {
-        toast.error('No "Walk-in Customer" record found. Add one via the customer form, or pick a specific customer.');
+        toast.error(
+          'No "Walk-in Customer" record found. Add one via the customer form, or pick a specific customer.',
+        );
         return;
       }
       customerIdForSale = walkInCustomerId;
@@ -752,35 +909,44 @@ export default function PosBillingPage({
 
     const now = new Date();
     const customer = customers.find((c) => c.id === selectedCustomer);
-    const salesmanName = selectedSalesman !== NO_SALESMAN_SENTINEL
-      ? salesmen.find((s) => s.id === selectedSalesman)?.name ?? ""
-      : "";
+    const salesmanName =
+      selectedSalesman !== NO_SALESMAN_SENTINEL
+        ? (salesmen.find((s) => s.id === selectedSalesman)?.name ?? "")
+        : "";
 
     const confirmedPayments = (() => {
-      const valid = payments.filter((p): p is { method: "cash" | "card" | "upi"; amount: number } =>
-        typeof p.amount === "number" && p.amount > 0 && p.method !== ""
+      const valid = payments.filter(
+        (p): p is { method: "cash" | "card" | "upi"; amount: number } =>
+          typeof p.amount === "number" && p.amount > 0 && p.method !== "",
       );
-      return valid.length > 0 ? valid : [{ method: (payments[0].method || "cash") as "cash" | "card" | "upi", amount: grandTotal }];
+      return valid.length > 0
+        ? valid
+        : [
+            {
+              method: (payments[0].method || "cash") as "cash" | "card" | "upi",
+              amount: grandTotal,
+            },
+          ];
     })();
 
     const printSnapshot: Omit<PrintReceiptParams, "invoiceNo"> = {
-      date:           now,
-      customerName:   customer?.name  ?? "",
-      customerPhone:  customer?.phone ?? "",
+      date: now,
+      customerName: customer?.name ?? "",
+      customerPhone: customer?.phone ?? "",
       salesmanName,
       items: cart.map((item) => ({
-        name:      item.product.name,
-        sku:       item.product.sku,
-        qty:       item.quantity,
+        name: item.product.name,
+        sku: item.product.sku,
+        qty: item.quantity,
         unitPrice: item.product.price,
-        total:     item.product.price * item.quantity,
+        total: item.product.price * item.quantity,
       })),
       couponDiscount: couponDiscountAmount,
-      couponCode:     appliedCoupon,
+      couponCode: appliedCoupon,
       manualDiscount: manualDiscountAmount,
       grandTotal,
-      payments:       confirmedPayments,
-      change:         cashChange,
+      payments: confirmedPayments,
+      change: cashChange,
     };
 
     setPendingPrint(printSnapshot);
@@ -788,35 +954,46 @@ export default function PosBillingPage({
     executeSale({
       customerId: customerIdForSale,
       branchId,
-      salesmanId: selectedSalesman !== NO_SALESMAN_SENTINEL ? selectedSalesman : null,
-      salesdate:  now.toISOString(),
-      status:     "Dispatched",
-      invoiceNo:  "",
+      salesmanId:
+        selectedSalesman !== NO_SALESMAN_SENTINEL ? selectedSalesman : null,
+      salesdate: now.toISOString(),
+      status: "Dispatched",
+      invoiceNo: "",
       grandTotal,
-      dueAmount:  0,
-      paidAmount: totalPaid,
+      dueAmount: 0,
+      paidAmount: confirmedPayments.reduce((s, p) => s + p.amount, 0),
       items: cart.map((item) => ({
-        productId:     item.product.id,
-        quantity:      item.quantity,
-        unitPrice:     item.product.price,
-        discount:      0,
-        subtotal:      item.product.price * item.quantity,
-        total:         item.product.price * item.quantity,
+        productId: item.product.id,
+        quantity: item.quantity,
+        unitPrice: item.product.price,
+        discount: 0,
+        subtotal: item.product.price * item.quantity,
+        total: item.product.price * item.quantity,
         purchasePrice: item.product.purchasePrice,
       })),
       salesPayment: (() => {
         const validEntries = payments.filter(
-          (p) => typeof p.amount === "number" && (p.amount as number) > 0 && p.method !== ""
+          (p) =>
+            typeof p.amount === "number" &&
+            (p.amount as number) > 0 &&
+            p.method !== "",
         );
-        const entries = validEntries.length > 0
-          ? validEntries
-          : [{ method: (payments[0].method || "cash") as "cash" | "card" | "upi", amount: grandTotal }];
+        const entries =
+          validEntries.length > 0
+            ? validEntries
+            : [
+                {
+                  method: (payments[0].method || "cash") as
+                    "cash" | "card" | "upi",
+                  amount: grandTotal,
+                },
+              ];
         return entries.map((p) => ({
-          amount:        p.amount as number,
+          amount: p.amount as number,
           paymentMethod: p.method,
-          paidOn:        now.toISOString(),
-          paymentNote:   appliedCoupon ? `Coupon: ${appliedCoupon}` : null,
-          dueDate:       null,
+          paidOn: now.toISOString(),
+          paymentNote: appliedCoupon ? `Coupon: ${appliedCoupon}` : null,
+          dueDate: null,
         }));
       })(),
     });
@@ -834,7 +1011,6 @@ export default function PosBillingPage({
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-6">
-
       <CustomerFormDialog
         open={addCustomerOpen}
         openChange={handleAddCustomerClose}
@@ -845,21 +1021,25 @@ export default function PosBillingPage({
       <div className="flex flex-col gap-2 md:flex-row md:items-center justify-between">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
-            <ShoppingBag className="text-purple-600 h-8 w-8" /> POS Billing Terminal
+            <ShoppingBag className="text-purple-600 h-8 w-8" /> POS Billing
+            Terminal
           </h1>
-          <p className="text-muted-foreground text-sm">High-speed smart billing checkout</p>
+          <p className="text-muted-foreground text-sm">
+            High-speed smart billing checkout
+          </p>
         </div>
-        <Badge variant="outline" className="px-3 py-1 bg-purple-50 text-purple-700 dark:bg-purple-950/20 border-purple-200 w-fit">
+        <Badge
+          variant="outline"
+          className="px-3 py-1 bg-purple-50 text-purple-700 dark:bg-purple-950/20 border-purple-200 w-fit"
+        >
           Terminal Active • {branchName}
         </Badge>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-
         {/* ── Left – Cart & Checkout (was on the right) ───────────────────── */}
         <div className="xl:col-span-7 flex flex-col gap-3 min-h-0">
           <Card className="border-border shadow-md bg-card flex h-[calc(100vh-170px)] min-h-[680px] max-h-[860px] flex-col overflow-hidden">
-
             {/* Cart header */}
             <CardHeader className="px-4 py-2.5 border-b border-border shrink-0">
               <div className="flex items-center justify-between">
@@ -867,55 +1047,78 @@ export default function PosBillingPage({
                   <CardTitle className="text-base font-bold">
                     Active Cart ({cart.reduce((s, i) => s + i.quantity, 0)})
                   </CardTitle>
-                  <CardDescription className="text-xs">Manage quantities and finalise</CardDescription>
+                  <CardDescription className="text-xs">
+                    Manage quantities and finalise
+                  </CardDescription>
                 </div>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-red-500" onClick={() => setCart([])}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-red-500"
+                  onClick={() => setCart([])}
+                >
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
 
               {/* Customer + salesman selectors */}
-              <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1.1fr)_auto_minmax(0,0.9fr)] md:items-center">
-                <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
-                  <SelectTrigger className="h-8 border-border bg-muted/30 text-xs">
+              <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
+                <Select
+                  value={selectedCustomer}
+                  onValueChange={setSelectedCustomer}
+                >
+                  <SelectTrigger className="h-8 w-full min-w-0 border-border bg-muted/30 text-xs">
                     <SelectValue placeholder="Select customer" />
                   </SelectTrigger>
                   <SelectContent>
                     {customers.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
-                        {c.name}{c.phone ? ` • ${c.phone}` : ""}
+                        {c.name}
+                        {c.phone ? ` • ${c.phone}` : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+
+                <Select
+                  value={selectedSalesman}
+                  onValueChange={setSelectedSalesman}
+                >
+                  <SelectTrigger className="h-8 w-full min-w-0 border-border bg-muted/30 text-xs gap-1.5">
+                    <UserCog className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <SelectValue placeholder="Select salesman" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_SALESMAN_SENTINEL}>
+                      No Salesman
+                    </SelectItem>
+                    {salesmen.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
                 <Button
                   size="icon"
                   variant="outline"
-                  className="h-8 w-8 shrink-0"
+                  className="h-8 w-8 shrink-0 md:justify-self-end"
                   title="Add new customer"
                   onClick={() => setAddCustomerOpen(true)}
                 >
                   <UserPlus className="h-3.5 w-3.5 text-purple-600" />
                 </Button>
-                <Select value={selectedSalesman} onValueChange={setSelectedSalesman}>
-                  <SelectTrigger className="h-8 border-border bg-muted/30 text-xs gap-1.5">
-                    <UserCog className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    <SelectValue placeholder="Select salesman" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_SALESMAN_SENTINEL}>No Salesman</SelectItem>
-                    {salesmen.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
 
-              {selectedCustomer === WALK_IN_SENTINEL && !walkInCustomerId && cart.length > 0 && (
-                <p className="text-xs text-red-600 mt-1 bg-red-50 dark:bg-red-950/20 rounded px-2 py-1">
-                  Couldn't set up a walk-in customer for this branch. Try refreshing, or pick a specific customer.
-                </p>
-              )}
+              {selectedCustomer === WALK_IN_SENTINEL &&
+                !walkInCustomerId &&
+                cart.length > 0 && (
+                  <p className="text-xs text-red-600 mt-1 bg-red-50 dark:bg-red-950/20 rounded px-2 py-1">
+                    Couldn't set up a walk-in customer for this branch. Try
+                    refreshing, or pick a specific customer.
+                  </p>
+                )}
             </CardHeader>
 
             {/* Cart items */}
@@ -924,7 +1127,9 @@ export default function PosBillingPage({
                 <div className="flex flex-col items-center justify-center h-full min-h-[260px] text-center text-muted-foreground">
                   <ShoppingBag className="h-12 w-12 text-muted-foreground/30 mb-2 stroke-[1.5]" />
                   <p className="text-sm font-semibold">POS Cart is Empty</p>
-                  <p className="text-xs opacity-70">Scan barcode or click products to add items</p>
+                  <p className="text-xs opacity-70">
+                    Scan barcode or click products to add items
+                  </p>
                 </div>
               ) : (
                 cart.map((item) => (
@@ -933,26 +1138,50 @@ export default function PosBillingPage({
                     className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border/60 bg-card px-3 py-2 shadow-sm transition-colors hover:bg-muted/20"
                   >
                     <div className="min-w-0 space-y-0.5">
-                      <h4 className="line-clamp-1 text-sm font-semibold leading-tight text-foreground">{item.product.name}</h4>
+                      <h4 className="line-clamp-1 text-sm font-semibold leading-tight text-foreground">
+                        {item.product.name}
+                      </h4>
                       <p className="truncate text-[11px] text-muted-foreground">
-                        SKU: <span className="font-medium">{item.product.sku || "—"}</span> • {formatCurrency(item.product.price)} / unit
+                        SKU:{" "}
+                        <span className="font-medium">
+                          {item.product.sku || "—"}
+                        </span>{" "}
+                        • {formatCurrency(item.product.price)} / unit
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="text-right min-w-[76px]">
-                        <p className="text-[10px] text-muted-foreground">Total</p>
-                        <p className="text-sm font-extrabold text-purple-600">{formatCurrency(item.product.price * item.quantity)}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          Total
+                        </p>
+                        <p className="text-sm font-extrabold text-purple-600">
+                          {formatCurrency(item.product.price * item.quantity)}
+                        </p>
                       </div>
                       <div className="flex items-center overflow-hidden rounded-md border border-border bg-card">
-                        <button type="button" className="px-2 py-1.5 bg-muted hover:bg-muted/80 text-muted-foreground transition-colors" onClick={() => updateQuantity(item.product.id, -1)}>
+                        <button
+                          type="button"
+                          className="px-2 py-1.5 bg-muted hover:bg-muted/80 text-muted-foreground transition-colors"
+                          onClick={() => updateQuantity(item.product.id, -1)}
+                        >
                           <Minus className="h-3 w-3" />
                         </button>
-                        <span className="min-w-7 px-2 text-center text-xs font-bold text-foreground">{item.quantity}</span>
-                        <button type="button" className="px-2 py-1.5 bg-muted hover:bg-muted/80 text-muted-foreground transition-colors" onClick={() => updateQuantity(item.product.id, 1)}>
+                        <span className="min-w-7 px-2 text-center text-xs font-bold text-foreground">
+                          {item.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          className="px-2 py-1.5 bg-muted hover:bg-muted/80 text-muted-foreground transition-colors"
+                          onClick={() => updateQuantity(item.product.id, 1)}
+                        >
                           <Plus className="h-3 w-3" />
                         </button>
                       </div>
-                      <button type="button" className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/20" onClick={() => removeFromCart(item.product.id)}>
+                      <button
+                        type="button"
+                        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/20"
+                        onClick={() => removeFromCart(item.product.id)}
+                      >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
@@ -963,7 +1192,6 @@ export default function PosBillingPage({
 
             {/* ── Totals + Payment + Checkout ── */}
             <div className="shrink-0 border-t border-border bg-muted/20 p-3 space-y-1.5 rounded-b-xl">
-
               {/* Coupon */}
               <div className="flex gap-2">
                 <div className="relative flex-1">
@@ -977,12 +1205,27 @@ export default function PosBillingPage({
                   />
                 </div>
                 {couponDiscountPercent > 0 ? (
-                  <Button size="sm" variant="outline" className="h-8 px-2.5 text-xs text-red-500 border-red-200 hover:bg-red-50"
-                    onClick={() => { setCouponDiscountPercent(0); setCouponCode(""); setAppliedCoupon(""); }}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 px-2.5 text-xs text-red-500 border-red-200 hover:bg-red-50"
+                    onClick={() => {
+                      setCouponDiscountPercent(0);
+                      setCouponCode("");
+                      setAppliedCoupon("");
+                    }}
+                  >
                     Remove
                   </Button>
                 ) : (
-                  <Button size="sm" variant="outline" className="h-8 px-2.5 text-xs" onClick={applyCoupon}>Apply</Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 px-2.5 text-xs"
+                    onClick={applyCoupon}
+                  >
+                    Apply
+                  </Button>
                 )}
               </div>
 
@@ -991,18 +1234,26 @@ export default function PosBillingPage({
                 <div className="relative flex-1">
                   <Percent className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
                   <Input
-                    type="number" min={0} max={100}
+                    type="number"
+                    min={0}
+                    max={100}
                     placeholder="Instant discount %"
                     value={manualDiscountPercent}
                     onChange={(e) => {
                       const v = e.target.value;
-                      setManualDiscountPercent(v === "" ? "" : Math.min(Math.max(Number(v), 0), 100));
+                      setManualDiscountPercent(
+                        v === "" ? "" : Math.min(Math.max(Number(v), 0), 100),
+                      );
                     }}
                     className="pl-7 h-8 text-xs bg-card"
                   />
                 </div>
                 {manualPct > 0 && (
-                  <button type="button" onClick={() => setManualDiscountPercent("")} className="text-[10px] text-muted-foreground hover:text-destructive underline whitespace-nowrap">
+                  <button
+                    type="button"
+                    onClick={() => setManualDiscountPercent("")}
+                    className="text-[10px] text-muted-foreground hover:text-destructive underline whitespace-nowrap"
+                  >
                     Clear
                   </button>
                 )}
@@ -1012,22 +1263,30 @@ export default function PosBillingPage({
               <div className="space-y-1 text-[11px] text-muted-foreground">
                 <div className="flex justify-between">
                   <span>Cart Total:</span>
-                  <span className="font-semibold text-foreground">{formatCurrency(subtotal)}</span>
+                  <span className="font-semibold text-foreground">
+                    {formatCurrency(subtotal)}
+                  </span>
                 </div>
                 {couponDiscountPercent > 0 && (
                   <div className="flex justify-between text-green-600">
                     <span className="flex items-center gap-1">
-                      <Sparkles className="h-3 w-3" /> Coupon ({appliedCoupon} – {couponDiscountPercent}%):
+                      <Sparkles className="h-3 w-3" /> Coupon ({appliedCoupon} –{" "}
+                      {couponDiscountPercent}%):
                     </span>
-                    <span className="font-semibold">−{formatCurrency(couponDiscountAmount)}</span>
+                    <span className="font-semibold">
+                      −{formatCurrency(couponDiscountAmount)}
+                    </span>
                   </div>
                 )}
                 {manualPct > 0 && (
                   <div className="flex justify-between text-green-600">
                     <span className="flex items-center gap-1">
-                      <Percent className="h-3 w-3" /> Instant Discount ({manualPct}%):
+                      <Percent className="h-3 w-3" /> Instant Discount (
+                      {manualPct}%):
                     </span>
-                    <span className="font-semibold">−{formatCurrency(manualDiscountAmount)}</span>
+                    <span className="font-semibold">
+                      −{formatCurrency(manualDiscountAmount)}
+                    </span>
                   </div>
                 )}
                 {totalDiscountAmount > 0 && (
@@ -1047,12 +1306,19 @@ export default function PosBillingPage({
               <div className="space-y-1.5">
                 {/* Header + Split toggle */}
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Payment</span>
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Payment
+                  </span>
                   <button
                     type="button"
                     onClick={() => {
-                      setSplitMode(!splitMode);
-                      setPayments([{ method: "cash", amount: "" }]);
+                      const nextSplitMode = !splitMode;
+                      setSplitMode(nextSplitMode);
+                      setPayments(
+                        nextSplitMode
+                          ? DEFAULT_SPLIT_PAYMENTS
+                          : DEFAULT_SINGLE_PAYMENT,
+                      );
                     }}
                     className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-all ${
                       splitMode
@@ -1073,54 +1339,30 @@ export default function PosBillingPage({
                         <button
                           key={method}
                           type="button"
-                          onClick={() => setPayments([{ method, amount: payments[0].amount }])}
+                          onClick={() => setPayments([{ method, amount: "" }])}
                           className={`flex flex-col items-center p-1.5 border rounded-lg gap-1 text-[11px] font-bold transition-all ${
                             payments[0].method === method
                               ? "border-purple-600 bg-purple-50 text-purple-700 dark:bg-purple-950/20"
                               : "border-border bg-card text-muted-foreground hover:bg-muted"
                           }`}
                         >
-                          {method === "cash" && <IndianRupee className="h-4 w-4" />}
-                          {method === "card" && <CreditCard className="h-4 w-4" />}
-                          {method === "upi"  && <Wallet className="h-4 w-4" />}
-                          <span>{method === "cash" ? "Cash" : method === "card" ? "Card" : "UPI"}</span>
+                          {method === "cash" && (
+                            <IndianRupee className="h-4 w-4" />
+                          )}
+                          {method === "card" && (
+                            <CreditCard className="h-4 w-4" />
+                          )}
+                          {method === "upi" && <Wallet className="h-4 w-4" />}
+                          <span>
+                            {method === "cash"
+                              ? "Cash"
+                              : method === "card"
+                                ? "Card"
+                                : "UPI"}
+                          </span>
                         </button>
                       ))}
                     </div>
-
-                    {/* Cash: tendered amount input */}
-                    {payments[0].method === "cash" && (
-                      <div className="space-y-1">
-                        <div className="flex gap-2 items-center">
-                          <div className="relative flex-1">
-                            <IndianRupee className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-                            <Input
-                              type="number"
-                              min={0}
-                              placeholder="Cash tendered (optional)"
-                              value={payments[0].amount}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                setPayments([{ method: "cash", amount: v === "" ? "" : Math.max(Number(v), 0) }]);
-                              }}
-                              className="pl-7 h-8 text-xs bg-card"
-                            />
-                          </div>
-                          {payments[0].amount !== "" && (
-                            <button type="button" onClick={() => setPayments([{ method: "cash", amount: "" }])}
-                              className="text-[10px] text-muted-foreground hover:text-destructive underline whitespace-nowrap">
-                              Clear
-                            </button>
-                          )}
-                        </div>
-                        {cashChange > 0 && (
-                          <div className="flex justify-between text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 rounded px-2 py-1.5">
-                            <span>Change to return:</span>
-                            <span>{formatCurrency(cashChange)}</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -1128,83 +1370,49 @@ export default function PosBillingPage({
                 {splitMode && (
                   <div className="space-y-1.5">
                     {payments.map((entry, idx) => (
-                      <div key={idx} className="flex gap-2 items-center">
-                        {/* Compact method toggle */}
-                        <div className="flex border border-border rounded-lg overflow-hidden shrink-0">
-                          {(["cash", "card", "upi"] as const).map((m) => (
-                            <button
-                              key={m}
-                              type="button"
-                              onClick={() => {
-                                const next = [...payments];
-                                next[idx] = { ...next[idx], method: m };
-                                setPayments(next);
-                              }}
-                              className={`px-2 py-1.5 text-[10px] font-bold transition-all ${
-                                entry.method === m
-                                  ? "bg-purple-600 text-white"
-                                  : "bg-card text-muted-foreground hover:bg-muted"
-                              }`}
-                            >
-                              {m === "cash" ? "₹" : m === "card" ? "Card" : "UPI"}
-                            </button>
-                          ))}
-                        </div>
+                      <div
+  key={idx}
+  className="flex items-center gap-2"
+>
+                        <Select
+                          value={
+                            entry.method ||
+                            (idx === 0 ? "upi" : idx === 1 ? "cash" : "card")
+                          }
+                          onValueChange={(method) => {
+                            const next = [...payments];
+                            next[idx] = {
+                              ...next[idx],
+                              method: method as "cash" | "card" | "upi",
+                            };
+                            setPayments(next);
+                          }}
+                        >
+<SelectTrigger className="h-8 w-[120px] shrink-0 border-border bg-card text-xs">                            <SelectValue placeholder="Method" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="upi">UPI</SelectItem>
+                            <SelectItem value="cash">Cash</SelectItem>
+                            <SelectItem value="card">Card</SelectItem>
+                          </SelectContent>
+                        </Select>
 
-                        {/* Amount */}
-                        <div className="relative flex-1">
-                          <IndianRupee className="absolute left-2 top-2.5 h-3 w-3 text-muted-foreground" />
+<div className="relative flex-1">                          <IndianRupee className="absolute left-2 top-2.5 h-3 w-3 text-muted-foreground" />
                           <Input
                             type="number"
                             min={0}
-                            placeholder={idx === 1 && entry.method === "" ? "Remaining (auto)" : "Amount"}
+                            placeholder={
+                              idx === 1 ? "Cash amount" : "Amount"
+                            }
                             value={entry.amount}
-                            onChange={(e) => updateSplitAmount(idx, e.target.value)}
-                            className="pl-6 h-8 text-xs bg-card"
+                            onChange={(e) =>
+                              updateSplitAmount(idx, e.target.value)
+                            }
+                            className="pl-6 h-8 w-full text-xs bg-card"
                           />
                         </div>
-
-                        {/* Fill remaining */}
-                        <button
-                          type="button"
-                          title="Fill remaining balance"
-                          onClick={() => {
-                            const otherTotal = payments
-                              .filter((_, i) => i !== idx)
-                              .reduce((s, p) => s + (typeof p.amount === "number" ? p.amount : 0), 0);
-                            const remaining = Math.max(0, grandTotal - otherTotal);
-                            const next = [...payments];
-                            next[idx] = { ...next[idx], amount: remaining };
-                            setPayments(next);
-                          }}
-                          className="text-[10px] text-purple-600 border border-purple-200 rounded px-1.5 py-1 hover:bg-purple-50 dark:hover:bg-purple-950/20 shrink-0 whitespace-nowrap"
-                        >
-                          Rem.
-                        </button>
-
-                        {/* Remove row */}
-                        {payments.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => setPayments(payments.filter((_, i) => i !== idx))}
-                            className="text-muted-foreground hover:text-red-500 shrink-0"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        )}
                       </div>
                     ))}
-
-                    {/* Add method (max 3) */}
-                    {payments.length < 3 && (
-                      <button
-                        type="button"
-                        onClick={() => setPayments([...payments, { method: "cash", amount: "" }])}
-                        className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 font-semibold px-1"
-                      >
-                        <Plus className="h-3.5 w-3.5" /> Add payment method
-                      </button>
-                    )}
 
                     {hasUnselectedSplitMethod && (
                       <p className="text-[11px] text-amber-600 bg-amber-50 dark:bg-amber-950/20 rounded px-2 py-1">
@@ -1216,7 +1424,9 @@ export default function PosBillingPage({
                     <div className="rounded-md border border-border bg-muted/20 px-2.5 py-1.5 space-y-0.5 text-[11px]">
                       <div className="flex justify-between text-muted-foreground">
                         <span>Total entered:</span>
-                        <span className={`font-bold ${totalPaid >= grandTotal ? "text-emerald-600" : "text-amber-600"}`}>
+                        <span
+                          className={`font-bold ${totalPaid >= grandTotal ? "text-emerald-600" : "text-amber-600"}`}
+                        >
                           {formatCurrency(totalPaid)}
                         </span>
                       </div>
@@ -1232,11 +1442,13 @@ export default function PosBillingPage({
                           <span>{formatCurrency(cashChange)}</span>
                         </div>
                       )}
-                      {totalPaid >= grandTotal && paymentShortfall <= 0.009 && !hasUnselectedSplitMethod && (
-                        <div className="flex items-center gap-1 text-emerald-600 font-semibold">
-                          <span>✓</span> Payment complete
-                        </div>
-                      )}
+                      {totalPaid >= grandTotal &&
+                        paymentShortfall <= 0.009 &&
+                        !hasUnselectedSplitMethod && (
+                          <div className="flex items-center gap-1 text-emerald-600 font-semibold">
+                            <span>✓</span> Payment complete
+                          </div>
+                        )}
                     </div>
                   </div>
                 )}
@@ -1258,18 +1470,29 @@ export default function PosBillingPage({
                   disabled={
                     isCheckingOut ||
                     cart.length === 0 ||
-                    (selectedCustomer === WALK_IN_SENTINEL && !walkInCustomerId) ||
+                    (selectedCustomer === WALK_IN_SENTINEL &&
+                      !walkInCustomerId) ||
                     hasUnselectedSplitMethod
                   }
                 >
-                  {isCheckingOut
-                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving & Printing…</>
-                    : <><Receipt className="h-4 w-4" /> Checkout & Print</>
-                  }
+                  {isCheckingOut ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" /> Saving &
+                      Printing…
+                    </>
+                  ) : (
+                    <>
+                      <Receipt className="h-4 w-4" /> Checkout & Print
+                    </>
+                  )}
                 </Button>
               </div>
 
-              <Button variant="ghost" className="w-full h-7 text-xs text-muted-foreground gap-1" onClick={resetCart}>
+              <Button
+                variant="ghost"
+                className="w-full h-7 text-xs text-muted-foreground gap-1"
+                onClick={resetCart}
+              >
                 <Trash2 className="h-3.5 w-3.5" /> Clear Cart
               </Button>
             </div>
@@ -1280,7 +1503,8 @@ export default function PosBillingPage({
             <Card className="border border-yellow-200 bg-yellow-50/50 dark:bg-yellow-950/10 dark:border-yellow-900/30">
               <CardHeader className="py-2.5 px-4">
                 <CardTitle className="text-sm font-semibold flex items-center gap-1.5 text-yellow-800 dark:text-yellow-400">
-                  <PauseCircle className="h-4 w-4" /> Held Transactions ({heldBills.length})
+                  <PauseCircle className="h-4 w-4" /> Held Transactions (
+                  {heldBills.length})
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-4 py-2 flex flex-wrap gap-2">
@@ -1293,7 +1517,9 @@ export default function PosBillingPage({
                     onClick={() => restoreBill(h.id)}
                   >
                     {h.id}
-                    <span className="text-[10px] opacity-75 font-normal ml-2">({formatCurrency(h.subtotal)})</span>
+                    <span className="text-[10px] opacity-75 font-normal ml-2">
+                      ({formatCurrency(h.subtotal)})
+                    </span>
                   </Button>
                 ))}
               </CardContent>
@@ -1303,7 +1529,6 @@ export default function PosBillingPage({
 
         {/* ── Right – Products (was on the left) ──────────────────────────── */}
         <div className="xl:col-span-5 flex flex-col gap-4">
-
           {/* Search + Filters */}
           <div className="flex flex-col gap-2">
             {/* Row 1: Search + Category */}
@@ -1313,16 +1538,26 @@ export default function PosBillingPage({
                 <Input
                   placeholder="Search by SKU or name…"
                   value={searchTerm}
-                  onChange={(e) => { setSearchTerm(e.target.value); setBarcodeNotFound(false); }}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setBarcodeNotFound(false);
+                  }}
                   className="pl-9 h-10 border-border bg-card shadow-sm"
                 />
               </div>
-              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+              <Select
+                value={selectedCategory}
+                onValueChange={setSelectedCategory}
+              >
                 <SelectTrigger className="h-10 border-border bg-card shadow-sm">
                   <SelectValue placeholder="Category" />
                 </SelectTrigger>
                 <SelectContent>
-                  {categories.map((cat) => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+                  {categories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -1336,22 +1571,34 @@ export default function PosBillingPage({
                 <SelectContent>
                   <SelectItem value="All">All Brands</SelectItem>
                   {brandOptions.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <Select
                 value={selectedSubBrand}
                 onValueChange={setSelectedSubBrand}
-                disabled={selectedBrand === "All" || subBrandOptions.length === 0}
+                disabled={
+                  selectedBrand === "All" || subBrandOptions.length === 0
+                }
               >
                 <SelectTrigger className="h-9 border-border bg-card shadow-sm text-sm disabled:opacity-50">
-                  <SelectValue placeholder={selectedBrand === "All" ? "Select brand first" : "All Sub-brands"} />
+                  <SelectValue
+                    placeholder={
+                      selectedBrand === "All"
+                        ? "Select brand first"
+                        : "All Sub-brands"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="All">All Sub-brands</SelectItem>
                   {subBrandOptions.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1375,7 +1622,10 @@ export default function PosBillingPage({
               autoFocus
               placeholder="Scan / type SKU and hit Enter…"
               value={barcodeInput}
-              onChange={(e) => { setBarcodeInput(e.target.value); setBarcodeNotFound(false); }}
+              onChange={(e) => {
+                setBarcodeInput(e.target.value);
+                setBarcodeNotFound(false);
+              }}
               className={`h-8 text-xs bg-card ${
                 barcodeNotFound
                   ? "border-red-300 focus-visible:ring-red-400"
@@ -1396,16 +1646,20 @@ export default function PosBillingPage({
           </form>
 
           {/* Product grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[600px] overflow-y-auto pr-2
+          <div
+            className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[600px] overflow-y-auto pr-2
             [&::-webkit-scrollbar]:w-1.5
             [&::-webkit-scrollbar-track]:rounded-full
             [&::-webkit-scrollbar-track]:bg-muted/40
             [&::-webkit-scrollbar-thumb]:rounded-full
             [&::-webkit-scrollbar-thumb]:bg-purple-300
-            dark:[&::-webkit-scrollbar-thumb]:bg-purple-700">
+            dark:[&::-webkit-scrollbar-thumb]:bg-purple-700"
+          >
             {filteredProducts.length === 0 ? (
               <div className="col-span-2 text-center text-muted-foreground py-16 text-sm">
-                {searchTerm || selectedCategory !== "All" || selectedBrand !== "All"
+                {searchTerm ||
+                selectedCategory !== "All" ||
+                selectedBrand !== "All"
                   ? "No products match your filters."
                   : "No products available."}
               </div>
@@ -1414,19 +1668,21 @@ export default function PosBillingPage({
                 <Card
                   key={prod.id}
                   onClick={() => addToCart(prod)}
-                  className={`cursor-pointer hover:border-purple-500 transition-all hover:shadow-md bg-card group border border-border flex flex-col justify-between h-36 ${
-                    prod.stock <= 0 ? "opacity-50 pointer-events-none" : ""
-                  }`}
+                  className="cursor-pointer hover:border-purple-500 transition-all hover:shadow-md bg-card group border border-border flex flex-col justify-between h-36"
                 >
                   <CardContent className="p-3.5 flex flex-col justify-between h-full w-full">
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-medium text-muted-foreground">{prod.sku}</span>
-                        <Badge className={`text-[10px] px-1.5 py-0 ${
-                          prod.stock <= 5
-                            ? "bg-red-50 text-red-700 border-red-100"
-                            : "bg-purple-50 text-purple-700 border-purple-100"
-                        }`}>
+                        <span className="text-[10px] font-medium text-muted-foreground">
+                          {prod.sku}
+                        </span>
+                        <Badge
+                          className={`text-[10px] px-1.5 py-0 ${
+                            prod.stock <= 5
+                              ? "bg-red-50 text-red-700 border-red-100"
+                              : "bg-purple-50 text-purple-700 border-purple-100"
+                          }`}
+                        >
                           Stock: {prod.stock}
                         </Badge>
                       </div>
@@ -1435,13 +1691,19 @@ export default function PosBillingPage({
                       </h3>
                       {prod.brand && (
                         <p className="text-[10px] text-muted-foreground truncate">
-                          {prod.brand}{prod.subBrand ? ` › ${prod.subBrand}` : ""}
+                          {prod.brand}
+                          {prod.subBrand ? ` › ${prod.subBrand}` : ""}
                         </p>
                       )}
                     </div>
                     <div className="flex items-center justify-between mt-auto pt-2 border-t border-dashed border-border/80">
-                      <span className="font-extrabold text-base text-purple-600">{formatCurrency(prod.price)}</span>
-                      <Badge variant="outline" className="text-[9px] bg-slate-50 dark:bg-slate-900 border-slate-200">
+                      <span className="font-extrabold text-base text-purple-600">
+                        {formatCurrency(prod.price)}
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className="text-[9px] bg-slate-50 dark:bg-slate-900 border-slate-200"
+                      >
                         {prod.category}
                       </Badge>
                     </div>
@@ -1451,7 +1713,6 @@ export default function PosBillingPage({
             )}
           </div>
         </div>
-
       </div>
     </div>
   );

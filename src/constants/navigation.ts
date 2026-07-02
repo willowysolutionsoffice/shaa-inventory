@@ -44,6 +44,8 @@ export interface NavChild {
   icon?: LucideIcon;
   /** Hidden unless user has this permission. */
   permission?: Permission;
+  /** Open this item in a new browser tab. */
+  newTab?: boolean;
 }
 
 export interface NavGroup {
@@ -58,6 +60,8 @@ export interface NavGroup {
   permission?: Permission;
   /** Leaf items shown in the collapsible sub-menu. */
   children?: NavChild[];
+  /** Open this group/leaf item in a new browser tab. */
+  newTab?: boolean;
 }
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -119,30 +123,35 @@ const navMain: NavGroup[] = [
         url: "/sales/pos/invoice",
         icon: ReceiptText,
         permission: PERMISSIONS.MANAGE_SALES,
+        newTab: true,
       },
       {
         title: "List Sales",
         url: "/sales",
         icon: List,
         permission: PERMISSIONS.MANAGE_SALES,
+        newTab: true,
       },
       {
         title: "Add Sale Order",
         url: "/sales/new",
         icon: PlusCircle,
         permission: PERMISSIONS.MANAGE_SALES,
+        newTab: true,
       },
       {
         title: "Sales Returns",
         url: "/sales-return",
         icon: Undo2,
         permission: PERMISSIONS.MANAGE_RETURNS,
+        newTab: true,
       },
       {
         title:"sales Report",
         url: "/reports/sales-report",
         icon: FileSpreadsheet,
         permission: PERMISSIONS.MANAGE_SALES,
+        newTab: true,
       
       }
     ],
@@ -160,18 +169,21 @@ const navMain: NavGroup[] = [
         url: "/purchase",
         icon: List,
         permission: PERMISSIONS.MANAGE_PURCHASES,
+        newTab: true,
       },
       {
         title: "Add Purchase",
         url: "/purchase/new",
         icon: PlusCircle,
         permission: PERMISSIONS.MANAGE_PURCHASES,
+        newTab: true,
       },
       {
         title: "Purchase Returns",
         url: "/purchase-return",
         icon: Undo2,
         permission: PERMISSIONS.MANAGE_RETURNS,
+        newTab: true,
       },
       {
   title: "GRN Screen",
@@ -221,6 +233,7 @@ const navMain: NavGroup[] = [
         url: "/admin/products",
         icon: List,
         permission: PERMISSIONS.MANAGE_PRODUCTS,
+        newTab: true,
       },
       {
   title: "Brands",
@@ -377,12 +390,14 @@ const admin: NavGroup[] = [
         url: "/reports/contact-reports",
         icon: FileSpreadsheet,
         permission: PERMISSIONS.VIEW_REPORTS,
+        newTab: true,
       },
       {
         title:"sales Report",
         url: "/reports/sales-report",
         icon: FileSpreadsheet,
         permission: PERMISSIONS.MANAGE_SALES,
+        newTab: true,
       
       },
       {
@@ -390,30 +405,35 @@ const admin: NavGroup[] = [
         url: "/reports/sales-purchase-reports",
         icon: FileSpreadsheet,
         permission: PERMISSIONS.VIEW_REPORTS,
+        newTab: true,
       },
       {
         title: "Payment Report",
         url: "/reports/payment-reports",
         icon: FileSpreadsheet,
         permission: PERMISSIONS.VIEW_REPORTS,
+        newTab: true,
       },
       {
         title: "Profit & Loss Report",
         url: "/reports/pnl-reports",
         icon: FileSpreadsheet,
         permission: PERMISSIONS.VIEW_REPORTS,
+        newTab: true,
       },
       {
         title: "Stock Report",
         url: "/reports/stock-reports",
         icon: FileSpreadsheet,
         permission: PERMISSIONS.VIEW_REPORTS,
+        newTab: true,
       },
       {
         title: "Daily Listing Summary",
         url: "/reports/daily-listing",
         icon: FileSpreadsheet,
         permission: PERMISSIONS.VIEW_REPORTS,
+        newTab: true,
       },
     ],
   },
