@@ -8,6 +8,7 @@ import React, {
   useCallback,
   useRef,
 } from "react";
+import qz from "qz-tray";
 import {
   Search,
   Trash2,
@@ -87,6 +88,8 @@ interface POSCustomer {
 interface CartItem {
   product: POSProduct;
   quantity: number;
+  // ← added: per-line discount, entered as a percent of that line's subtotal
+  discountPercent: number;
 }
 
 interface HeldBill {
@@ -128,6 +131,25 @@ const toNum = (v: unknown): number => {
   const n = Number(v);
   return isFinite(n) ? n : 0;
 };
+
+const clampPercent = (v: number): number => Math.min(Math.max(v, 0), 100);
+
+// ── Per-line item discount helpers ──────────────────────────────────────────
+// A cart line's discount is stored as a percent of that line's own subtotal
+// (unitPrice * quantity), independent of the cart-level coupon / manual
+// discount, which are applied afterward on the post-item-discount total.
+
+function itemLineSubtotal(item: CartItem): number {
+  return item.product.price * item.quantity;
+}
+
+function itemDiscountAmount(item: CartItem): number {
+  return (itemLineSubtotal(item) * clampPercent(item.discountPercent || 0)) / 100;
+}
+
+function itemLineTotal(item: CartItem): number {
+  return itemLineSubtotal(item) - itemDiscountAmount(item);
+}
 
 const fmtDate = (date: Date): { date: string; time: string } => {
   const dateStr = new Intl.DateTimeFormat("en-IN", {
@@ -195,7 +217,7 @@ function buildPaymentHtml(
   `;
 }
 // ── Thermal print function — identical HTML/CSS to pos-invoice.tsx printThermal ──
-// ── NOT MODIFIED — invoice print logic left exactly as-is ──────────────────────
+// ── Item-discount line added below (buildPaymentHtml itself is untouched) ──────
 
 interface PrintReceiptParams {
   invoiceNo: string;
@@ -210,6 +232,7 @@ interface PrintReceiptParams {
     unitPrice: number;
     total: number;
   }[];
+  itemDiscount: number; // ← added: sum of all per-line item discounts
   couponDiscount: number;
   couponCode: string;
   manualDiscount: number;
@@ -218,12 +241,13 @@ interface PrintReceiptParams {
   change: number;
 }
 
+interface LastInvoiceSnapshot extends PrintReceiptParams {
+  subtotal: number;
+  totalDiscount: number;
+}
+
 function printThermalReceipt(params: PrintReceiptParams) {
-  const printWindow = window.open("", "_blank");
-  if (!printWindow) {
-    toast.error("Failed to open print window. Please allow popups.");
-    return;
-  }
+
 
   const { date, time } = fmtDate(params.date);
 
@@ -240,6 +264,12 @@ function printThermalReceipt(params: PrintReceiptParams) {
   </tr>`,
     )
     .join("");
+
+  const itemDiscountRow =
+    params.itemDiscount > 0
+      ? `<div style="display:flex;justify-content:space-between;font-size:11px;"><span>Item Discounts:</span><span>-${params.itemDiscount.toLocaleString("en-IN")}</span></div>`
+      : "";
+
   const couponRow =
     params.couponDiscount > 0
       ? `<div style="display:flex;justify-content:space-between;font-size:11px;"><span>Coupon (${params.couponCode}):</span><span>-${params.couponDiscount.toLocaleString("en-IN")}</span></div>`
@@ -261,7 +291,7 @@ function printThermalReceipt(params: PrintReceiptParams) {
 
   const paymentHtml = buildPaymentHtml(params.payments, params.change);
 
-  printWindow.document.write(`
+  const html = `
     <html>
       <head>
         <title>Receipt - ${params.invoiceNo}</title>
@@ -345,6 +375,7 @@ function printThermalReceipt(params: PrintReceiptParams) {
         </table>
 
         <div style="border-top:1px dashed #000;padding-top:6px;margin-top:2px;">
+          ${itemDiscountRow}
           ${couponRow}
           ${discountRow}
           <div class="heavy" style="display:flex;justify-content:space-between;font-size:14px;border-top:1px solid #000;margin-top:4px;padding-top:4px;">
@@ -371,14 +402,90 @@ function printThermalReceipt(params: PrintReceiptParams) {
 
         <div class="bold" style="text-align:center;margin-top:10px;font-size:11px;letter-spacing:0.5px;">THANK YOU VISIT AGAIN ;</div>
 
-        <script>window.onload=function(){setTimeout(function(){window.print();window.close();},400);};<\/script>
+        
       </body>
     </html>
-  `);
-  printWindow.document.close();
-}
-// ── Component ─────────────────────────────────────────────────────────────────
+`;
 
+  printWithQZ(html);
+}
+console.log("Calling QZ...");
+// ── Component ─────────────────────────────────────────────────────────────────
+async function setupQZSecurity() {
+  qz.security.setCertificatePromise(async () => {
+    const res = await fetch("/qz/digital-certificate.txt");
+
+    if (!res.ok) {
+      throw new Error("QZ certificate not found");
+    }
+
+    return await res.text();
+  });
+
+  qz.security.setSignatureAlgorithm("SHA512");
+
+  qz.security.setSignaturePromise((toSign) => {
+    return async (resolve, reject) => {
+      try {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/qz/sign`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ request: toSign }),
+          }
+        );
+
+        if (!res.ok) {
+          throw new Error("QZ signature failed");
+        }
+
+        const data = await res.json();
+        resolve(data.signature);
+      } catch (err) {
+        reject(err);
+      }
+    };
+  });
+}
+
+async function printWithQZ(invoiceHtml: string) {
+  try {
+    await setupQZSecurity();
+
+    if (!qz.websocket.isActive()) {
+      await qz.websocket.connect();
+    }
+
+    const printer =
+      localStorage.getItem("pos_printer_name") ||
+      "Microsoft Print to PDF";
+
+    const config = qz.configs.create(printer, {
+      margins: 0,
+      units: "mm",
+      size: { width: 80 },
+      scaleContent: false,
+      rasterize: false,
+    });
+
+    await qz.print(config, [
+      {
+        type: "pixel",
+        format: "html",
+        flavor: "plain",
+        data: invoiceHtml,
+      },
+    ]);
+
+    toast.success("Invoice sent to printer.");
+  } catch (err) {
+    console.error("[QZ print error]", err);
+    toast.error("QZ printing failed.");
+  }
+}
 export default function PosBillingPage({
   branchId = "",
   branchName = "Branch",
@@ -456,8 +563,8 @@ export default function PosBillingPage({
       const list: any[] = Array.isArray(res) ? res : (res?.data ?? []);
       const scoped = branchId
         ? list.filter(
-            (u) => u.branch?.id === branchId || u.branchId === branchId,
-          )
+          (u) => u.branch?.id === branchId || u.branchId === branchId,
+        )
         : list;
       setSalesmen(
         (scoped.length ? scoped : list).map((u: any) => ({
@@ -530,7 +637,7 @@ export default function PosBillingPage({
             setSelectedCustomer(newEntry.id);
             toast.success(`"${newEntry.name}" added and selected.`);
           }
-        } catch {}
+        } catch { }
         focusBarcodeInput();
       }
     },
@@ -572,6 +679,10 @@ export default function PosBillingPage({
     PrintReceiptParams,
     "invoiceNo"
   > | null>(null);
+  const [lastInvoice, setLastInvoice] = useState<LastInvoiceSnapshot | null>(
+    null,
+  );
+  const [lastInvoiceOpen, setLastInvoiceOpen] = useState(false);
 
   useEffect(() => {
     if (selectedBrand === "All") {
@@ -601,6 +712,19 @@ export default function PosBillingPage({
           `INV-${Date.now().toString().slice(-6)}`;
 
         if (pendingPrint) {
+          const snapshot: LastInvoiceSnapshot = {
+            ...pendingPrint,
+            invoiceNo,
+            subtotal: pendingPrint.items.reduce(
+              (s, item) => s + item.unitPrice * item.qty,
+              0,
+            ),
+            totalDiscount:
+              pendingPrint.itemDiscount +
+              pendingPrint.couponDiscount +
+              pendingPrint.manualDiscount,
+          };
+          setLastInvoice(snapshot);
           printThermalReceipt({ ...pendingPrint, invoiceNo });
           setPendingPrint(null);
         }
@@ -643,19 +767,26 @@ export default function PosBillingPage({
   }, [products, searchTerm, selectedCategory, selectedBrand, selectedSubBrand]);
 
   // ── Pricing ────────────────────────────────────────────────────────────────
+  // Layering: per-item discount → cart-level coupon % → cart-level manual %
   const subtotal = useMemo(
-    () => cart.reduce((s, i) => s + i.product.price * i.quantity, 0),
+    () => cart.reduce((s, i) => s + itemLineSubtotal(i), 0),
     [cart],
   );
-  const couponDiscountAmount = (subtotal * couponDiscountPercent) / 100;
-  const afterCoupon = subtotal - couponDiscountAmount;
+  const itemDiscountTotal = useMemo(
+    () => cart.reduce((s, i) => s + itemDiscountAmount(i), 0),
+    [cart],
+  );
+  const afterItemDiscount = subtotal - itemDiscountTotal;
+  const couponDiscountAmount = (afterItemDiscount * couponDiscountPercent) / 100;
+  const afterCoupon = afterItemDiscount - couponDiscountAmount;
   const manualPct =
     typeof manualDiscountPercent === "number"
       ? Math.min(Math.max(manualDiscountPercent, 0), 100)
       : 0;
   const manualDiscountAmount = (afterCoupon * manualPct) / 100;
-  const totalDiscountAmount = couponDiscountAmount + manualDiscountAmount;
-  const grandTotal = subtotal - totalDiscountAmount;
+  const totalDiscountAmount =
+    itemDiscountTotal + couponDiscountAmount + manualDiscountAmount;
+  const grandTotal = afterCoupon - manualDiscountAmount;
 
   // ── Payment derived ────────────────────────────────────────────────────────
   const totalPaid = payments.reduce(
@@ -768,7 +899,7 @@ export default function PosBillingPage({
         toast.warning("Out of stock.");
         return;
       }
-      setCart([...cart, { product, quantity: 1 }]);
+      setCart([...cart, { product, quantity: 1, discountPercent: 0 }]);
     }
     toast.success(`${product.name} added.`);
     focusBarcodeInput();
@@ -788,6 +919,18 @@ export default function PosBillingPage({
           return { ...item, quantity: next };
         })
         .filter(Boolean) as CartItem[],
+    );
+  };
+
+  // ← added: update a single cart line's discount percent
+  const updateItemDiscount = (productId: string, raw: string) => {
+    const value = raw === "" ? 0 : clampPercent(Number(raw));
+    setCart((prev) =>
+      prev.map((item) =>
+        item.product.id === productId
+          ? { ...item, discountPercent: value }
+          : item,
+      ),
     );
   };
 
@@ -922,11 +1065,11 @@ export default function PosBillingPage({
       return valid.length > 0
         ? valid
         : [
-            {
-              method: (payments[0].method || "cash") as "cash" | "card" | "upi",
-              amount: grandTotal,
-            },
-          ];
+          {
+            method: (payments[0].method || "cash") as "cash" | "card" | "upi",
+            amount: grandTotal,
+          },
+        ];
     })();
 
     const printSnapshot: Omit<PrintReceiptParams, "invoiceNo"> = {
@@ -939,8 +1082,9 @@ export default function PosBillingPage({
         sku: item.product.sku,
         qty: item.quantity,
         unitPrice: item.product.price,
-        total: item.product.price * item.quantity,
+        total: itemLineTotal(item),
       })),
+      itemDiscount: itemDiscountTotal,
       couponDiscount: couponDiscountAmount,
       couponCode: appliedCoupon,
       manualDiscount: manualDiscountAmount,
@@ -966,9 +1110,9 @@ export default function PosBillingPage({
         productId: item.product.id,
         quantity: item.quantity,
         unitPrice: item.product.price,
-        discount: 0,
-        subtotal: item.product.price * item.quantity,
-        total: item.product.price * item.quantity,
+        discount: itemDiscountAmount(item),
+        subtotal: itemLineSubtotal(item),
+        total: itemLineTotal(item),
         purchasePrice: item.product.purchasePrice,
       })),
       salesPayment: (() => {
@@ -982,12 +1126,12 @@ export default function PosBillingPage({
           validEntries.length > 0
             ? validEntries
             : [
-                {
-                  method: (payments[0].method || "cash") as
-                    "cash" | "card" | "upi",
-                  amount: grandTotal,
-                },
-              ];
+              {
+                method: (payments[0].method || "cash") as
+                  "cash" | "card" | "upi",
+                amount: grandTotal,
+              },
+            ];
         return entries.map((p) => ({
           amount: p.amount as number,
           paymentMethod: p.method,
@@ -1017,6 +1161,169 @@ export default function PosBillingPage({
         branches={branchId ? [{ id: branchId, name: branchName }] : []}
       />
 
+      {lastInvoiceOpen && lastInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-3xl overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
+            <div className="flex items-start justify-between border-b border-border px-5 py-4">
+              <div>
+                <h2 className="text-lg font-bold text-foreground">
+                  Invoice {lastInvoice.invoiceNo}
+                </h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {lastInvoice.customerName || "Walk-in Customer"}
+                  {lastInvoice.customerPhone
+                    ? ` • ${lastInvoice.customerPhone}`
+                    : ""}
+                  {lastInvoice.salesmanName
+                    ? ` • Salesman: ${lastInvoice.salesmanName}`
+                    : ""}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => setLastInvoiceOpen(false)}
+              >
+                ×
+              </Button>
+            </div>
+
+            <div className="max-h-[70vh] overflow-y-auto p-5">
+              <div className="overflow-hidden rounded-lg border border-border">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/60 text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold">
+                        Product
+                      </th>
+                      <th className="px-3 py-2 text-left font-semibold">SKU</th>
+                      <th className="px-3 py-2 text-right font-semibold">
+                        Qty
+                      </th>
+                      <th className="px-3 py-2 text-right font-semibold">
+                        Rate
+                      </th>
+                      <th className="px-3 py-2 text-right font-semibold">
+                        Total
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lastInvoice.items.map((item, index) => (
+                      <tr
+                        key={`${item.sku}-${index}`}
+                        className="border-t border-border"
+                      >
+                        <td className="px-3 py-2 font-medium text-foreground">
+                          {item.name}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
+                          {item.sku || "—"}
+                        </td>
+                        <td className="px-3 py-2 text-right">{item.qty}</td>
+                        <td className="px-3 py-2 text-right">
+                          {formatCurrency(item.unitPrice)}
+                        </td>
+                        <td className="px-3 py-2 text-right font-semibold">
+                          {formatCurrency(item.total)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Discounts
+                  </h3>
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between">
+                      <span>Subtotal</span>
+                      <span className="font-medium">
+                        {formatCurrency(lastInvoice.subtotal)}
+                      </span>
+                    </div>
+                    {lastInvoice.itemDiscount > 0 && (
+                      <div className="flex justify-between text-green-600">
+                        <span>Item Discounts</span>
+                        <span>
+                          -{formatCurrency(lastInvoice.itemDiscount)}
+                        </span>
+                      </div>
+                    )}
+                    {lastInvoice.couponDiscount > 0 && (
+                      <div className="flex justify-between text-green-600">
+                        <span>
+                          Coupon{" "}
+                          {lastInvoice.couponCode
+                            ? `(${lastInvoice.couponCode})`
+                            : ""}
+                        </span>
+                        <span>
+                          -{formatCurrency(lastInvoice.couponDiscount)}
+                        </span>
+                      </div>
+                    )}
+                    {lastInvoice.manualDiscount > 0 && (
+                      <div className="flex justify-between text-green-600">
+                        <span>Manual Discount</span>
+                        <span>
+                          -{formatCurrency(lastInvoice.manualDiscount)}
+                        </span>
+                      </div>
+                    )}
+                    <Separator />
+                    <div className="flex justify-between text-base font-extrabold text-purple-700 dark:text-purple-400">
+                      <span>Grand Total</span>
+                      <span>{formatCurrency(lastInvoice.grandTotal)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Payments
+                  </h3>
+                  <div className="space-y-1.5">
+                    {lastInvoice.payments.map((payment, index) => (
+                      <div
+                        key={`${payment.method}-${index}`}
+                        className="flex justify-between"
+                      >
+                        <span>{methodLabel(payment.method)}</span>
+                        <span className="font-medium">
+                          {formatCurrency(payment.amount)}
+                        </span>
+                      </div>
+                    ))}
+                    {lastInvoice.change > 0 && (
+                      <div className="flex justify-between text-emerald-600 font-semibold">
+                        <span>Change Returned</span>
+                        <span>{formatCurrency(lastInvoice.change)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end border-t border-border px-5 py-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setLastInvoiceOpen(false)}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col gap-2 md:flex-row md:items-center justify-between">
         <div>
@@ -1042,8 +1349,8 @@ export default function PosBillingPage({
           <Card className="border-border shadow-md bg-card flex h-[calc(100vh-170px)] min-h-[680px] max-h-[860px] flex-col overflow-hidden">
             {/* Cart header */}
             <CardHeader className="px-4 py-2.5 border-b border-border shrink-0">
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
                   <CardTitle className="text-base font-bold">
                     Active Cart ({cart.reduce((s, i) => s + i.quantity, 0)})
                   </CardTitle>
@@ -1051,18 +1358,34 @@ export default function PosBillingPage({
                     Manage quantities and finalise
                   </CardDescription>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-red-500"
-                  onClick={() => setCart([])}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {lastInvoice && (
+                    <button
+                      type="button"
+                      onClick={() => setLastInvoiceOpen(true)}
+                      className="rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-[11px] font-semibold text-purple-700 transition-colors hover:bg-purple-100 dark:border-purple-900/40 dark:bg-purple-950/20 dark:text-purple-300"
+                      title="View last checked out invoice"
+                    >
+                      Last Invoice:{" "}
+                      <span className="font-extrabold">
+                        {lastInvoice.invoiceNo}
+                      </span>
+                    </button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-red-500"
+                    onClick={() => setCart([])}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
 
-              {/* Customer + salesman selectors */}
-              <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
+              {/* Customer + add customer + salesman selectors */}
+              <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
                 <Select
                   value={selectedCustomer}
                   onValueChange={setSelectedCustomer}
@@ -1079,6 +1402,16 @@ export default function PosBillingPage({
                     ))}
                   </SelectContent>
                 </Select>
+
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-8 w-8 shrink-0 justify-self-start md:justify-self-center"
+                  title="Add new customer"
+                  onClick={() => setAddCustomerOpen(true)}
+                >
+                  <UserPlus className="h-3.5 w-3.5 text-purple-600" />
+                </Button>
 
                 <Select
                   value={selectedSalesman}
@@ -1099,16 +1432,6 @@ export default function PosBillingPage({
                     ))}
                   </SelectContent>
                 </Select>
-
-                <Button
-                  size="icon"
-                  variant="outline"
-                  className="h-8 w-8 shrink-0 md:justify-self-end"
-                  title="Add new customer"
-                  onClick={() => setAddCustomerOpen(true)}
-                >
-                  <UserPlus className="h-3.5 w-3.5 text-purple-600" />
-                </Button>
               </div>
 
               {selectedCustomer === WALK_IN_SENTINEL &&
@@ -1154,8 +1477,13 @@ export default function PosBillingPage({
                         <p className="text-[10px] text-muted-foreground">
                           Total
                         </p>
+                        {item.discountPercent > 0 && (
+                          <p className="text-[10px] text-muted-foreground line-through leading-none">
+                            {formatCurrency(itemLineSubtotal(item))}
+                          </p>
+                        )}
                         <p className="text-sm font-extrabold text-purple-600">
-                          {formatCurrency(item.product.price * item.quantity)}
+                          {formatCurrency(itemLineTotal(item))}
                         </p>
                       </div>
                       <div className="flex items-center overflow-hidden rounded-md border border-border bg-card">
@@ -1184,6 +1512,30 @@ export default function PosBillingPage({
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
+                    </div>
+
+                    {/* ← added: per-line discount % input, spans the full row */}
+                    <div className="col-span-2 flex items-center gap-1.5 -mt-0.5">
+                      <Percent className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        placeholder="0"
+                        value={item.discountPercent || ""}
+                        onChange={(e) =>
+                          updateItemDiscount(item.product.id, e.target.value)
+                        }
+                        className="h-6 w-16 text-[11px] px-1.5 bg-card"
+                      />
+                      <span className="text-[10px] text-muted-foreground">
+                        % off this item
+                      </span>
+                      {item.discountPercent > 0 && (
+                        <span className="text-[10px] text-green-600 font-semibold ml-auto">
+                          −{formatCurrency(itemDiscountAmount(item))}
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))
@@ -1267,6 +1619,16 @@ export default function PosBillingPage({
                     {formatCurrency(subtotal)}
                   </span>
                 </div>
+                {itemDiscountTotal > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span className="flex items-center gap-1">
+                      <Percent className="h-3 w-3" /> Item Discounts:
+                    </span>
+                    <span className="font-semibold">
+                      −{formatCurrency(itemDiscountTotal)}
+                    </span>
+                  </div>
+                )}
                 {couponDiscountPercent > 0 && (
                   <div className="flex justify-between text-green-600">
                     <span className="flex items-center gap-1">
@@ -1320,11 +1682,10 @@ export default function PosBillingPage({
                           : DEFAULT_SINGLE_PAYMENT,
                       );
                     }}
-                    className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-all ${
-                      splitMode
-                        ? "bg-purple-600 text-white border-purple-600"
-                        : "bg-card text-purple-600 border-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/20"
-                    }`}
+                    className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-all ${splitMode
+                      ? "bg-purple-600 text-white border-purple-600"
+                      : "bg-card text-purple-600 border-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/20"
+                      }`}
                   >
                     {splitMode ? "✓ Split ON" : "Split Payment"}
                   </button>
@@ -1340,11 +1701,10 @@ export default function PosBillingPage({
                           key={method}
                           type="button"
                           onClick={() => setPayments([{ method, amount: "" }])}
-                          className={`flex flex-col items-center p-1.5 border rounded-lg gap-1 text-[11px] font-bold transition-all ${
-                            payments[0].method === method
-                              ? "border-purple-600 bg-purple-50 text-purple-700 dark:bg-purple-950/20"
-                              : "border-border bg-card text-muted-foreground hover:bg-muted"
-                          }`}
+                          className={`flex flex-col items-center p-1.5 border rounded-lg gap-1 text-[11px] font-bold transition-all ${payments[0].method === method
+                            ? "border-purple-600 bg-purple-50 text-purple-700 dark:bg-purple-950/20"
+                            : "border-border bg-card text-muted-foreground hover:bg-muted"
+                            }`}
                         >
                           {method === "cash" && (
                             <IndianRupee className="h-4 w-4" />
@@ -1370,10 +1730,7 @@ export default function PosBillingPage({
                 {splitMode && (
                   <div className="space-y-1.5">
                     {payments.map((entry, idx) => (
-                      <div
-  key={idx}
-  className="flex items-center gap-2"
->
+                      <div key={idx} className="flex items-center gap-2">
                         <Select
                           value={
                             entry.method ||
@@ -1388,7 +1745,9 @@ export default function PosBillingPage({
                             setPayments(next);
                           }}
                         >
-<SelectTrigger className="h-8 w-[120px] shrink-0 border-border bg-card text-xs">                            <SelectValue placeholder="Method" />
+                          <SelectTrigger className="h-8 w-[120px] shrink-0 border-border bg-card text-xs">
+                            {" "}
+                            <SelectValue placeholder="Method" />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="upi">UPI</SelectItem>
@@ -1397,13 +1756,13 @@ export default function PosBillingPage({
                           </SelectContent>
                         </Select>
 
-<div className="relative flex-1">                          <IndianRupee className="absolute left-2 top-2.5 h-3 w-3 text-muted-foreground" />
+                        <div className="relative flex-1">
+                          {" "}
+                          <IndianRupee className="absolute left-2 top-2.5 h-3 w-3 text-muted-foreground" />
                           <Input
                             type="number"
                             min={0}
-                            placeholder={
-                              idx === 1 ? "Cash amount" : "Amount"
-                            }
+                            placeholder={idx === 1 ? "Cash amount" : "Amount"}
                             value={entry.amount}
                             onChange={(e) =>
                               updateSplitAmount(idx, e.target.value)
@@ -1608,11 +1967,10 @@ export default function PosBillingPage({
           {/* Barcode */}
           <form
             onSubmit={handleBarcodeSubmit}
-            className={`flex gap-2 p-3 rounded-xl items-center shadow-sm border transition-colors ${
-              barcodeNotFound
-                ? "bg-red-50/60 border-red-200 dark:bg-red-950/20 dark:border-red-900/40"
-                : "bg-purple-50/50 border-purple-100 dark:bg-purple-950/10 dark:border-purple-900/40"
-            }`}
+            className={`flex gap-2 p-3 rounded-xl items-center shadow-sm border transition-colors ${barcodeNotFound
+              ? "bg-red-50/60 border-red-200 dark:bg-red-950/20 dark:border-red-900/40"
+              : "bg-purple-50/50 border-purple-100 dark:bg-purple-950/10 dark:border-purple-900/40"
+              }`}
           >
             <span className="text-xs font-semibold text-purple-800 dark:text-purple-300 hidden sm:inline shrink-0">
               Barcode Scanner:
@@ -1626,20 +1984,18 @@ export default function PosBillingPage({
                 setBarcodeInput(e.target.value);
                 setBarcodeNotFound(false);
               }}
-              className={`h-8 text-xs bg-card ${
-                barcodeNotFound
-                  ? "border-red-300 focus-visible:ring-red-400"
-                  : "border-purple-200 dark:border-purple-800 focus-visible:ring-purple-500"
-              }`}
+              className={`h-8 text-xs bg-card ${barcodeNotFound
+                ? "border-red-300 focus-visible:ring-red-400"
+                : "border-purple-200 dark:border-purple-800 focus-visible:ring-purple-500"
+                }`}
             />
             <Button
               type="submit"
               size="sm"
-              className={`h-8 text-xs text-white shrink-0 transition-colors ${
-                barcodeNotFound
-                  ? "bg-red-500 hover:bg-red-600"
-                  : "bg-purple-600 hover:bg-purple-700"
-              }`}
+              className={`h-8 text-xs text-white shrink-0 transition-colors ${barcodeNotFound
+                ? "bg-red-500 hover:bg-red-600"
+                : "bg-purple-600 hover:bg-purple-700"
+                }`}
             >
               Scan
             </Button>
@@ -1658,8 +2014,8 @@ export default function PosBillingPage({
             {filteredProducts.length === 0 ? (
               <div className="col-span-2 text-center text-muted-foreground py-16 text-sm">
                 {searchTerm ||
-                selectedCategory !== "All" ||
-                selectedBrand !== "All"
+                  selectedCategory !== "All" ||
+                  selectedBrand !== "All"
                   ? "No products match your filters."
                   : "No products available."}
               </div>
@@ -1677,11 +2033,10 @@ export default function PosBillingPage({
                           {prod.sku}
                         </span>
                         <Badge
-                          className={`text-[10px] px-1.5 py-0 ${
-                            prod.stock <= 5
-                              ? "bg-red-50 text-red-700 border-red-100"
-                              : "bg-purple-50 text-purple-700 border-purple-100"
-                          }`}
+                          className={`text-[10px] px-1.5 py-0 ${prod.stock <= 5
+                            ? "bg-red-50 text-red-700 border-red-100"
+                            : "bg-purple-50 text-purple-700 border-purple-100"
+                            }`}
                         >
                           Stock: {prod.stock}
                         </Badge>

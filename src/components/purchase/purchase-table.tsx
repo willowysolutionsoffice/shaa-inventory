@@ -74,8 +74,16 @@ export function PurchaseTable<TValue>({
     pageCount: metadata.totalPages,
   });
 
-  // FIX: derive column count dynamically so footer colSpans never misalign
   const colCount = columns.length;
+
+  // FIX: the footer must account for exactly `colCount` columns of width.
+  // We reserve the last 4 columns for the "Totals / Paid / Due / Grand Total"
+  // labels, so the leading spacer only needs to cover the rest.
+  // Previously this was `colCount - 3`, which produced one extra cell
+  // (10 cells across 9 columns) and pushed the table out of alignment,
+  // causing the inner horizontal scrollbar you saw.
+  const FOOTER_LABEL_CELLS = 4; // Totals | Paid | Due | Grand Total
+  const leadingSpan = Math.max(colCount - FOOTER_LABEL_CELLS, 1);
 
   return (
     <div className="flex flex-col gap-5">
@@ -103,9 +111,6 @@ export function PurchaseTable<TValue>({
               onValueChange={(value) => {
                 setColumnFilters((prev) => {
                   const rest = prev.filter((f) => f.id !== "paymentStatus");
-                  // FIX: when "all" is selected, remove the filter entirely
-                  // instead of setting value to undefined (which TanStack
-                  // treats differently from a missing filter in some versions)
                   if (value === "all") return rest;
                   return [...rest, { id: "paymentStatus", value }];
                 });
@@ -126,64 +131,67 @@ export function PurchaseTable<TValue>({
         </CardHeader>
 
         <CardContent>
-          <Table>
-            <TableHeader>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id} className="bg-primary text-primary-foreground">
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(header.column.columnDef.header, header.getContext())}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-
-            <TableBody>
-              {table.getRowModel().rows.length ? (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow key={row.id}>
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id}>
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </TableCell>
+          {/* FIX: single scroll container around header+body+footer so all
+              three stay pinned to the same column widths instead of
+              scrolling independently / misaligning */}
+          <div className="w-full overflow-x-auto rounded-md border">
+            <Table className="min-w-full">
+              <TableHeader>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <TableRow key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <TableHead
+                        key={header.id}
+                        className="bg-primary text-primary-foreground whitespace-nowrap"
+                      >
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(header.column.columnDef.header, header.getContext())}
+                      </TableHead>
                     ))}
                   </TableRow>
-                ))
-              ) : (
+                ))}
+              </TableHeader>
+
+              <TableBody>
+                {table.getRowModel().rows.length ? (
+                  table.getRowModel().rows.map((row) => (
+                    <TableRow key={row.id}>
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id} className="whitespace-nowrap">
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={colCount} className="h-24 text-center">
+                      No results.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+
+              <TableFooter className="bg-muted/50 border-t text-sm font-medium">
                 <TableRow>
-                  <TableCell colSpan={colCount} className="h-24 text-center">
-                    No results.
+                  <TableCell colSpan={leadingSpan} />
+                  <TableCell className="border-r-2 text-center font-semibold whitespace-nowrap">
+                    Totals
+                  </TableCell>
+                  <TableCell className="border-r-2 text-center whitespace-nowrap">
+                    Paid: {formatCurrency(totals?.paidAmount ?? 0)}
+                  </TableCell>
+                  <TableCell className="border-r-2 text-center text-destructive whitespace-nowrap">
+                    Due: {formatCurrency(totals?.dueAmount ?? 0)}
+                  </TableCell>
+                  <TableCell className="text-center whitespace-nowrap">
+                    Grand Total: {formatCurrency((totals?.paidAmount ?? 0) + (totals?.dueAmount ?? 0))}
                   </TableCell>
                 </TableRow>
-              )}
-            </TableBody>
-
-            {/* FIX: use colCount so footer never misaligns if columns are added */}
-            <TableFooter className="bg-muted/50 border-t text-sm font-medium">
-  <TableRow>
-    <TableCell colSpan={colCount - 3} />
-    <TableCell className="border-r-2 text-center font-semibold">
-      Totals
-    </TableCell>
-    <TableCell className="border-r-2 text-center">
-      Paid: {formatCurrency(totals?.paidAmount ?? 0)}
-    </TableCell>
-    <TableCell className="border-r-2 text-center text-destructive">
-      Due: {formatCurrency(totals?.dueAmount ?? 0)}
-    </TableCell>
-    {/* FIX: totalAmount from service is merchandise-only.
-        True "grand total" across rows = paidAmount + dueAmount
-        because: paymentDue = totalPayable - paid, so
-        totalPayable = paid + due */}
-    <TableCell>
-      Grand Total: {formatCurrency((totals?.paidAmount ?? 0) + (totals?.dueAmount ?? 0))}
-    </TableCell>
-  </TableRow>
-</TableFooter>
-          </Table>
+              </TableFooter>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

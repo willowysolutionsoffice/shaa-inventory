@@ -1,3 +1,4 @@
+// src/app/(dashboard)/purchase/page.tsx
 export const dynamic = "force-dynamic";
 
 import { PurchaseTable } from "@/components/purchase/purchase-table";
@@ -14,12 +15,12 @@ interface ProductPageProps {
 
 export default async function ProductPage({ searchParams }: ProductPageProps) {
   const params = await searchParams;
-  const page  = typeof params.page === "string" ? Number(params.page) : 1;
-  const limit = 10_000_000;
-  const from  = typeof params.from === "string" ? params.from : undefined;
-  const to    = typeof params.to   === "string" ? params.to   : undefined;
 
-  // FIX: guard against action returning an error shape
+  const page  = typeof params.page  === "string" ? Number(params.page)  : 1;
+  const limit = typeof params.limit === "string" ? Number(params.limit) : 20;
+  const from  = typeof params.from  === "string" ? params.from : undefined;
+  const to    = typeof params.to    === "string" ? params.to   : undefined;
+
   const result = await getPurchaseList({ page, limit, from, to });
   const data   = result?.data;
 
@@ -33,7 +34,9 @@ export default async function ProductPage({ searchParams }: ProductPageProps) {
               <p className="text-muted-foreground">Manage your Purchases</p>
             </div>
             <div className="flex items-center gap-2">
-              <DateRangeFilter defaultDate={undefined} />
+              <DateRangeFilter
+                defaultDate={from && to ? { from: new Date(from), to: new Date(to) } : undefined}
+              />
               <Link href="/purchase/new">
                 <Button>
                   <Plus className="mr-2 h-4 w-4" />
@@ -46,13 +49,15 @@ export default async function ProductPage({ searchParams }: ProductPageProps) {
           <PurchaseTable
             columns={purchaseColumns}
             data={data?.purchases ?? []}
-            metadata={data?.metadata ?? {
-              totalPages:  0,
-              totalCount:  0,
-              currentPage: 1,
-              hasNextPage: false,
-              hasPrevPage: false,
-            }}
+            metadata={
+              data?.metadata ?? {
+                totalPages: 0,
+                totalCount: 0,
+                currentPage: 1,
+                hasNextPage: false,
+                hasPrevPage: false,
+              }
+            }
             totals={data?.totals ?? { totalAmount: 0, dueAmount: 0, paidAmount: 0 }}
           />
         </div>

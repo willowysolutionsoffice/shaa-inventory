@@ -68,21 +68,26 @@ export const createPurchaseReturn = actionClient
 export const getPurchaseReturnList = actionClient
   .inputSchema(
     z.object({
-      page:  z.number().default(1),
-      limit: z.number().default(10),
-      from:  z.string().optional(),
-      to:    z.string().optional(),
+      page:       z.number().default(1),
+      limit:      z.number().default(10),
+      from:       z.string().optional(),
+      to:         z.string().optional(),
+      // FIX: accept brand / sub-brand filters, same pattern as product list
+      brandId:    z.string().optional(),
+      subBrandId: z.string().optional(),
     })
   )
   .action(async ({ parsedInput }) => {
     try {
-      const { page, limit, from, to } = parsedInput;
+      const { page, limit, from, to, brandId, subBrandId } = parsedInput;
 
       const params = new URLSearchParams({
         page:  String(page),
         limit: String(limit),
-        ...(from && { from }),
-        ...(to   && { to }),
+        ...(from       && { from }),
+        ...(to         && { to }),
+        ...(brandId    && { brandId }),
+        ...(subBrandId && { subBrandId }),
       });
 
       const payload = await api.get<any>(`/purchase-returns?${params}`);
@@ -96,7 +101,6 @@ export const getPurchaseReturnList = actionClient
       return { error: error.message ?? 'Failed to fetch purchase returns' };
     }
   });
-
 // ── GET BY ID ──────────────────────────────────────────────────────────────────
 
 export const getPurchaseReturnById = actionClient

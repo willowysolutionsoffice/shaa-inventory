@@ -22,34 +22,57 @@ function normalizeSalesReturn(r: any) {
     refundMethod: String(r?.refundMethod ?? '').toLowerCase(),
     reason:       r?.reason      ?? null,
     grandTotal:   Number(r?.grandTotal ?? 0),
+    exchangeTotal:Number(r?.exchangeTotal ?? 0),
+    balanceAmount:Number(r?.balanceAmount ?? 0),
     sale:         r?.sale        ?? null,
     customer:     r?.customer    ?? null,
     branch:       r?.branch      ?? null,
     items: (r?.items ?? []).map((i: any) => ({
-      id:          i.id,
-      productId:   i.productId,
-      quantity:    i.quantity,
-      unitPrice:   Number(i.unitPrice),
-      subtotal:    Number(i.subtotal),
-      total:       Number(i.total),
-      product:     i.product ?? null,
+      id:           i.id,
+      productId:    i.productId,
+      quantity:     Number(i.quantity ?? 0),
+      unitPrice:    Number(i.unitPrice ?? 0),
+      subtotal:     Number(i.subtotal ?? 0),
+      total:        Number(i.total ?? 0),
+      product:      i.product ?? null,
       product_name: i.product?.productName ?? i.product?.product_name ?? '',
     })),
   };
 }
 
-const PATHS = ['/sales-returns', '/sales', '/sales/pos'];
+const PATHS = ['/sales-returns', '/sales-return', '/sales', '/sales/pos'];
 const revalidateAll = () => PATHS.forEach(revalidatePath);
+
+function buildPayload(parsedInput: any) {
+  return {
+    saleId: parsedInput.saleId,
+    refundMethod: parsedInput.refundMethod,
+    reason: parsedInput.reason ?? null,
+    items: (parsedInput.items ?? []).map((i: any) => ({
+      productId: i.productId,
+      quantity: Number(i.quantity),
+    })),
+    exchangeItems: (parsedInput.exchangeItems ?? []).map((i: any) => ({
+      productId: i.productId,
+      quantity: Number(i.quantity),
+      unitPrice: i.unitPrice != null ? Number(i.unitPrice) : undefined,
+      total: i.total != null ? Number(i.total) : undefined,
+      purchasePrice: i.purchasePrice != null ? Number(i.purchasePrice) : undefined,
+    })),
+    extraPayment: parsedInput.extraPayment
+      ? {
+          amount: Number(parsedInput.extraPayment.amount ?? 0),
+          paymentMethod: parsedInput.extraPayment.paymentMethod ?? 'cash',
+          paymentNote: parsedInput.extraPayment.paymentNote ?? 'Exchange balance payment',
+        }
+      : null,
+  };
+}
 
 export const posRefund = actionClient
   .inputSchema(posRefundSchema)
   .action(async ({ parsedInput }) => {
-    const raw = await api.post<any>('/sales-returns', {
-      saleId:       parsedInput.saleId,
-      refundMethod: parsedInput.refundMethod,
-      reason:       parsedInput.reason,
-      items:        parsedInput.items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
-    });
+    const raw = await api.post<any>('/sales-returns', buildPayload(parsedInput));
     revalidateAll();
     return normalizeSalesReturn(raw?.data ?? raw);
   });
@@ -57,12 +80,7 @@ export const posRefund = actionClient
 export const createSalesReturn = actionClient
   .inputSchema(createSalesReturnSchema)
   .action(async ({ parsedInput }) => {
-    const raw = await api.post<any>('/sales-returns', {
-      saleId:       parsedInput.saleId,
-      refundMethod: parsedInput.refundMethod,
-      reason:       parsedInput.reason ?? null,
-      items:        parsedInput.items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
-    });
+    const raw = await api.post<any>('/sales-returns', buildPayload(parsedInput));
     revalidateAll();
     return normalizeSalesReturn(raw?.data ?? raw);
   });
@@ -70,11 +88,8 @@ export const createSalesReturn = actionClient
 export const updateSalesReturn = actionClient
   .inputSchema(updateSalesReturnSchema)
   .action(async ({ parsedInput }) => {
-    const { id, items, ...rest } = parsedInput;
-    const raw = await api.patch<any>(`/sales-returns/${id}`, {
-      ...rest,
-      items: items?.map((i) => ({ productId: i.productId, quantity: i.quantity })),
-    });
+    const { id, ...rest } = parsedInput;
+    const raw = await api.patch<any>(`/sales-returns/${id}`, buildPayload(rest));
     revalidateAll();
     return normalizeSalesReturn(raw?.data ?? raw);
   });
@@ -92,15 +107,15 @@ export const getSalesReturnList = actionClient
   .action(async ({ parsedInput }) => {
     const { page, limit, saleId, branchId } = parsedInput;
     const params = new URLSearchParams({
-      page:  String(page),
+      page: String(page),
       limit: String(limit),
-      ...(saleId   && { saleId }),
+      ...(saleId && { saleId }),
       ...(branchId && { branchId }),
     });
-    const raw     = await api.get<any>(`/sales-returns?${params}`);
+    const raw = await api.get<any>(`/sales-returns?${params}`);
     const payload = raw?.data ?? raw;
     return {
-      returns:  (payload.returns ?? []).map(normalizeSalesReturn),
+      returns: (payload.returns ?? []).map(normalizeSalesReturn),
       metadata: payload.metadata ?? {
         totalPages: 0, totalCount: 0, currentPage: 1,
         hasNextPage: false, hasPrevPage: false,

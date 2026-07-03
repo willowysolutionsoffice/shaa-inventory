@@ -142,17 +142,23 @@ export const getProductList = actionClient
     }
   });
 
-export const getProductDropdown = async (params?: { query?: string; branchId?: string }) => {
+export const getProductDropdown = async (params?: {
+  query?:      string;
+  branchId?:   string;
+  brandId?:    string;
+  subBrandId?: string;
+}) => {
   try {
     const searchParams = new URLSearchParams();
-    if (params?.branchId) searchParams.set('branchId', params.branchId);
-    if (params?.query)    searchParams.set('search', params.query);
+    if (params?.branchId)   searchParams.set('branchId', params.branchId);
+    if (params?.query)      searchParams.set('search', params.query);
+    // FIX: forward brand / sub-brand filters, same query params getProductList already uses
+    if (params?.brandId)    searchParams.set('brandId', params.brandId);
+    if (params?.subBrandId) searchParams.set('subBrandId', params.subBrandId);
 
     const url = `/products/dropdown${searchParams.toString() ? `?${searchParams}` : ''}`;
     const products = await api.get<any[]>(url);
-    
-    console.log('RAW DROPDOWN FROM API:', JSON.stringify(products?.[0])); // ← add this
-    
+
     return (products ?? []).map((p: any) => ({
       ...p,
       product_name:  p.productName ?? p.product_name ?? '',
@@ -161,7 +167,6 @@ export const getProductDropdown = async (params?: { query?: string; branchId?: s
       stock:         Number(p.stock),
     }));
   } catch (e) {
-    console.error('DROPDOWN ERROR:', e); // ← and this
     return [];
   }
 };

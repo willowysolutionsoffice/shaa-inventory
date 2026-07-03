@@ -9,6 +9,15 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { getBrandListForDropdown, getSubBrandsByBrand } from "@/actions/brand-actions";
+import {
   FormField,
   FormItem,
   FormLabel,
@@ -36,7 +45,7 @@ import {
   TableRow,
 } from "../ui/table";
 import { Card } from "../ui/card";
-import { Check, ChevronsUpDown, Search } from "lucide-react";
+import { Check, ChevronsUpDown, Search, PackageSearch } from "lucide-react";
 import { z } from "zod";
 import { ProductOption } from "@/types/product";
 import { PurchaseReturnFormProps, PurchaseReturnItemField } from "@/types/purchase-return";
@@ -76,6 +85,17 @@ export const PurchaseReturnFormSheet = ({
   const [productSearch, setProductSearch] = useState("");
   const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
 
+  const [brandId, setBrandId] = useState("");
+  const [subBrandId, setSubBrandId] = useState("");
+  const [brandList, setBrandList] = useState<{ id: string; name: string }[]>([]);
+  const [subBrandList, setSubBrandList] = useState<{ id: string; name: string }[]>([]);
+
+  // Browse-products modal — lists products for the current brand/sub-brand filter
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const [browseSearch, setBrowseSearch] = useState("");
+  const [browseProducts, setBrowseProducts] = useState<ProductOption[]>([]);
+  const [browseLoading, setBrowseLoading] = useState(false);
+
   const itemFieldKeys: PurchaseReturnItemField[] = [
     "quantity",
     "unitPrice",
@@ -85,13 +105,16 @@ export const PurchaseReturnFormSheet = ({
 
   useEffect(() => {
     const fetchDropdowns = async () => {
-      const [suppliers, branches, purchasesData] = await Promise.all([
+      const [suppliers, branches, purchasesData, brands] = await Promise.all([
         getSupplierListForDropdown(),
         getBranchListForDropdown(),
         getPurchaseList({ page: 1, limit: 1000 }),
+        getBrandListForDropdown(),
       ]);
+      setBrandList(brands);
       setSupplierList(suppliers);
       setBranchList(branches);
+
       // purchasesData is the action result
       const purchases = (purchasesData?.data?.purchases ?? []).map((p: any) => ({
         id:         p.id,
@@ -103,11 +126,64 @@ export const PurchaseReturnFormSheet = ({
     fetchDropdowns();
   }, []);
 
+  // reload sub-brands when brand changes, clear stale selection
+  useEffect(() => {
+    if (!brandId) { setSubBrandList([]); setSubBrandId(""); return; }
+    getSubBrandsByBrand(brandId).then(setSubBrandList).catch(() => setSubBrandList([]));
+    setSubBrandId("");
+  }, [brandId]);
+
+  // quick-search popover — debounced, filtered by brand/sub-brand
+  useEffect(() => {
+    const debounce = setTimeout(async () => {
+      if (productSearch.length > 1) {
+        const products = await getProductDropdown({
+  query: productSearch,
+  ...(brandId ? { brandId } : {}),
+  ...(subBrandId ? { subBrandId } : {}),
+});
+        setProductOptions(applyProductFilters(products ?? []));
+      } else {
+        setProductOptions([]);
+      }
+    }, 300);
+    return () => clearTimeout(debounce);
+  }, [productSearch, brandId, subBrandId]);
+
+  // browse modal — loads product list for brand/sub-brand (with optional in-modal search)
+  useEffect(() => {
+    if (!browseOpen) return;
+
+    let cancelled = false;
+    setBrowseLoading(true);
+
+    const debounce = setTimeout(async () => {
+      const products = await getProductDropdown({
+  query: browseSearch || "",
+  ...(brandId ? { brandId } : {}),
+  ...(subBrandId ? { subBrandId } : {}),
+});
+      if (!cancelled) {
+        setBrowseProducts(applyProductFilters(products ?? []));
+        setBrowseLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(debounce);
+    };
+  }, [browseOpen, browseSearch, brandId, subBrandId]);
+
+  // reset in-modal search each time it's opened fresh
+  useEffect(() => {
+    if (browseOpen) setBrowseSearch("");
+  }, [browseOpen]);
+
   const form = useForm<z.infer<typeof fullPurchaseReturnSchema>>({
     resolver: zodResolver(fullPurchaseReturnSchema),
     defaultValues: {
-        referenceNo:        `RET-${nanoid(4).toUpperCase()}`,  // ← add this
-
+      referenceNo:        `RET-${nanoid(4).toUpperCase()}`,
       purchaseId:         purchaseReturn?.purchaseId        || "",
       branchId:           purchaseReturn?.branchId          || "",
       supplierId:         purchaseReturn?.supplierId         || "",
@@ -140,15 +216,38 @@ export const PurchaseReturnFormSheet = ({
     }
   }, [form, purchaseReturn]);
 
-  useEffect(() => {
-    const debounce = setTimeout(async () => {
-      if (productSearch.length > 1) {
-       const products = await getProductDropdown({ query: productSearch });
-setProductOptions(products);
-      }
-    }, 300);
-    return () => clearTimeout(debounce);
-  }, [productSearch]);
+  const addProduct = (p: ProductOption) => {
+    append({
+      productId:    p.id,
+      product_name: p.product_name,
+      quantity:     1,
+      unitPrice:    p.purchasePrice,
+      subtotal:     p.purchasePrice,
+      total:        p.purchasePrice,
+    });
+  };
+
+  const isProductAdded = (id: string) =>
+    fields.some((f: any) => f.productId === id);
+
+  // Safety filter for Browse Products and quick search.
+  // Backend may return all products even when brand/sub-brand params are sent,
+  // so we also filter on the client using all possible product field shapes.
+  const getProductBrandId = (p: any) =>
+    p.brandId ?? p.brand_id ?? p.brand?.id ?? "";
+
+  const getProductSubBrandId = (p: any) =>
+    p.subBrandId ?? p.sub_brand_id ?? p.subBrand?.id ?? "";
+
+  const applyProductFilters = (products: ProductOption[]) => {
+    return products.filter((p: any) => {
+      const matchesBrand = !brandId || getProductBrandId(p) === brandId;
+      const matchesSubBrand =
+        !subBrandId || getProductSubBrandId(p) === subBrandId;
+
+      return matchesBrand && matchesSubBrand;
+    });
+  };
 
   const handleSubmit = async (data: z.infer<typeof fullPurchaseReturnSchema>) => {
     if (!data.purchaseId) {
@@ -410,59 +509,180 @@ setProductOptions(products);
 
             {/* Products */}
             <Card className="p-4 space-y-4">
-              <FormItem className="relative max-w-sm">
-                <FormLabel>Add Product</FormLabel>
-                <Popover
-                  open={productOptions.length > 0}
-                  onOpenChange={() => setProductOptions([])}
-                >
-                  <PopoverTrigger asChild>
-                    <div>
-                      <Input
-                        placeholder="Search product…"
-                        className="pl-9"
-                        value={productSearch}
-                        onChange={(e) => setProductSearch(e.target.value)}
-                      />
-                      <Search className="absolute left-3 top-9 h-4 w-4 text-muted-foreground" />
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Brand
+                  </span>
+                  <select
+                    value={brandId}
+                    onChange={(e) => setBrandId(e.target.value)}
+                    className="h-9 rounded-md border border-input bg-background px-3 text-sm min-w-[140px]"
+                  >
+                    <option value="">All Brands</option>
+                    {brandList.map((b) => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Sub-brand
+                  </span>
+                  <select
+                    value={subBrandId}
+                    onChange={(e) => setSubBrandId(e.target.value)}
+                    disabled={!brandId}
+                    className="h-9 rounded-md border border-input bg-background px-3 text-sm min-w-[140px] disabled:opacity-50"
+                  >
+                    <option value="">{brandId ? "All Sub-brands" : "Select brand first"}</option>
+                    {subBrandList.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <FormItem className="relative flex-1 min-w-[220px]">
+                  <FormLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Add Product
+                  </FormLabel>
+                  <Popover
+                    open={productOptions.length > 0}
+                    onOpenChange={() => setProductOptions([])}
+                  >
+                    <PopoverTrigger asChild>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search product…"
+                          className="h-9 pl-9"
+                          value={productSearch}
+                          onChange={(e) => setProductSearch(e.target.value)}
+                        />
+                      </div>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                      <Command shouldFilter={false}>
+                        <CommandInput
+                          placeholder="Search product..."
+                          value={productSearch}
+                          onValueChange={setProductSearch}
+                        />
+                        <CommandList>
+                          <CommandEmpty>No products found.</CommandEmpty>
+                          <CommandGroup>
+                            {productOptions.map((p) => (
+                              <CommandItem
+                                key={p.id}
+                                value={p.product_name}
+                                onSelect={() => {
+                                  addProduct(p);
+                                  setProductSearch("");
+                                  setProductOptions([]);
+                                }}
+                              >
+                                {p.product_name}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </FormItem>
+
+                {/* Browse Products modal trigger */}
+                <Dialog open={browseOpen} onOpenChange={setBrowseOpen}>
+                  <DialogTrigger asChild>
+                    <Button type="button" variant="outline" className="h-9 gap-2">
+                      <PackageSearch className="h-4 w-4" />
+                      Browse Products
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle>
+                        {brandId
+                          ? `Products${subBrandId ? "" : " — " + (brandList.find(b => b.id === brandId)?.name ?? "")}${
+                              subBrandId ? " — " + (subBrandList.find(s => s.id === subBrandId)?.name ?? "") : ""
+                            }`
+                          : "All Products"}
+                      </DialogTitle>
+                    </DialogHeader>
+
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search within this list…"
+                          className="pl-9"
+                          value={browseSearch}
+                          onChange={(e) => setBrowseSearch(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="max-h-[420px] overflow-y-auto rounded-md border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Product</TableHead>
+                              <TableHead className="w-28">Stock</TableHead>
+                              <TableHead className="w-28">Cost</TableHead>
+                              <TableHead className="w-24" />
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {browseLoading ? (
+                              <TableRow>
+                                <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
+                                  Loading products…
+                                </TableCell>
+                              </TableRow>
+                            ) : browseProducts.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
+                                  No products found for this filter.
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              browseProducts.map((p) => {
+                                const added = isProductAdded(p.id);
+                                return (
+                                  <TableRow key={p.id}>
+                                    <TableCell>{p.product_name}</TableCell>
+                                    <TableCell>{p.stock ?? "—"}</TableCell>
+                                    <TableCell>
+                                      {CURRENCY_SYMBOL} {Number(p.purchasePrice ?? 0).toFixed(2)}
+                                    </TableCell>
+                                    <TableCell>
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant={added ? "secondary" : "default"}
+                                        disabled={added}
+                                        onClick={() => addProduct(p)}
+                                      >
+                                        {added ? "Added" : "Add"}
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
                     </div>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-full p-0">
-                    <Command shouldFilter={false}>
-                      <CommandInput
-                        placeholder="Search product..."
-                        value={productSearch}
-                        onValueChange={setProductSearch}
-                      />
-                      <CommandList>
-                        <CommandEmpty>No products found.</CommandEmpty>
-                        <CommandGroup>
-                          {productOptions.map((p) => (
-                            <CommandItem
-                              key={p.id}
-                              value={p.product_name}
-                              onSelect={() => {
-                                append({
-                                  productId:    p.id,
-                                  product_name: p.product_name,
-                                  quantity:     1,
-                                  unitPrice:    p.purchasePrice,
-                                  subtotal:     p.purchasePrice,
-                                  total:        p.purchasePrice,
-                                });
-                                setProductSearch("");
-                                setProductOptions([]);
-                              }}
-                            >
-                              {p.product_name}
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-              </FormItem>
+
+                    <DialogFooter>
+                      <Button type="button" variant="outline" onClick={() => setBrowseOpen(false)}>
+                        Done
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
 
               <Table>
                 <TableHeader>

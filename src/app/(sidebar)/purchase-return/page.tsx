@@ -1,3 +1,4 @@
+// src/app/(dashboard)/purchase-return/page.tsx
 export const dynamic = "force-dynamic";
 
 import { PurchaseReturnTable } from "@/components/purchase-return/purchase-return-table";
@@ -6,7 +7,7 @@ import { purchaseReturnColumns } from "@/components/purchase-return/purchase-ret
 import { getPurchaseReturnList } from "@/actions/purchase-return-action";
 
 import { DateRangeFilter } from "@/components/common/date-range-filter";
-import { format } from "date-fns";
+import { BrandSubBrandFilter } from "@/components/common/brand-subbrand-filter";
 import { getTodayUtcMidnight, formatUtcDate } from "@/lib/date-utils";
 
 interface PurchaseReturnPageProps {
@@ -15,17 +16,18 @@ interface PurchaseReturnPageProps {
 
 export default async function PurchaseReturnPage({ searchParams }: PurchaseReturnPageProps) {
   const params = await searchParams;
-  const page = typeof params.page === "string" ? Number(params.page) : 1;
-  const limit = 10000000;
+  const page  = typeof params.page  === "string" ? Number(params.page)  : 1;
+  const limit = typeof params.limit === "string" ? Number(params.limit) : 20; // FIX: was hardcoded 10,000,000 — see purchase list fix earlier
 
-  const today = getTodayUtcMidnight();
+  const today          = getTodayUtcMidnight();
   const formattedToday = formatUtcDate(today);
 
-  const from = typeof params.from === "string" ? params.from : formattedToday;
-  const to = typeof params.to === "string" ? params.to : formattedToday;
+  const from       = typeof params.from       === "string" ? params.from       : formattedToday;
+  const to         = typeof params.to         === "string" ? params.to         : formattedToday;
+  const brandId    = typeof params.brandId    === "string" ? params.brandId    : undefined;
+  const subBrandId = typeof params.subBrandId === "string" ? params.subBrandId : undefined;
 
-
-  const { data } = await getPurchaseReturnList({ page, limit, from, to });
+  const { data } = await getPurchaseReturnList({ page, limit, from, to, brandId, subBrandId });
 
   return (
     <div className="flex flex-1 flex-col">
@@ -36,7 +38,8 @@ export default async function PurchaseReturnPage({ searchParams }: PurchaseRetur
               <h1 className="text-2xl font-bold tracking-tight">Purchase Returns</h1>
               <p className="text-muted-foreground">Manage your Purchase Returns</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <BrandSubBrandFilter />
               <DateRangeFilter defaultDate={{ from: today, to: today }} />
               <PurchaseReturnFormSheet />
             </div>

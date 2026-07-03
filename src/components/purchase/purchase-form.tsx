@@ -448,7 +448,7 @@ export const PurchaseFormSheet = ({
                 name="referenceNo"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Reference No</FormLabel>
+                    <FormLabel>Invoice No</FormLabel>
                     <FormControl>
                       <Input {...field} placeholder="Auto-generated on save" />
                     </FormControl>

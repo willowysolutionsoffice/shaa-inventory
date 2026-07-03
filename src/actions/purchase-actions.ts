@@ -198,3 +198,38 @@ export const deletePurchase = actionClient
       return { error: error.message ?? 'Failed to delete purchase' };
     }
   });
+
+// ── REPORT ─────────────────────────────────────────────────────────────────────
+// Item-wise purchase report. Mirrors getSalesReport: runs server-side so
+// cookies/auth forward correctly, only date/branch/supplier are filtered on
+// the API — brand / sub-brand filtering happens client-side against the
+// product metadata carried on each item (see the report page component).
+
+export async function getPurchaseReport(params: {
+  from?: string;
+  to?: string;
+  branchId?: string;
+  supplierId?: string;
+  limit?: number;
+  page?: number;
+}): Promise<{ purchases: any[] } | { error: string }> {
+  try {
+    const query = new URLSearchParams({
+      page:  String(params.page  ?? 1),
+      limit: String(params.limit ?? 500),
+      ...(params.from       && { from:       params.from }),
+      ...(params.to         && { to:         params.to }),
+      ...(params.branchId   && { branchId:   params.branchId }),
+      ...(params.supplierId && { supplierId: params.supplierId }),
+    });
+
+    const raw     = await api.get<any>(`/purchases?${query}`);
+    const payload = raw?.data ?? raw;
+
+    return {
+      purchases: payload?.purchases ?? payload ?? [],
+    };
+  } catch (error: any) {
+    return { error: error.message ?? 'Failed to fetch purchase report' };
+  }
+}

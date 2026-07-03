@@ -186,6 +186,13 @@ const navMain: NavGroup[] = [
         newTab: true,
       },
       {
+        title: "Purchase Report",
+        url: "/reports/sales-purchase-reports",
+        icon: FileSpreadsheet,
+        permission: PERMISSIONS.VIEW_REPORTS,
+        newTab: true,
+      },
+      {
   title: "GRN Screen",
   url: "/admin/grn",
   icon: ClipboardCheck,
@@ -401,7 +408,7 @@ const admin: NavGroup[] = [
       
       },
       {
-        title: "Sales & Purchase Report",
+        title: "Purchase Report",
         url: "/reports/sales-purchase-reports",
         icon: FileSpreadsheet,
         permission: PERMISSIONS.VIEW_REPORTS,

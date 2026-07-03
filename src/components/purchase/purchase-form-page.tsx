@@ -556,7 +556,7 @@ const handleRemove = useCallback((idx: number) => remove(idx), [remove]);
                 name="referenceNo"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Reference No</FormLabel>
+                    <FormLabel>Invoice No</FormLabel>
                     <FormControl>
                       <Input {...field} />
                     </FormControl>

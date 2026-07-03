@@ -82,7 +82,7 @@ export function PurchaseReturnTable<TValue>({
         <CardHeader>
           <div className="space-y-2">
             <CardTitle>Filters</CardTitle>
-            <CardDescription>Search returns by reference number or customer</CardDescription>
+            <CardDescription>Search returns by Invoice number or customer</CardDescription>
           </div>
 
           

@@ -1,3 +1,8 @@
+"use client";
+
+import qz from "qz-tray";
+import { toast } from "sonner";
+
 export interface ThermalPrintData {
   invoiceNo: string;
   date: string;
@@ -17,37 +22,113 @@ function methodLabel(method: string) {
   const m = method.toLowerCase();
   if (m === "cash") return "Cash";
   if (m === "card") return "Card";
-  if (m === "upi")  return "UPI";
+  if (m === "upi") return "UPI";
   return method;
 }
 
 function buildPaymentHtml(payments: { method: string; amount: number }[], change: number): string {
-  const isSplit = payments.length > 1;
+  const safePayments = payments.length > 0 ? payments : [{ method: "cash", amount: 0 }];
+  const isSplit = safePayments.length > 1;
   const changeRow = change > 0
     ? `<div class="bold" style="display:flex;justify-content:space-between;margin-top:2px;font-size:11px;"><span>Change:</span><span>${change.toLocaleString("en-IN")}</span></div>`
     : "";
+
   if (!isSplit) {
     return `
       <div class="bold" style="display:flex;justify-content:space-between;font-size:11px;margin-top:2px;">
         <span>Paid via:</span>
-        <span>${methodLabel(payments[0].method)}</span>
+        <span>${methodLabel(safePayments[0].method)}</span>
       </div>${changeRow}`;
   }
-  const rows = payments.map((p) => `
+
+  const rows = safePayments.map((p) => `
     <div class="bold" style="display:flex;justify-content:space-between;font-size:11px;padding-left:8px;">
       <span>&#x21b3; ${methodLabel(p.method)}:</span>
       <span>${p.amount.toLocaleString("en-IN")}</span>
     </div>`).join("");
+
   return `
     <div class="bold" style="display:flex;justify-content:space-between;font-size:11px;margin-top:2px;">
       <span>Paid via:</span><span>Split Payment</span>
     </div>${rows}${changeRow}`;
 }
 
-export function printThermalDirect(data: ThermalPrintData) {
-  const printWindow = window.open("", "_blank");
-  if (!printWindow) { alert("Allow popups to print."); return; }
+async function setupQZSecurity() {
+  qz.security.setCertificatePromise(async () => {
+    const res = await fetch("/qz/digital-certificate.txt");
 
+    if (!res.ok) {
+      throw new Error("QZ certificate not found");
+    }
+
+    return await res.text();
+  });
+
+  qz.security.setSignatureAlgorithm("SHA512");
+
+  qz.security.setSignaturePromise((toSign) => {
+    return async (resolve, reject) => {
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+        if (!apiUrl) {
+          throw new Error("NEXT_PUBLIC_API_URL is not configured");
+        }
+
+        const res = await fetch(`${apiUrl}/qz/sign`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ request: toSign }),
+        });
+
+        if (!res.ok) {
+          throw new Error("QZ signature failed");
+        }
+
+        const data = await res.json();
+        resolve(data.signature);
+      } catch (err) {
+        reject(err);
+      }
+    };
+  });
+}
+
+export async function printHtmlWithQZ(invoiceHtml: string) {
+  try {
+    await setupQZSecurity();
+
+    if (!qz.websocket.isActive()) {
+      await qz.websocket.connect({ retries: 2, delay: 1 });
+    }
+
+    const printer = localStorage.getItem("pos_printer_name") || "Microsoft Print to PDF";
+
+    const config = qz.configs.create(printer, {
+      margins: 0,
+      units: "mm",
+      size: { width: 80 },
+      scaleContent: false,
+      rasterize: false,
+    });
+
+    await qz.print(config, [
+      {
+        type: "pixel",
+        format: "html",
+        flavor: "plain",
+        data: invoiceHtml,
+      },
+    ]);
+
+    toast.success("Invoice sent to printer.");
+  } catch (err) {
+    console.error("[QZ print error]", err);
+    toast.error("QZ printing failed.");
+    throw err;
+  }
+}
+
+export function buildThermalReceiptHtml(data: ThermalPrintData): string {
   const itemRows = data.items.map((item, i) => `
   <tr style="border-bottom:${i < data.items.length - 1 ? "1px dashed #000" : "none"};">
     <td style="padding:4px 0;font-size:9px;">${i + 1}</td>
@@ -58,16 +139,23 @@ export function printThermalDirect(data: ThermalPrintData) {
     <td class="heavy" style="padding:4px 0;text-align:right;font-size:9px;">${item.total.toLocaleString("en-IN")}</td>
   </tr>`).join("");
 
-  const couponRow   = data.couponDiscount > 0
-    ? `<div style="display:flex;justify-content:space-between;font-size:10px;color:#000;"><span>Coupon (${data.couponCode}):</span><span>-${data.couponDiscount.toLocaleString("en-IN")}</span></div>` : "";
-  const discountRow = data.manualDiscount > 0
-    ? `<div style="display:flex;justify-content:space-between;font-size:10px;color:#000;"><span>Discount:</span><span>-${data.manualDiscount.toLocaleString("en-IN")}</span></div>` : "";
-  const customerBlock = data.customerName && data.customerName !== "Select a Customer"
-    ? `<div style="padding-left:8px;font-weight:700;color:#000;">${data.customerName}</div>` : "";
-  const phoneBlock = data.customerPhone
-    ? `<div style="padding-left:8px;font-size:10px;color:#000;">${data.customerPhone}</div>` : "";
+  const couponRow = data.couponDiscount > 0
+    ? `<div style="display:flex;justify-content:space-between;font-size:10px;color:#000;"><span>Coupon (${data.couponCode}):</span><span>-${data.couponDiscount.toLocaleString("en-IN")}</span></div>`
+    : "";
 
-  printWindow.document.write(`
+  const discountRow = data.manualDiscount > 0
+    ? `<div style="display:flex;justify-content:space-between;font-size:10px;color:#000;"><span>Discount:</span><span>-${data.manualDiscount.toLocaleString("en-IN")}</span></div>`
+    : "";
+
+  const customerBlock = data.customerName && data.customerName !== "Select a Customer"
+    ? `<div style="padding-left:8px;font-weight:700;color:#000;">${data.customerName}</div>`
+    : "";
+
+  const phoneBlock = data.customerPhone
+    ? `<div style="padding-left:8px;font-size:10px;color:#000;">${data.customerPhone}</div>`
+    : "";
+
+  return `
     <html><head>
   <title>Receipt - ${data.invoiceNo}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -163,7 +251,10 @@ export function printThermalDirect(data: ThermalPrintData) {
         <div style="font-size:10px;margin-bottom:2px;">* We are under composition taxpayer, We are not collecting tax from customer</div>
       </div>
       <div style="text-align:center;margin-top:10px;font-weight:700;font-size:11px;letter-spacing:0.5px;">THANK YOU VISIT AGAIN ;</div>
-      <script>window.onload=function(){setTimeout(function(){window.print();window.close();},400);};<\/script>
-    </body></html>`);
-  printWindow.document.close();
+    </body></html>`;
+}
+
+export async function printThermalDirect(data: ThermalPrintData) {
+  const html = buildThermalReceiptHtml(data);
+  await printHtmlWithQZ(html);
 }

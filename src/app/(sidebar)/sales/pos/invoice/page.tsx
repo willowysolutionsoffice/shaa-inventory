@@ -140,7 +140,7 @@ const handleThermalPrint = async (sale: SaleRow) => {
     }));
     const itemDiscountTotal = (full.items ?? []).reduce((s: number, i: any) => s + Number(i.discount ?? 0), 0);
 
-    printThermalDirect({
+    await printThermalDirect({
       invoiceNo:      full.invoiceNo ?? "—",
       date,
       time,

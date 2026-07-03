@@ -26,8 +26,8 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
   const from = typeof params.from === "string" ? params.from : formattedToday;
   const to   = typeof params.to   === "string" ? params.to   : formattedToday;
 
-const result = await fetchSales({ page, limit});
-console.log("SALES ACTION RESULT:", result);
+  const result = await fetchSales({ page, limit, from, to });
+
   return (
     <div className="flex flex-1 flex-col">
       <div className="@container/main flex flex-1 flex-col gap-2">
@@ -49,25 +49,25 @@ console.log("SALES ACTION RESULT:", result);
           </div>
 
           <SalesTable
-  columns={salesColumns}
-  data={(result?.sales ?? []) as any}
-  metadata={
-    result?.metadata ?? {
-      totalPages: 0,
-      totalCount: 0,
-      currentPage: 1,
-      hasNextPage: false,
-      hasPrevPage: false,
-    }
-  }
-  totals={
-    result?.totals ?? {
-      grandTotal: 0,
-      dueAmount: 0,
-      paidAmount: 0,
-    }
-  }
-/>
+            columns={salesColumns}
+            data={(result?.sales ?? []) as any}
+            metadata={
+              result?.metadata ?? {
+                totalPages: 0,
+                totalCount: 0,
+                currentPage: 1,
+                hasNextPage: false,
+                hasPrevPage: false,
+              }
+            }
+            totals={
+              result?.totals ?? {
+                grandTotal: 0,
+                dueAmount: 0,
+                paidAmount: 0,
+              }
+            }
+          />
         </div>
       </div>
     </div>

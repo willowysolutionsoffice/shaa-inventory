@@ -9,6 +9,7 @@ import {
   CreditCard, Wallet, IndianRupee, AlertTriangle, FileText,
 } from "lucide-react";
 import { toast } from "sonner";
+import { printHtmlWithQZ } from "@/lib/thermal-print";
 import { posRefund } from "@/actions/sales-return-action";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -707,11 +708,8 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
     { id: "refund" as const, label: "Refund", icon: <RotateCcw size={15} /> },
   ];
 
-  // ── Thermal print (opens popup window) ────────────────────────────────────
-  const printThermal = () => {
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) { toast.error("Failed to open print window. Please allow popups."); return; }
-
+  // ── Thermal print through QZ Tray (no browser print preview) ──────────────
+  const printThermal = async () => {
     const { date, time } = fmtDate(invoice.date);
 
     const itemRows = invoice.items.map((item, i) => `
@@ -739,7 +737,7 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
 
     const paymentHtml = buildPaymentHtml(payments, invoice.change);
 
-    printWindow.document.write(`
+    const html = `
       <html>
         <head>
   <title>Receipt - ${invoice.invoiceNo}</title>
@@ -840,11 +838,11 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
             <div style="font-size:10px;margin-bottom:2px;color:#000;">* We are under composition taxpayer, We are not collecting tax from customer</div>
           </div>
           <div style="text-align:center;margin-top:10px;font-weight:700;font-size:11px;letter-spacing:0.5px;color:#000;">THANK YOU VISIT AGAIN ;</div>
-          <script>window.onload=function(){setTimeout(function(){window.print();window.close();},400);};<\/script>
         </body>
       </html>
-    `);
-    printWindow.document.close();
+    `;
+
+    await printHtmlWithQZ(html);
   };
 
   // ── A4 PDF blob generation ─────────────────────────────────────────────────
@@ -865,7 +863,7 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
   // ── Unified print handler — respects active print mode ────────────────────
   const handlePrint = async (mode: "thermal" | "a4") => {
     if (mode === "thermal") {
-      printThermal();
+      await printThermal();
       return;
     }
     // A4: generate PDF and open in iframe for printing
@@ -887,7 +885,7 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
   const handleDownload = async (mode: "thermal" | "a4") => {
     if (mode === "thermal") {
       toast.info("Use 'Save as PDF' in the print dialog to download thermal receipt.");
-      setTimeout(() => printThermal(), 600);
+      setTimeout(() => { void printThermal(); }, 600);
       return;
     }
     // A4 download
