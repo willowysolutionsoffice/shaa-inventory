@@ -459,9 +459,16 @@ async function printWithQZ(invoiceHtml: string) {
       await qz.websocket.connect();
     }
 
-    const printer =
-      localStorage.getItem("pos_printer_name") ||
-      "Microsoft Print to PDF";
+    let printer = localStorage.getItem("pos_printer_name");
+
+    if (!printer) {
+      printer = await qz.printers.getDefault();
+    }
+
+    if (!printer || printer.toLowerCase().includes("pdf")) {
+      toast.error("Please select a thermal printer, not Microsoft Print to PDF.");
+      return;
+    }
 
     const config = qz.configs.create(printer, {
       margins: 0,
@@ -480,7 +487,7 @@ async function printWithQZ(invoiceHtml: string) {
       },
     ]);
 
-    toast.success("Invoice sent to printer.");
+    toast.success(`Invoice sent to ${printer}.`);
   } catch (err) {
     console.error("[QZ print error]", err);
     toast.error("QZ printing failed.");
