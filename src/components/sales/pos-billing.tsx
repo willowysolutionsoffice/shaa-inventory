@@ -332,9 +332,9 @@ function printThermalReceipt(params: PrintReceiptParams) {
       <body>
         <div style="text-align:center;margin-bottom:10px;">
           <div class="heavy" style="font-size:17px;letter-spacing:1.5px;text-transform:uppercase;">SHAASHOPY</div>
-          <div style="font-size:10px;margin-top:1px;">2ND FLOOR, HILITE MALL</div>
-          <div style="font-size:10px;">PH: +91 9847640052</div>
-          <div style="font-size:10px;">GSTIN: 32AFJFS9358F1ZN</div>
+          <div style="font-size:10px;margin-top:1px;">1ST FLOOR, HILTE COUNTRY SIDE, CHEMMAD</div>
+          <div style="font-size:10px;">PH: +91 9292254549</div>
+          <div style="font-size:10px;">GSTIN: 32AFJFS9358F2ZM</div>
         </div>
 
         <div style="border-top:1px dashed #000;border-bottom:1px dashed #000;padding:5px 0;margin-bottom:8px;">
