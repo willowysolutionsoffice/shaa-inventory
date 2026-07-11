@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import {
   FormField,
@@ -25,7 +25,7 @@ import { getSupplierListForDropdown } from "@/actions/supplier-action";
 import { getProductDropdown } from "@/actions/product-actions";
 import { useWatch } from "react-hook-form";
 
-import { useEffect, useState, memo, useCallback } from "react";
+import { useEffect, useState, memo, useCallback, useMemo } from "react";
 import {
   Table,
   TableBody,
@@ -33,6 +33,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TableFooter,
 } from "../ui/table";
 import { Card } from "../ui/card";
 import {
@@ -71,7 +72,11 @@ const PAYMENT_METHODS = [
   { value: "other", label: "Other" },
 ] as const;
 
-const ITEM_FIELD_KEYS: PurchaseItemField[] = ["quantity", "unitPrice", "discount"];
+const ITEM_FIELD_KEYS: PurchaseItemField[] = [
+  "quantity",
+  "unitPrice",
+  "discount",
+];
 
 // ---------------------------------------------------------------------------
 // Helpers — always produce a safe finite number for display / calculation
@@ -86,7 +91,7 @@ const UnitPriceInput = ({ idx, form }: { idx: number; form: any }) => {
           <Input
             type="number"
             min={0}
-            className="min-w-[5rem]"
+            className="h-9 w-full min-w-0 px-2"
             value={safeVal(inputField.value)}
             onChange={(e) => {
               const value = e.target.value === "" ? 0 : safeNum(e.target.value);
@@ -96,7 +101,9 @@ const UnitPriceInput = ({ idx, form }: { idx: number; form: any }) => {
               const discount = safeNum(row.discount);
               const subtotal = qty * value;
               const total = Math.max(0, subtotal - discount);
-              form.setValue(`items.${idx}.subtotal`, subtotal, { shouldDirty: true });
+              form.setValue(`items.${idx}.subtotal`, subtotal, {
+                shouldDirty: true,
+              });
               form.setValue(`items.${idx}.total`, total, { shouldDirty: true });
             }}
           />
@@ -135,14 +142,16 @@ interface ItemRowProps {
 }
 
 const ItemRow = memo(({ f, idx, form, onRemove }: ItemRowProps) => {
-
-  const subtotal = useWatch({ control: form.control, name: `items.${idx}.subtotal` });
+  const subtotal = useWatch({
+    control: form.control,
+    name: `items.${idx}.subtotal`,
+  });
   const total = useWatch({ control: form.control, name: `items.${idx}.total` });
 
   return (
     <TableRow key={f.id}>
-      <TableCell>{f.product_name || "—"}</TableCell>
-      <TableCell>{safeNum(f.stock)}</TableCell>
+      <TableCell className="break-words font-medium">{f.product_name || "—"}</TableCell>
+      <TableCell className="text-center">{safeNum(f.stock)}</TableCell>
 
       {/* Quantity */}
       <TableCell>
@@ -154,18 +163,23 @@ const ItemRow = memo(({ f, idx, form, onRemove }: ItemRowProps) => {
               <Input
                 type="number"
                 min={1}
-                className="min-w-[5rem]"
+                className="h-9 w-full min-w-0 px-2"
                 value={safeVal(inputField.value)}
                 onChange={(e) => {
-                  const value = e.target.value === "" ? 1 : safeNum(e.target.value);
+                  const value =
+                    e.target.value === "" ? 1 : safeNum(e.target.value);
                   inputField.onChange(value);
                   const row = form.getValues(`items.${idx}`);
                   const price = safeNum(row.unitPrice);
                   const discount = safeNum(row.discount);
                   const subtotal = value * price;
                   const total = Math.max(0, subtotal - discount);
-                  form.setValue(`items.${idx}.subtotal`, subtotal, { shouldDirty: true });
-                  form.setValue(`items.${idx}.total`, total, { shouldDirty: true });
+                  form.setValue(`items.${idx}.subtotal`, subtotal, {
+                    shouldDirty: true,
+                  });
+                  form.setValue(`items.${idx}.total`, total, {
+                    shouldDirty: true,
+                  });
                 }}
               />
             </FormControl>
@@ -183,18 +197,23 @@ const ItemRow = memo(({ f, idx, form, onRemove }: ItemRowProps) => {
               <Input
                 type="number"
                 min={0}
-                className="min-w-[5rem]"
+                className="h-9 w-full min-w-0 px-2"
                 value={safeVal(inputField.value)}
                 onChange={(e) => {
-                  const value = e.target.value === "" ? 0 : safeNum(e.target.value);
+                  const value =
+                    e.target.value === "" ? 0 : safeNum(e.target.value);
                   inputField.onChange(value);
                   const row = form.getValues(`items.${idx}`);
                   const qty = safeNum(row.quantity);
                   const discount = safeNum(row.discount);
                   const subtotal = qty * value;
                   const total = Math.max(0, subtotal - discount);
-                  form.setValue(`items.${idx}.subtotal`, subtotal, { shouldDirty: true });
-                  form.setValue(`items.${idx}.total`, total, { shouldDirty: true });
+                  form.setValue(`items.${idx}.subtotal`, subtotal, {
+                    shouldDirty: true,
+                  });
+                  form.setValue(`items.${idx}.total`, total, {
+                    shouldDirty: true,
+                  });
                 }}
               />
             </FormControl>
@@ -212,10 +231,12 @@ const ItemRow = memo(({ f, idx, form, onRemove }: ItemRowProps) => {
               <Input
                 type="number"
                 min={0}
-                className="min-w-[5rem] bg-muted/30"
+                className="h-9 w-full min-w-0 bg-muted/30 px-2"
                 value={safeVal(inputField.value)}
                 onChange={(e) => {
-                  inputField.onChange(e.target.value === "" ? 0 : safeNum(e.target.value));
+                  inputField.onChange(
+                    e.target.value === "" ? 0 : safeNum(e.target.value),
+                  );
                 }}
               />
             </FormControl>
@@ -233,18 +254,23 @@ const ItemRow = memo(({ f, idx, form, onRemove }: ItemRowProps) => {
               <Input
                 type="number"
                 min={0}
-                className="min-w-[5rem]"
+                className="h-9 w-full min-w-0 px-2"
                 value={safeVal(inputField.value)}
                 onChange={(e) => {
-                  const value = e.target.value === "" ? 0 : safeNum(e.target.value);
+                  const value =
+                    e.target.value === "" ? 0 : safeNum(e.target.value);
                   inputField.onChange(value);
                   const row = form.getValues(`items.${idx}`);
                   const qty = safeNum(row.quantity);
                   const price = safeNum(row.unitPrice);
                   const subtotal = qty * price;
                   const total = Math.max(0, subtotal - value);
-                  form.setValue(`items.${idx}.subtotal`, subtotal, { shouldDirty: true });
-                  form.setValue(`items.${idx}.total`, total, { shouldDirty: true });
+                  form.setValue(`items.${idx}.subtotal`, subtotal, {
+                    shouldDirty: true,
+                  });
+                  form.setValue(`items.${idx}.total`, total, {
+                    shouldDirty: true,
+                  });
                 }}
               />
             </FormControl>
@@ -252,15 +278,20 @@ const ItemRow = memo(({ f, idx, form, onRemove }: ItemRowProps) => {
         />
       </TableCell>
 
-      <TableCell className="min-w-[5rem] text-right">
+      <TableCell className="whitespace-nowrap text-right">
         {safeNum(subtotal).toFixed(2)}
       </TableCell>
-      <TableCell className="min-w-[5rem] text-right font-medium">
+      <TableCell className="whitespace-nowrap text-right font-medium">
         {safeNum(total).toFixed(2)}
       </TableCell>
 
       <TableCell>
-        <Button type="button" variant="destructive" size="sm" onClick={() => onRemove(idx)}>
+        <Button
+          type="button"
+          variant="destructive"
+          size="sm"
+          onClick={() => onRemove(idx)}
+        >
           Remove
         </Button>
       </TableCell>
@@ -323,23 +354,71 @@ export const PurchaseFormPage = ({
     form.setValue("referenceNo", `REF-${nanoid(4).toUpperCase()}`);
   }, [form]);
 
- const { fields, append, remove } = useFieldArray({
-  control: form.control,
-  name: "items",
-});
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: "items",
+  });
 
-const handleRemove = useCallback((idx: number) => remove(idx), [remove]);
+  const handleRemove = useCallback((idx: number) => remove(idx), [remove]);
 
-  // Product search with debounce
+  // Product search with debounce.
+  // Search begins from the first typed character and the returned list is also
+  // filtered locally so unrelated products cannot appear even if the backend
+  // endpoint returns an unfiltered list.
   useEffect(() => {
+    const query = productSearch.trim();
+
+    if (!query) {
+      setProductOptions([]);
+      return;
+    }
+
+    let cancelled = false;
+
     const debounce = setTimeout(async () => {
-      if (productSearch.length > 1) {
-        const products = await getProductDropdown({ query: productSearch });
-        setProductOptions(products);
+      try {
+        const products = await getProductDropdown({ query });
+        if (!cancelled) {
+          setProductOptions(Array.isArray(products) ? products : []);
+        }
+      } catch (error) {
+        console.error("Failed to search products:", error);
+        if (!cancelled) setProductOptions([]);
       }
     }, 300);
-    return () => clearTimeout(debounce);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(debounce);
+    };
   }, [productSearch]);
+
+  const filteredProductOptions = useMemo(() => {
+    const keywords = productSearch
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    if (keywords.length === 0) return [];
+
+    return productOptions.filter((product: any) => {
+      const searchableText = [
+        product.product_name,
+        product.name,
+        product.sku,
+        product.barcode,
+        product.productCode,
+        product.brand,
+        product.category,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return keywords.every((keyword) => searchableText.includes(keyword));
+    });
+  }, [productOptions, productSearch]);
 
   // ---------------------------------------------------------------------------
   // Derived totals (watched live)
@@ -347,6 +426,12 @@ const handleRemove = useCallback((idx: number) => remove(idx), [remove]);
 
   const itemTotals = useWatch({ control: form.control, name: "items" });
   const watchedPayments = useWatch({ control: form.control, name: "payments" });
+
+  /** Sum of quantities across all selected products */
+  const totalQuantity = (itemTotals ?? []).reduce(
+    (sum: number, item: any) => sum + safeNum(item?.quantity),
+    0,
+  );
 
   /** Grand total of all line items */
   const grandTotal = (itemTotals ?? []).reduce(
@@ -374,16 +459,28 @@ const handleRemove = useCallback((idx: number) => remove(idx), [remove]);
   // ---------------------------------------------------------------------------
 
   const handleSubmit = async (data: z.infer<typeof fullPurchaseSchema>) => {
-    if (!data.supplierId) { toast.error("Please select a supplier"); return; }
-    if (!data.branchId) { toast.error("Please select a business location"); return; }
+    if (!data.supplierId) {
+      toast.error("Please select a supplier");
+      return;
+    }
+    if (!data.branchId) {
+      toast.error("Please select a business location");
+      return;
+    }
     if (!data.items || data.items.length === 0) {
       toast.error("Please add at least one product");
       return;
     }
 
-    const computedGrandTotal = data.items.reduce((sum, item) => sum + safeNum(item.total), 0);
+    const computedGrandTotal = data.items.reduce(
+      (sum, item) => sum + safeNum(item.total),
+      0,
+    );
     const computedTotalPayable = safeNum(openingBalance) + computedGrandTotal;
-    const computedPaid = data.payments.reduce((sum, p) => sum + safeNum(p.amount), 0);
+    const computedPaid = data.payments.reduce(
+      (sum, p) => sum + safeNum(p.amount),
+      0,
+    );
     const computedDue = Math.max(0, computedTotalPayable - computedPaid);
 
     const payload = {
@@ -394,13 +491,17 @@ const handleRemove = useCallback((idx: number) => remove(idx), [remove]);
       // Pass totalPayable explicitly so the backend stores the correct paymentDue
       // (supplierOpeningBalance + grandTotal − amountPaid).
       totalPayable: computedTotalPayable,
-      purchaseDate: data.purchaseDate instanceof Date
-        ? data.purchaseDate.toISOString()
-        : data.purchaseDate,
+      purchaseDate:
+        data.purchaseDate instanceof Date
+          ? data.purchaseDate.toISOString()
+          : data.purchaseDate,
       payments: data.payments.map((p) => ({
         ...p,
         paidOn: p.paidOn instanceof Date ? p.paidOn.toISOString() : p.paidOn,
-        dueDate: p.dueDate instanceof Date ? p.dueDate.toISOString() : (p.dueDate ?? null),
+        dueDate:
+          p.dueDate instanceof Date
+            ? p.dueDate.toISOString()
+            : (p.dueDate ?? null),
       })),
     };
 
@@ -436,17 +537,17 @@ const handleRemove = useCallback((idx: number) => remove(idx), [remove]);
     <div className="container mx-auto p-6">
       <div className="mb-6">
         <h1 className="text-3xl font-bold">Add New Purchase</h1>
-        <p className="text-muted-foreground">Fill out the purchase details below</p>
+        <p className="text-muted-foreground">
+          Fill out the purchase details below
+        </p>
       </div>
 
       <FormProvider {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-
           {/* ── Purchase Details ─────────────────────────────────────────── */}
           <Card className="p-6">
             <h2 className="text-xl font-semibold mb-4">Purchase Details</h2>
             <div className="grid md:grid-cols-2 gap-4">
-
               {/* Supplier */}
               <FormField
                 control={form.control}
@@ -470,8 +571,8 @@ const handleRemove = useCallback((idx: number) => remove(idx), [remove]);
                                 !field.value && "text-muted-foreground",
                               )}
                             >
-                              {supplierList.find((s) => s.id === field.value)?.name
-                                || "Select supplier..."}
+                              {supplierList.find((s) => s.id === field.value)
+                                ?.name || "Select supplier..."}
                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                             </Button>
                           </PopoverTrigger>
@@ -488,7 +589,9 @@ const handleRemove = useCallback((idx: number) => remove(idx), [remove]);
                                       onSelect={() => {
                                         field.onChange(supplier.id);
                                         // Update opening balance whenever supplier changes
-                                        setOpeningBalance(safeNum(supplier.openingBalance));
+                                        setOpeningBalance(
+                                          safeNum(supplier.openingBalance),
+                                        );
                                         setShowSupplierSuggestions(false);
                                       }}
                                     >
@@ -580,14 +683,18 @@ const handleRemove = useCallback((idx: number) => remove(idx), [remove]);
                             variant="outline"
                             className="w-full text-left"
                           >
-                            {field.value ? formatDate(field.value) : "Pick date"}
+                            {field.value
+                              ? formatDate(field.value)
+                              : "Pick date"}
                           </Button>
                         </FormControl>
                       </PopoverTrigger>
                       <PopoverContent>
                         <Calendar
                           mode="single"
-                          selected={field.value ? new Date(field.value) : undefined}
+                          selected={
+                            field.value ? new Date(field.value) : undefined
+                          }
                           onSelect={field.onChange}
                           captionLayout="dropdown"
                         />
@@ -605,11 +712,15 @@ const handleRemove = useCallback((idx: number) => remove(idx), [remove]);
             <h2 className="text-xl font-semibold mb-4">Add Products</h2>
 
             {/* Product search */}
-            <FormItem className="relative max-w-sm mb-4">
+            <FormItem className="relative w-full max-w-3xl mb-4">
               <FormLabel className="mb-1">Search Product</FormLabel>
               <Popover
-                open={productOptions.length > 0}
-                onOpenChange={() => setProductOptions([])}
+                open={productSearch.trim().length > 0}
+                onOpenChange={(open) => {
+                  if (!open) {
+                    setProductOptions([]);
+                  }
+                }}
               >
                 <PopoverTrigger asChild>
                   <div>
@@ -622,26 +733,34 @@ const handleRemove = useCallback((idx: number) => remove(idx), [remove]);
                     <Search className="absolute left-3 top-9 h-4 w-4 text-muted-foreground" />
                   </div>
                 </PopoverTrigger>
-                <PopoverContent className="w-full p-0">
+                <PopoverContent
+                  align="start"
+                  className="w-[min(90vw,48rem)] p-0"
+                  onOpenAutoFocus={(event) => {
+                    // Keep typing focus in the main search input when results open.
+                    event.preventDefault();
+                  }}
+                  onCloseAutoFocus={(event) => {
+                    // Prevent Radix Popover from moving focus unexpectedly.
+                    event.preventDefault();
+                  }}
+                >
                   <Command shouldFilter={false}>
-                    <CommandInput
-                      placeholder="Search product..."
-                      value={productSearch}
-                      onValueChange={setProductSearch}
-                    />
-                    <CommandList>
+                    <CommandList className="max-h-72">
                       <CommandEmpty>No products found.</CommandEmpty>
                       <CommandGroup>
-                        {productOptions.map((p) => (
+                        {filteredProductOptions.map((p) => (
                           <CommandItem
                             key={p.id}
-                            value={p.product_name}
+                            value={`${p.product_name ?? ""} ${(p as any).sku ?? ""} ${(p as any).barcode ?? ""}`}
                             onSelect={() => {
-                              console.log('Product dropdown item:', p); // ← add this
+                              console.log("Product dropdown item:", p); // ← add this
 
                               // FIX: safeNum on every field so no NaN reaches <Input>
                               const purchasePrice = safeNum(p.purchasePrice);
-                              const sellingPrice = safeNum(p.sellingPrice ?? p.purchasePrice);
+                              const sellingPrice = safeNum(
+                                p.sellingPrice ?? p.purchasePrice,
+                              );
 
                               const stock = safeNum(p.stock);
                               append({
@@ -653,14 +772,21 @@ const handleRemove = useCallback((idx: number) => remove(idx), [remove]);
                                 sellingPrice,
 
                                 discount: 0,
-                                subtotal: purchasePrice,        // qty(1) * price
-                                total: purchasePrice,        // subtotal - discount(0)
+                                subtotal: purchasePrice, // qty(1) * price
+                                total: purchasePrice, // subtotal - discount(0)
                               });
                               setProductSearch("");
                               setProductOptions([]);
                             }}
                           >
-                            {p.product_name}
+                            <div className="flex w-full min-w-0 items-center justify-between gap-4">
+                              <span className="truncate font-medium">
+                                {p.product_name}
+                              </span>
+                              <span className="shrink-0 text-xs text-muted-foreground">
+                                {(p as any).sku ? `SKU: ${(p as any).sku}` : ""}
+                              </span>
+                            </div>
                           </CommandItem>
                         ))}
                       </CommandGroup>
@@ -671,46 +797,63 @@ const handleRemove = useCallback((idx: number) => remove(idx), [remove]);
             </FormItem>
 
             {/* Items table */}
-            {/* Items table */}
-            <div className="overflow-x-auto">
+            <div className="w-full overflow-hidden">
               {fields.length > 0 ? (
                 <>
-                  <Table className="min-w-[1400px]">
+                  <Table className="w-full table-fixed">
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Product Name</TableHead>
-                        <TableHead>Available Stock</TableHead>
-                        <TableHead>Qty</TableHead>
-                        <TableHead>Purchase Price</TableHead>
-                        <TableHead>Selling Price</TableHead>
-                        <TableHead>Discount</TableHead>
-                        <TableHead className="text-right">Subtotal</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
-                        <TableHead />
+                        <TableHead className="w-[13%]">Product Name</TableHead>
+                        <TableHead className="w-[9%] text-center">Stock</TableHead>
+                        <TableHead className="w-[9%]">Qty</TableHead>
+                        <TableHead className="w-[14%]">Purchase Price</TableHead>
+                        <TableHead className="w-[14%]">Selling Price</TableHead>
+                        <TableHead className="w-[11%]">Discount</TableHead>
+                        <TableHead className="w-[11%] text-right">Subtotal</TableHead>
+                        <TableHead className="w-[11%] text-right">Total</TableHead>
+                        <TableHead className="w-[8%]" />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-  {fields.map((f, idx) => {
-    if (!f.productId || !f.product_name) return null;
-return <ItemRow key={f.id} f={f} idx={idx} form={form} onRemove={handleRemove} />;
-  })}
-</TableBody>
+                      {fields.map((f, idx) => {
+                        if (!f.productId || !f.product_name) return null;
+                        return (
+                          <ItemRow
+                            key={f.id}
+                            f={f}
+                            idx={idx}
+                            form={form}
+                            onRemove={handleRemove}
+                          />
+                        );
+                      })}
+                    </TableBody>
+                    <TableFooter>
+                      <TableRow>
+                        <TableCell className="font-semibold">Totals</TableCell>
+                        <TableCell />
+                        <TableCell className="text-lg font-bold">
+                          {totalQuantity}
+                        </TableCell>
+                        <TableCell />
+                        <TableCell />
+                        <TableCell />
+                        <TableCell />
+                        <TableCell className="text-right text-lg font-bold">
+                          {CURRENCY_SYMBOL} {grandTotal.toFixed(2)}
+                        </TableCell>
+                        <TableCell />
+                      </TableRow>
+                    </TableFooter>
                   </Table>
-
-                  {/* Grand Total */}
-                  <div className="flex justify-end pr-4 mt-4">
-                    <div className="text-right space-y-1">
-                      <div className="text-muted-foreground text-sm">Grand Total</div>
-                      <div className="text-xl font-semibold">
-                        {CURRENCY_SYMBOL} {grandTotal.toFixed(2)}
-                      </div>
-                    </div>
-                  </div>
                 </>
               ) : (
                 <div className="flex flex-col items-center justify-center py-10 text-center text-sm text-muted-foreground bg-muted/20 border-2 border-dashed rounded-lg">
                   <p>No products added yet.</p>
-                  <p>Search and select products above to add them to the purchase.</p>
+                  <p>
+                    Search and select products above to add them to the
+                    purchase.
+                  </p>
                 </div>
               )}
             </div>
@@ -763,7 +906,8 @@ return <ItemRow key={f.id} f={f} idx={idx} form={form} onRemove={handleRemove} /
                         // FIX: safeVal prevents NaN value attribute
                         value={safeVal(field.value)}
                         onChange={(e) => {
-                          const v = e.target.value === "" ? 0 : safeNum(e.target.value);
+                          const v =
+                            e.target.value === "" ? 0 : safeNum(e.target.value);
                           field.onChange(v);
                         }}
                       />
@@ -788,14 +932,18 @@ return <ItemRow key={f.id} f={f} idx={idx} form={form} onRemove={handleRemove} /
                             variant="outline"
                             className="w-full text-left"
                           >
-                            {field.value ? formatDate(field.value) : formatDate(new Date())}
+                            {field.value
+                              ? formatDate(field.value)
+                              : formatDate(new Date())}
                           </Button>
                         </FormControl>
                       </PopoverTrigger>
                       <PopoverContent>
                         <Calendar
                           mode="single"
-                          selected={field.value ? new Date(field.value) : undefined}
+                          selected={
+                            field.value ? new Date(field.value) : undefined
+                          }
                           onSelect={field.onChange}
                           captionLayout="dropdown"
                         />
@@ -852,10 +1000,12 @@ return <ItemRow key={f.id} f={f} idx={idx} form={form} onRemove={handleRemove} /
             <div className="flex justify-end pr-4 mt-4">
               <div className="text-right space-y-1">
                 <div className="text-muted-foreground text-sm">Due Amount</div>
-                <div className={cn(
-                  "text-xl font-semibold",
-                  dueDisplay > 0 ? "text-destructive" : "text-green-600",
-                )}>
+                <div
+                  className={cn(
+                    "text-xl font-semibold",
+                    dueDisplay > 0 ? "text-destructive" : "text-green-600",
+                  )}
+                >
                   {CURRENCY_SYMBOL} {dueDisplay.toFixed(2)}
                 </div>
               </div>
@@ -878,14 +1028,18 @@ return <ItemRow key={f.id} f={f} idx={idx} form={form} onRemove={handleRemove} /
                               variant="outline"
                               className="w-full text-left"
                             >
-                              {field.value ? formatDate(field.value) : "Select date"}
+                              {field.value
+                                ? formatDate(field.value)
+                                : "Select date"}
                             </Button>
                           </FormControl>
                         </PopoverTrigger>
                         <PopoverContent>
                           <Calendar
                             mode="single"
-                            selected={field.value ? new Date(field.value) : undefined}
+                            selected={
+                              field.value ? new Date(field.value) : undefined
+                            }
                             onSelect={field.onChange}
                             captionLayout="dropdown"
                           />
