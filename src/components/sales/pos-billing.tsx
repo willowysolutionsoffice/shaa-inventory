@@ -26,6 +26,7 @@ import {
   Loader2,
   IndianRupee,
   UserCog,
+  CalendarDays,
 } from "lucide-react";
 import {
   Card,
@@ -102,6 +103,7 @@ interface HeldBill {
   manualDiscountPercent: number | "";
   payments: PaymentEntry[];
   splitMode: boolean;
+  invoiceDate: string;
 }
 
 // method can be "" only in split mode, for an auto-created "remaining" row
@@ -133,6 +135,29 @@ const toNum = (v: unknown): number => {
 };
 
 const clampPercent = (v: number): number => Math.min(Math.max(v, 0), 100);
+
+// Returns a local YYYY-MM-DD value without UTC date shifting.
+function getLocalDateInputValue(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+// Keeps the selected invoice day while using the current local time.
+function dateInputToLocalDate(value: string): Date {
+  const [year, month, day] = value.split("-").map(Number);
+  const now = new Date();
+  return new Date(
+    year,
+    month - 1,
+    day,
+    now.getHours(),
+    now.getMinutes(),
+    now.getSeconds(),
+    now.getMilliseconds(),
+  );
+}
 
 // ── Per-line item discount helpers ──────────────────────────────────────────
 // A cart line's discount is stored as a percent of that line's own subtotal
@@ -673,6 +698,7 @@ export default function PosBillingPage({
   const [couponCode, setCouponCode] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState("");
   const [heldBills, setHeldBills] = useState<HeldBill[]>([]);
+  const [invoiceDate, setInvoiceDate] = useState(() => getLocalDateInputValue());
 
   // ── Payment state ──────────────────────────────────────────────────────────
   const [payments, setPayments] = useState<PaymentEntry[]>(
@@ -954,6 +980,7 @@ export default function PosBillingPage({
     setSelectedSalesman(NO_SALESMAN_SENTINEL);
     setPayments(DEFAULT_SINGLE_PAYMENT);
     setSplitMode(false);
+    setInvoiceDate(getLocalDateInputValue());
     focusBarcodeInput();
   };
 
@@ -1012,6 +1039,7 @@ export default function PosBillingPage({
       manualDiscountPercent,
       payments,
       splitMode,
+      invoiceDate,
     };
     setHeldBills([...heldBills, hold]);
     resetCart();
@@ -1029,6 +1057,7 @@ export default function PosBillingPage({
     setManualDiscountPercent(ticket.manualDiscountPercent);
     setPayments(ticket.payments);
     setSplitMode(ticket.splitMode);
+    setInvoiceDate(ticket.invoiceDate);
     setHeldBills(heldBills.filter((h) => h.id !== holdId));
     toast.success(`Restored: ${holdId}`);
     focusBarcodeInput();
@@ -1038,6 +1067,11 @@ export default function PosBillingPage({
   const checkout = () => {
     if (!cart.length) {
       toast.warning("Cart is empty.");
+      return;
+    }
+
+    if (!invoiceDate) {
+      toast.error("Select an invoice date.");
       return;
     }
 
@@ -1057,7 +1091,7 @@ export default function PosBillingPage({
       customerIdForSale = walkInCustomerId;
     }
 
-    const now = new Date();
+    const selectedInvoiceDate = dateInputToLocalDate(invoiceDate);
     const customer = customers.find((c) => c.id === selectedCustomer);
     const salesmanName =
       selectedSalesman !== NO_SALESMAN_SENTINEL
@@ -1080,7 +1114,7 @@ export default function PosBillingPage({
     })();
 
     const printSnapshot: Omit<PrintReceiptParams, "invoiceNo"> = {
-      date: now,
+      date: selectedInvoiceDate,
       customerName: customer?.name ?? "",
       customerPhone: customer?.phone ?? "",
       salesmanName,
@@ -1107,7 +1141,7 @@ export default function PosBillingPage({
       branchId,
       salesmanId:
         selectedSalesman !== NO_SALESMAN_SENTINEL ? selectedSalesman : null,
-      salesdate: now.toISOString(),
+      salesdate: selectedInvoiceDate.toISOString(),
       status: "Dispatched",
       invoiceNo: "",
       grandTotal,
@@ -1142,7 +1176,7 @@ export default function PosBillingPage({
         return entries.map((p) => ({
           amount: p.amount as number,
           paymentMethod: p.method,
-          paidOn: now.toISOString(),
+          paidOn: selectedInvoiceDate.toISOString(),
           paymentNote: appliedCoupon ? `Coupon: ${appliedCoupon}` : null,
           dueDate: null,
         }));
@@ -1332,28 +1366,117 @@ export default function PosBillingPage({
       )}
 
       {/* Header */}
-      <div className="flex flex-col gap-2 md:flex-row md:items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
-            <ShoppingBag className="text-purple-600 h-8 w-8" /> POS Billing
-            Terminal
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            High-speed smart billing checkout
-          </p>
+      <div>
+        <h1 className="flex items-center gap-2 text-3xl font-extrabold tracking-tight">
+          <ShoppingBag className="h-8 w-8 text-purple-600" /> POS Billing
+          Terminal
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          High-speed smart billing checkout
+        </p>
+      </div>
+
+      {/* Search, product filters and invoice date */}
+      <div className="grid grid-cols-1 items-end gap-3 rounded-xl border border-border bg-card p-3 shadow-sm sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[minmax(240px,1.45fr)_minmax(130px,0.65fr)_minmax(170px,0.85fr)_minmax(170px,0.85fr)_minmax(170px,0.85fr)_auto]">
+        <div className="relative min-w-0">
+          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by SKU or name…"
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setBarcodeNotFound(false);
+            }}
+            className="h-10 w-full border-border bg-background pl-9 shadow-sm"
+          />
         </div>
+
+        <Select
+          value={selectedCategory}
+          onValueChange={setSelectedCategory}
+        >
+          <SelectTrigger className="h-10 w-full border-border bg-background shadow-sm">
+            <SelectValue placeholder="Category" />
+          </SelectTrigger>
+          <SelectContent>
+            {categories.map((cat) => (
+              <SelectItem key={cat} value={cat}>
+                {cat}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={selectedBrand} onValueChange={setSelectedBrand}>
+          <SelectTrigger className="h-10 w-full border-border bg-background text-sm shadow-sm">
+            <SelectValue placeholder="All Brands" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="All">All Brands</SelectItem>
+            {brandOptions.map((b) => (
+              <SelectItem key={b.id} value={b.id}>
+                {b.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={selectedSubBrand}
+          onValueChange={setSelectedSubBrand}
+          disabled={selectedBrand === "All" || subBrandOptions.length === 0}
+        >
+          <SelectTrigger className="h-10 w-full border-border bg-background text-sm shadow-sm disabled:opacity-50">
+            <SelectValue
+              placeholder={
+                selectedBrand === "All"
+                  ? "Select brand first"
+                  : "All Sub-brands"
+              }
+            />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="All">All Sub-brands</SelectItem>
+            {subBrandOptions.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <div className="min-w-0 space-y-1">
+          <label
+            htmlFor="invoice-date"
+            className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground"
+          >
+            <CalendarDays className="h-3.5 w-3.5" />
+            Invoice Date
+          </label>
+          <Input
+            id="invoice-date"
+            type="date"
+            value={invoiceDate}
+            max={getLocalDateInputValue()}
+            required
+            onChange={(event) => setInvoiceDate(event.target.value)}
+            className="h-10 w-full bg-background font-medium shadow-sm"
+            aria-label="Invoice date"
+          />
+        </div>
+
         <Badge
           variant="outline"
-          className="px-3 py-1 bg-purple-50 text-purple-700 dark:bg-purple-950/20 border-purple-200 w-fit"
+          className="flex h-10 w-full items-center justify-center whitespace-nowrap border-purple-200 bg-purple-50 px-3 text-purple-700 dark:bg-purple-950/20 xl:w-auto"
         >
           Terminal Active • {branchName}
         </Badge>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        {/* ── Left – Cart & Checkout (was on the right) ───────────────────── */}
-        <div className="xl:col-span-7 flex flex-col gap-3 min-h-0">
-          <Card className="border-border shadow-md bg-card flex h-[calc(100vh-170px)] min-h-[680px] max-h-[860px] flex-col overflow-hidden">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+        {/* ── Right – Cart & Checkout ─────────────────────────────────────── */}
+        <div className="order-2 flex min-h-0 flex-col gap-3 xl:col-span-7">
+          <Card className="flex h-[calc(100vh-225px)] min-h-[680px] max-h-[860px] flex-col overflow-hidden border-border bg-card shadow-md">
             {/* Cart header */}
             <CardHeader className="px-4 py-2.5 border-b border-border shrink-0">
               <div className="flex items-center justify-between gap-3">
@@ -1451,101 +1574,151 @@ export default function PosBillingPage({
                 )}
             </CardHeader>
 
-            {/* Cart items */}
-            <CardContent className="min-h-0 flex-1 overflow-y-auto px-4 py-2 space-y-1.5 pr-2 no-scrollbar">
+            {/* Cart items — compact table layout */}
+            <CardContent className="min-h-0 flex-1 overflow-auto p-0 no-scrollbar">
               {cart.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full min-h-[260px] text-center text-muted-foreground">
-                  <ShoppingBag className="h-12 w-12 text-muted-foreground/30 mb-2 stroke-[1.5]" />
+                <div className="flex h-full min-h-[260px] flex-col items-center justify-center text-center text-muted-foreground">
+                  <ShoppingBag className="mb-2 h-12 w-12 stroke-[1.5] text-muted-foreground/30" />
                   <p className="text-sm font-semibold">POS Cart is Empty</p>
                   <p className="text-xs opacity-70">
                     Scan barcode or click products to add items
                   </p>
                 </div>
               ) : (
-                cart.map((item) => (
-                  <div
-                    key={item.product.id}
-                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border/60 bg-card px-3 py-2 shadow-sm transition-colors hover:bg-muted/20"
-                  >
-                    <div className="min-w-0 space-y-0.5">
-                      <h4 className="line-clamp-1 text-sm font-semibold leading-tight text-foreground">
-                        {item.product.name}
-                      </h4>
-                      <p className="truncate text-[11px] text-muted-foreground">
-                        SKU:{" "}
-                        <span className="font-medium">
-                          {item.product.sku || "—"}
-                        </span>{" "}
-                        • {formatCurrency(item.product.price)} / unit
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div className="text-right min-w-[76px]">
-                        <p className="text-[10px] text-muted-foreground">
-                          Total
-                        </p>
-                        {item.discountPercent > 0 && (
-                          <p className="text-[10px] text-muted-foreground line-through leading-none">
-                            {formatCurrency(itemLineSubtotal(item))}
-                          </p>
-                        )}
-                        <p className="text-sm font-extrabold text-purple-600">
-                          {formatCurrency(itemLineTotal(item))}
-                        </p>
-                      </div>
-                      <div className="flex items-center overflow-hidden rounded-md border border-border bg-card">
-                        <button
-                          type="button"
-                          className="px-2 py-1.5 bg-muted hover:bg-muted/80 text-muted-foreground transition-colors"
-                          onClick={() => updateQuantity(item.product.id, -1)}
-                        >
-                          <Minus className="h-3 w-3" />
-                        </button>
-                        <span className="min-w-7 px-2 text-center text-xs font-bold text-foreground">
-                          {item.quantity}
-                        </span>
-                        <button
-                          type="button"
-                          className="px-2 py-1.5 bg-muted hover:bg-muted/80 text-muted-foreground transition-colors"
-                          onClick={() => updateQuantity(item.product.id, 1)}
-                        >
-                          <Plus className="h-3 w-3" />
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/20"
-                        onClick={() => removeFromCart(item.product.id)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-
-                    {/* ← added: per-line discount % input, spans the full row */}
-                    <div className="col-span-2 flex items-center gap-1.5 -mt-0.5">
-                      <Percent className="h-3 w-3 text-muted-foreground shrink-0" />
-                      <Input
-                        type="number"
-                        min={0}
-                        max={100}
-                        placeholder="0"
-                        value={item.discountPercent || ""}
-                        onChange={(e) =>
-                          updateItemDiscount(item.product.id, e.target.value)
-                        }
-                        className="h-6 w-16 text-[11px] px-1.5 bg-card"
-                      />
-                      <span className="text-[10px] text-muted-foreground">
-                        % off this item
-                      </span>
-                      {item.discountPercent > 0 && (
-                        <span className="text-[10px] text-green-600 font-semibold ml-auto">
-                          −{formatCurrency(itemDiscountAmount(item))}
-                        </span>
-                      )}
-                    </div>
+                <div className="min-w-[650px]">
+                  {/* Table header */}
+                  <div className="sticky top-0 z-10 grid grid-cols-[minmax(210px,1.8fr)_112px_90px_96px_100px_32px] items-center gap-2 border-b border-border bg-muted/35 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                    <span>Product</span>
+                    <span className="text-center">Qty</span>
+                    <span className="text-right">Price</span>
+                    <span className="text-center">Disc %</span>
+                    <span className="text-right">Total</span>
+                    <span aria-hidden="true" />
                   </div>
-                ))
+
+                  {/* Table rows */}
+                  <div className="divide-y divide-border/70">
+                    {cart.map((item, index) => {
+                      const initials = item.product.name
+                        .split(/\s+/)
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .map((word) => word.charAt(0))
+                        .join("")
+                        .toUpperCase();
+
+                      return (
+                        <div
+                          key={item.product.id}
+                          className="grid grid-cols-[minmax(210px,1.8fr)_112px_90px_96px_100px_32px] items-center gap-2 px-4 py-2.5 transition-colors hover:bg-muted/20"
+                        >
+                          {/* Product */}
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <div
+                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${
+                                index % 4 === 0
+                                  ? "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300"
+                                  : index % 4 === 1
+                                    ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+                                    : index % 4 === 2
+                                      ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+                                      : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                              }`}
+                            >
+                              {initials || "P"}
+                            </div>
+
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-semibold text-foreground">
+                                {item.product.name}
+                              </p>
+                              <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                                SKU: {item.product.sku || "—"}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Quantity */}
+                          <div className="flex items-center justify-center">
+                            <div className="flex h-7 items-center overflow-hidden rounded-md border border-border bg-background shadow-sm">
+                              <button
+                                type="button"
+                                className="flex h-full w-7 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                onClick={() => updateQuantity(item.product.id, -1)}
+                                aria-label={`Decrease ${item.product.name} quantity`}
+                              >
+                                <Minus className="h-3 w-3" />
+                              </button>
+                              <span className="flex h-full min-w-8 items-center justify-center border-x border-border px-1 text-[11px] font-bold text-foreground">
+                                {item.quantity}
+                              </span>
+                              <button
+                                type="button"
+                                className="flex h-full w-7 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                onClick={() => updateQuantity(item.product.id, 1)}
+                                aria-label={`Increase ${item.product.name} quantity`}
+                              >
+                                <Plus className="h-3 w-3" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Unit price */}
+                          <div className="text-right text-[11px] font-semibold text-foreground">
+                            {formatCurrency(item.product.price)}
+                          </div>
+
+                          {/* Discount */}
+                          <div className="flex justify-center">
+                            <div className="flex h-7 w-[76px] overflow-hidden rounded-md border border-border bg-background shadow-sm focus-within:ring-1 focus-within:ring-purple-500">
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step="0.01"
+                                value={item.discountPercent || ""}
+                                placeholder="0"
+                                onChange={(event) =>
+                                  updateItemDiscount(
+                                    item.product.id,
+                                    event.target.value,
+                                  )
+                                }
+                                className="h-full min-w-0 flex-1 bg-transparent px-2 text-center text-[11px] font-medium outline-none"
+                                aria-label={`${item.product.name} discount percentage`}
+                              />
+                              <span className="flex h-full w-7 shrink-0 items-center justify-center border-l border-border bg-muted/50 text-[10px] font-semibold text-muted-foreground">
+                                %
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Line total */}
+                          <div className="min-w-0 text-right">
+                            {item.discountPercent > 0 && (
+                              <p className="text-[9px] leading-none text-muted-foreground line-through">
+                                {formatCurrency(itemLineSubtotal(item))}
+                              </p>
+                            )}
+                            <p className="text-[11px] font-extrabold text-foreground">
+                              {formatCurrency(itemLineTotal(item))}
+                            </p>
+                          </div>
+
+                          {/* Remove */}
+                          <button
+                            type="button"
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/20"
+                            onClick={() => removeFromCart(item.product.id)}
+                            aria-label={`Remove ${item.product.name} from cart`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </CardContent>
 
@@ -1893,84 +2066,8 @@ export default function PosBillingPage({
           )}
         </div>
 
-        {/* ── Right – Products (was on the left) ──────────────────────────── */}
-        <div className="xl:col-span-5 flex flex-col gap-4">
-          {/* Search + Filters */}
-          <div className="flex flex-col gap-2">
-            {/* Row 1: Search + Category */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search by SKU or name…"
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setBarcodeNotFound(false);
-                  }}
-                  className="pl-9 h-10 border-border bg-card shadow-sm"
-                />
-              </div>
-              <Select
-                value={selectedCategory}
-                onValueChange={setSelectedCategory}
-              >
-                <SelectTrigger className="h-10 border-border bg-card shadow-sm">
-                  <SelectValue placeholder="Category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((cat) => (
-                    <SelectItem key={cat} value={cat}>
-                      {cat}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Row 2: Brand + SubBrand */}
-            <div className="grid grid-cols-2 gap-1">
-              <Select value={selectedBrand} onValueChange={setSelectedBrand}>
-                <SelectTrigger className="h-9 border-border bg-card shadow-sm text-sm">
-                  <SelectValue placeholder="All Brands" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Brands</SelectItem>
-                  {brandOptions.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select
-                value={selectedSubBrand}
-                onValueChange={setSelectedSubBrand}
-                disabled={
-                  selectedBrand === "All" || subBrandOptions.length === 0
-                }
-              >
-                <SelectTrigger className="h-9 border-border bg-card shadow-sm text-sm disabled:opacity-50">
-                  <SelectValue
-                    placeholder={
-                      selectedBrand === "All"
-                        ? "Select brand first"
-                        : "All Sub-brands"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Sub-brands</SelectItem>
-                  {subBrandOptions.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
+        {/* ── Left – Products ──────────────────────────────────────────────── */}
+        <div className="order-1 flex flex-col gap-4 xl:col-span-5">
           {/* Barcode */}
           <form
             onSubmit={handleBarcodeSubmit}
@@ -2010,7 +2107,7 @@ export default function PosBillingPage({
 
           {/* Product grid */}
           <div
-            className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[600px] overflow-y-auto pr-2
+            className="grid max-h-[calc(100vh-335px)] min-h-[420px] grid-cols-1 gap-4 overflow-y-auto pr-2 sm:grid-cols-2
             [&::-webkit-scrollbar]:w-1.5
             [&::-webkit-scrollbar-track]:rounded-full
             [&::-webkit-scrollbar-track]:bg-muted/40
