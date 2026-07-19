@@ -40,74 +40,72 @@ export default async function ContactReportPage({
   });
   // Suppliers Data
   const [supplierReports, totalSuppliers] = await Promise.all([
-  prisma.supplier.findMany({
-    where: supplierId ? { id: supplierId } : undefined,
-    skip,
-    take: limit,
-    include: {
-      purchase: {
-        select: { totalAmount: true, dueAmount: true, paidAmount: true },
+    prisma.supplier.findMany({
+      where: supplierId ? { id: supplierId } : undefined,
+      skip,
+      take: limit,
+      include: {
+        purchase: {
+          select: { totalAmount: true, dueAmount: true, paidAmount: true },
+        },
+        purchaseReturn: {
+          select: { totalAmount: true },
+        },
+        BalancePayment: {
+          select: { amount: true },
+        },
       },
-      purchaseReturn: {
-        select: { totalAmount: true },
-      },
-      BalancePayment: {
-        select: { amount: true },
-      },
-    },
-    orderBy: { id: "asc" },
-  }),
+      orderBy: { id: "asc" },
+    }),
 
-  prisma.supplier.count({
-    where: supplierId ? { id: supplierId } : undefined,
-  }),
-]);
+    prisma.supplier.count({
+      where: supplierId ? { id: supplierId } : undefined,
+    }),
+  ]);
 
   // Customers Data
   const [customerReports, totalCustomers] = await Promise.all([
-  prisma.customer.findMany({
-    where: customerId ? { id: customerId } : undefined,
-    skip,
-    take: limit,
-    include: {
-      sale: {
-        select: { grandTotal: true, dueAmount: true, paidAmount: true },
+    prisma.customer.findMany({
+      where: customerId ? { id: customerId } : undefined,
+      skip,
+      take: limit,
+      include: {
+        sale: {
+          select: { grandTotal: true, dueAmount: true, paidAmount: true },
+        },
+        salesReturn: {
+          select: { grandTotal: true },
+        },
+        BalancePayment: {
+          select: { amount: true },
+        },
       },
-      salesReturn: {
-        select: { grandTotal: true },
-      },
-      BalancePayment: {
-        select: { amount: true },
-      },
-    },
-    orderBy: { id: "asc" },
-  }),
+      orderBy: { id: "asc" },
+    }),
 
-  prisma.customer.count({
-    where: customerId ? { id: customerId } : undefined,
-  }),
-]);
+    prisma.customer.count({
+      where: customerId ? { id: customerId } : undefined,
+    }),
+  ]);
+
+  const [allSales, allSalesReturns, allPurchases, allPurchaseReturns] = await Promise.all([
+    prisma.sale.findMany(),
+    prisma.salesReturn.findMany(),
+    prisma.purchase.findMany(),
+    prisma.purchaseReturn.findMany(),
+  ]);
 
   // Process Suppliers
   const suppliers = supplierReports.map((supplier) => {
-    const totalPurchases = supplier.purchase.reduce(
-      (acc, p) => acc + p.totalAmount,
-      0
-    );
-    const totalPaidAmount = supplier.purchase.reduce(
-      (acc, p) => acc + p.paidAmount,
-      0
-    );
-    const totalPurchaseReturns = supplier.purchaseReturn.reduce(
-      (acc, r) => acc + r.totalAmount,
-      0
-    );
-    const preDueAmount = supplier.purchase.reduce(
-      (acc, d) => acc + d.dueAmount,
-      0
-    );
+    const purchaseList = allPurchases.filter((p: any) => p.supplierId === supplier.id);
+    const purchaseReturnList = allPurchaseReturns.filter((r: any) => r.supplierId === supplier.id);
 
-    let effectiveOpening = supplier.openingBalance;
+    const totalPurchases = purchaseList.reduce((acc, p) => acc + (p.totalAmount || 0), 0);
+    const totalPaidAmount = purchaseList.reduce((acc, p) => acc + (p.paidAmount || 0), 0);
+    const totalPurchaseReturns = purchaseReturnList.reduce((acc, r) => acc + (r.totalAmount || 0), 0);
+    const preDueAmount = purchaseList.reduce((acc, d) => acc + (d.dueAmount || 0), 0);
+
+    let effectiveOpening = supplier.openingBalance || 0;
     let effectiveDue = preDueAmount;
 
     if (effectiveDue < 0) {
@@ -129,16 +127,13 @@ export default async function ContactReportPage({
 
   // Process Customers
   const customers = customerReports.map((customer) => {
-    const totalSales = customer.sale.reduce((acc, s) => acc + s.grandTotal, 0);
-    const totalPaidAmount = customer.sale.reduce(
-      (acc, p) => acc + p.paidAmount,
-      0
-    );
-    const totalSalesReturns = customer.salesReturn.reduce(
-      (acc, r) => acc + r.grandTotal,
-      0
-    );
-    const preDueAmount = customer.sale.reduce((acc, d) => acc + d.dueAmount, 0);
+    const saleList = allSales.filter((s: any) => s.customerId === customer.id);
+    const salesReturnList = allSalesReturns.filter((r: any) => r.customerId === customer.id);
+
+    const totalSales = saleList.reduce((acc, s) => acc + (s.grandTotal || 0), 0);
+    const totalPaidAmount = saleList.reduce((acc, p) => acc + (p.paidAmount || 0), 0);
+    const totalSalesReturns = salesReturnList.reduce((acc, r) => acc + (r.grandTotal || 0), 0);
+    const preDueAmount = saleList.reduce((acc, d) => acc + (d.dueAmount || 0), 0);
 
     let effectiveOpening = customer.openingBalance;
     let effectiveDue = preDueAmount;
@@ -245,7 +240,7 @@ export default async function ContactReportPage({
       <div className="my-4">
         <h1 className="text-2xl font-bold tracking-tight">Contact Reports</h1>
       </div>
-      
+
       <Tabs defaultValue="customers" className="w-full">
         <TabsList className="bg-muted text-muted-foreground inline-flex h-10 items-center justify-center rounded-md p-1">
           <TabsTrigger value="customers">Customer Report</TabsTrigger>
@@ -254,10 +249,10 @@ export default async function ContactReportPage({
 
         <TabsContent value="customers" className="mt-6">
           <ContactReportFilters
-    type="customer"
-    customers={customersList}
-    customerId={customerId}
-  />
+            type="customer"
+            customers={customersList}
+            customerId={customerId}
+          />
           <Card className="p-4">
             <CardHeader>
               <CardTitle>Customer Report</CardTitle>
@@ -349,10 +344,10 @@ export default async function ContactReportPage({
 
         <TabsContent value="suppliers" className="mt-6">
           <ContactReportFilters
-    type="supplier"
-    suppliers={suppliersList}
-    supplierId={supplierId}
-  />
+            type="supplier"
+            suppliers={suppliersList}
+            supplierId={supplierId}
+          />
           <Card className="p-4">
             <CardHeader>
               <CardTitle>Supplier Report</CardTitle>

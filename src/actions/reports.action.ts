@@ -69,3 +69,23 @@ export const getGstReport = actionClient
       return { error: error.message ?? 'Something went wrong' };
     }
   });
+
+const contactParamsSchema = z.object({
+  page: z.coerce.number().optional().default(1),
+  limit: z.coerce.number().optional().default(10),
+  customerId: z.string().optional(),
+  supplierId: z.string().optional(),
+});
+
+export const getContactReport = actionClient
+  .inputSchema(contactParamsSchema)
+  .action(async ({ parsedInput }) => {
+    try {
+      // @ts-ignore - buildQuery expects Record<string, string | undefined>
+      const qs = buildQuery(parsedInput);
+      const report = await api.get<any>(`/reports/contact${qs ? `?${qs}` : ''}`);
+      return { data: report };
+    } catch (error: any) {
+      return { error: error.message ?? 'Something went wrong' };
+    }
+  });
