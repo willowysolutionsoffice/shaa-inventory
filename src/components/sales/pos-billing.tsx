@@ -91,6 +91,7 @@ interface CartItem {
   quantity: number;
   // ← added: per-line discount, entered as a percent of that line's subtotal
   discountPercent: number;
+  discountAmount: number;
 }
 
 interface HeldBill {
@@ -101,6 +102,7 @@ interface HeldBill {
   couponCode: string;
   couponDiscountPercent: number;
   manualDiscountPercent: number | "";
+  manualDiscountAmount: number | "";
   payments: PaymentEntry[];
   splitMode: boolean;
   invoiceDate: string;
@@ -169,7 +171,9 @@ function itemLineSubtotal(item: CartItem): number {
 }
 
 function itemDiscountAmount(item: CartItem): number {
-  return (itemLineSubtotal(item) * clampPercent(item.discountPercent || 0)) / 100;
+  const percentDisc = (itemLineSubtotal(item) * clampPercent(item.discountPercent || 0)) / 100;
+  const amountDisc = item.discountAmount || 0;
+  return percentDisc + amountDisc;
 }
 
 function itemLineTotal(item: CartItem): number {
@@ -592,7 +596,10 @@ export default function PosBillingPage({
   const fetchSalesmen = useCallback(async () => {
     try {
       const res: any = await getUserList();
-      const list: any[] = Array.isArray(res) ? res : (res?.data ?? []);
+      const listData = res?.data ?? res;
+      const list: any[] = Array.isArray(listData) 
+        ? listData 
+        : (Array.isArray(listData?.users) ? listData.users : []);
       const scoped = branchId
         ? list.filter(
           (u) => u.branch?.id === branchId || u.branchId === branchId,
@@ -693,6 +700,9 @@ export default function PosBillingPage({
   const [cart, setCart] = useState<CartItem[]>([]);
   const [couponDiscountPercent, setCouponDiscountPercent] = useState(0);
   const [manualDiscountPercent, setManualDiscountPercent] = useState<
+    number | ""
+  >("");
+  const [manualDiscountAmount, setManualDiscountAmount] = useState<
     number | ""
   >("");
   const [couponCode, setCouponCode] = useState("");
@@ -816,10 +826,14 @@ export default function PosBillingPage({
     typeof manualDiscountPercent === "number"
       ? Math.min(Math.max(manualDiscountPercent, 0), 100)
       : 0;
-  const manualDiscountAmount = (afterCoupon * manualPct) / 100;
+  const manualAmt =
+    typeof manualDiscountAmount === "number"
+      ? Math.max(manualDiscountAmount, 0)
+      : 0;
+  const manualDiscountCalculated = (afterCoupon * manualPct) / 100 + manualAmt;
   const totalDiscountAmount =
-    itemDiscountTotal + couponDiscountAmount + manualDiscountAmount;
-  const grandTotal = afterCoupon - manualDiscountAmount;
+    itemDiscountTotal + couponDiscountAmount + manualDiscountCalculated;
+  const grandTotal = afterCoupon - manualDiscountCalculated;
 
   // ── Payment derived ────────────────────────────────────────────────────────
   const totalPaid = payments.reduce(
@@ -932,7 +946,7 @@ export default function PosBillingPage({
         toast.warning("Out of stock.");
         return;
       }
-      setCart([...cart, { product, quantity: 1, discountPercent: 0 }]);
+      setCart([...cart, { product, quantity: 1, discountPercent: 0, discountAmount: 0 }]);
     }
     toast.success(`${product.name} added.`);
     focusBarcodeInput();
@@ -967,6 +981,17 @@ export default function PosBillingPage({
     );
   };
 
+  const updateItemDiscountAmount = (productId: string, raw: string) => {
+    const value = raw === "" ? 0 : Math.max(0, Number(raw));
+    setCart((prev) =>
+      prev.map((item) =>
+        item.product.id === productId
+          ? { ...item, discountAmount: value }
+          : item,
+      ),
+    );
+  };
+
   const removeFromCart = (productId: string) =>
     setCart(cart.filter((i) => i.product.id !== productId));
 
@@ -974,6 +999,7 @@ export default function PosBillingPage({
     setCart([]);
     setCouponDiscountPercent(0);
     setManualDiscountPercent("");
+    setManualDiscountAmount("");
     setCouponCode("");
     setAppliedCoupon("");
     setSelectedCustomer(WALK_IN_SENTINEL);
@@ -1037,6 +1063,7 @@ export default function PosBillingPage({
       couponCode: appliedCoupon,
       couponDiscountPercent,
       manualDiscountPercent,
+      manualDiscountAmount,
       payments,
       splitMode,
       invoiceDate,
@@ -1055,6 +1082,7 @@ export default function PosBillingPage({
     setAppliedCoupon(ticket.couponCode);
     setCouponDiscountPercent(ticket.couponDiscountPercent);
     setManualDiscountPercent(ticket.manualDiscountPercent);
+    setManualDiscountAmount(ticket.manualDiscountAmount);
     setPayments(ticket.payments);
     setSplitMode(ticket.splitMode);
     setInvoiceDate(ticket.invoiceDate);
@@ -1128,7 +1156,7 @@ export default function PosBillingPage({
       itemDiscount: itemDiscountTotal,
       couponDiscount: couponDiscountAmount,
       couponCode: appliedCoupon,
-      manualDiscount: manualDiscountAmount,
+      manualDiscount: manualDiscountCalculated,
       grandTotal,
       payments: confirmedPayments,
       change: cashChange,
@@ -1591,7 +1619,7 @@ export default function PosBillingPage({
                     <span>Product</span>
                     <span className="text-center">Qty</span>
                     <span className="text-right">Price</span>
-                    <span className="text-center">Disc %</span>
+                    <span className="text-center">Discount</span>
                     <span className="text-right">Total</span>
                     <span aria-hidden="true" />
                   </div>
@@ -1615,15 +1643,14 @@ export default function PosBillingPage({
                           {/* Product */}
                           <div className="flex min-w-0 items-center gap-2.5">
                             <div
-                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${
-                                index % 4 === 0
+                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${index % 4 === 0
                                   ? "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300"
                                   : index % 4 === 1
                                     ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
                                     : index % 4 === 2
                                       ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
                                       : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-                              }`}
+                                }`}
                             >
                               {initials || "P"}
                             </div>
@@ -1669,7 +1696,7 @@ export default function PosBillingPage({
                           </div>
 
                           {/* Discount */}
-                          <div className="flex justify-center">
+                          <div className="flex flex-col gap-1.5 items-center justify-center">
                             <div className="flex h-7 w-[76px] overflow-hidden rounded-md border border-border bg-background shadow-sm focus-within:ring-1 focus-within:ring-purple-500">
                               <input
                                 type="number"
@@ -1691,11 +1718,31 @@ export default function PosBillingPage({
                                 %
                               </span>
                             </div>
+                            <div className="flex h-7 w-[76px] overflow-hidden rounded-md border border-border bg-background shadow-sm focus-within:ring-1 focus-within:ring-purple-500">
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={item.discountAmount || ""}
+                                placeholder="0"
+                                onChange={(event) =>
+                                  updateItemDiscountAmount(
+                                    item.product.id,
+                                    event.target.value,
+                                  )
+                                }
+                                className="h-full min-w-0 flex-1 bg-transparent px-2 text-center text-[11px] font-medium outline-none"
+                                aria-label={`${item.product.name} discount amount`}
+                              />
+                              <span className="flex h-full w-7 shrink-0 items-center justify-center border-l border-border bg-muted/50 text-[10px] font-semibold text-muted-foreground">
+                                <IndianRupee className="h-3 w-3" />
+                              </span>
+                            </div>
                           </div>
 
                           {/* Line total */}
                           <div className="min-w-0 text-right">
-                            {item.discountPercent > 0 && (
+                            {(item.discountPercent > 0 || item.discountAmount > 0) && (
                               <p className="text-[9px] leading-none text-muted-foreground line-through">
                                 {formatCurrency(itemLineSubtotal(item))}
                               </p>
@@ -1769,6 +1816,7 @@ export default function PosBillingPage({
                     type="number"
                     min={0}
                     max={100}
+                    step="0.01"
                     placeholder="Instant discount %"
                     value={manualDiscountPercent}
                     onChange={(e) => {
@@ -1780,10 +1828,30 @@ export default function PosBillingPage({
                     className="pl-7 h-8 text-xs bg-card"
                   />
                 </div>
-                {manualPct > 0 && (
+                <div className="relative flex-1">
+                  <IndianRupee className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="Instant discount ₹"
+                    value={manualDiscountAmount}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setManualDiscountAmount(
+                        v === "" ? "" : Math.max(Number(v), 0),
+                      );
+                    }}
+                    className="pl-7 h-8 text-xs bg-card"
+                  />
+                </div>
+                {(manualPct > 0 || manualAmt > 0) && (
                   <button
                     type="button"
-                    onClick={() => setManualDiscountPercent("")}
+                    onClick={() => {
+                      setManualDiscountPercent("");
+                      setManualDiscountAmount("");
+                    }}
                     className="text-[10px] text-muted-foreground hover:text-destructive underline whitespace-nowrap"
                   >
                     Clear
