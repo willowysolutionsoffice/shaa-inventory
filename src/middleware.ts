@@ -1,4 +1,3 @@
-// src/proxy.ts
 import { NextRequest, NextResponse } from "next/server";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -28,7 +27,7 @@ function needsRefresh(token: string | undefined): boolean {
   return Date.now() + 10 * 60 * 1000 >= exp;
 }
 
-export default async function proxy(req: NextRequest) {
+export default async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (isPublic(pathname)) return NextResponse.next();
@@ -99,3 +98,5 @@ export default async function proxy(req: NextRequest) {
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
+
+export { middleware };
