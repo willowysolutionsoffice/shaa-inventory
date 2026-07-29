@@ -697,6 +697,7 @@ export default function PosBillingPage({
   const [barcodeNotFound, setBarcodeNotFound] = useState(false);
   const [barcodeInput, setBarcodeInput] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(WALK_IN_SENTINEL);
+  const [selectedProductIndex, setSelectedProductIndex] = useState<number>(-1);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [couponDiscountPercent, setCouponDiscountPercent] = useState(0);
   const [manualDiscountPercent, setManualDiscountPercent] = useState<
@@ -715,6 +716,75 @@ export default function PosBillingPage({
     DEFAULT_SINGLE_PAYMENT,
   );
   const [splitMode, setSplitMode] = useState(false);
+
+  // ── Keyboard Navigation Refs & Helper ────────────────────────────────────
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const categorySelectRef = useRef<HTMLButtonElement>(null);
+  const brandSelectRef = useRef<HTMLButtonElement>(null);
+  const subBrandSelectRef = useRef<HTMLButtonElement>(null);
+  const customerSelectRef = useRef<HTMLButtonElement>(null);
+  const salesmanSelectRef = useRef<HTMLButtonElement>(null);
+  const invoiceDateRef = useRef<HTMLInputElement>(null);
+  const couponInputRef = useRef<HTMLInputElement>(null);
+  const manualDiscountPercentRef = useRef<HTMLInputElement>(null);
+  const manualDiscountAmountRef = useRef<HTMLInputElement>(null);
+  const checkoutButtonRef = useRef<HTMLButtonElement>(null);
+
+  const fieldSequence = useMemo(
+    () => [
+      barcodeInputRef,           // 0
+      searchInputRef,            // 1
+      categorySelectRef,         // 2
+      brandSelectRef,            // 3
+      subBrandSelectRef,         // 4
+      customerSelectRef,         // 5
+      salesmanSelectRef,         // 6
+      invoiceDateRef,            // 7
+      couponInputRef,            // 8
+      manualDiscountPercentRef,  // 9
+      manualDiscountAmountRef,   // 10
+      checkoutButtonRef,         // 11
+    ],
+    [barcodeInputRef],
+  );
+
+  const handleStepNavigation = useCallback(
+    (
+      e: React.KeyboardEvent,
+      currentIndex: number,
+      onEnterAction?: () => void,
+    ) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (onEnterAction) onEnterAction();
+
+        if (e.shiftKey) {
+          // Reverse navigation: Shift + Enter (skips disabled controls)
+          let prevIdx = currentIndex - 1;
+          while (prevIdx >= 0) {
+            const el = fieldSequence[prevIdx]?.current;
+            if (el && !el.disabled) {
+              el.focus();
+              break;
+            }
+            prevIdx--;
+          }
+        } else {
+          // Forward navigation: Enter (skips disabled controls)
+          let nextIdx = currentIndex + 1;
+          while (nextIdx < fieldSequence.length) {
+            const el = fieldSequence[nextIdx]?.current;
+            if (el && !el.disabled) {
+              el.focus();
+              break;
+            }
+            nextIdx++;
+          }
+        }
+      }
+    },
+    [fieldSequence],
+  );
 
   // ── Server action ──────────────────────────────────────────────────────────
 
@@ -1013,9 +1083,15 @@ export default function PosBillingPage({
   // ── Barcode ────────────────────────────────────────────────────────────────
   const handleBarcodeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const isShift = (e.nativeEvent as KeyboardEvent)?.shiftKey;
     const q = barcodeInput.trim().toLowerCase();
+
     if (!q) {
-      focusBarcodeInput();
+      if (isShift) {
+        checkoutButtonRef.current?.focus();
+      } else {
+        searchInputRef.current?.focus();
+      }
       return;
     }
     const found =
@@ -1211,6 +1287,46 @@ export default function PosBillingPage({
       })(),
     });
   };
+
+  // ── Global Hotkeys & Product Grid Key Navigation ────────────────────────────
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.closest('[role="dialog"]')) return;
+
+      if (selectedProductIndex >= 0 && filteredProducts.length > 0) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setSelectedProductIndex((prev) =>
+            Math.min(filteredProducts.length - 1, prev + 2),
+          );
+          return;
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setSelectedProductIndex((prev) => Math.max(0, prev - 2));
+          return;
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault();
+          setSelectedProductIndex((prev) =>
+            Math.min(filteredProducts.length - 1, prev + 1),
+          );
+          return;
+        } else if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          setSelectedProductIndex((prev) => Math.max(0, prev - 1));
+          return;
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          const targetProd = filteredProducts[selectedProductIndex];
+          if (targetProd) addToCart(targetProd);
+          setSelectedProductIndex(-1);
+          return;
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [selectedProductIndex, filteredProducts]);
 
   // ── Loading ────────────────────────────────────────────────────────────────
   if (loadingData) {
@@ -1409,11 +1525,20 @@ export default function PosBillingPage({
         <div className="relative min-w-0">
           <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
           <Input
+            ref={searchInputRef}
             placeholder="Search by SKU or name…"
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
               setBarcodeNotFound(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown" && filteredProducts.length > 0) {
+                e.preventDefault();
+                setSelectedProductIndex(0);
+                return;
+              }
+              handleStepNavigation(e, 1);
             }}
             className="h-10 w-full border-border bg-background pl-9 shadow-sm"
           />
@@ -1423,7 +1548,11 @@ export default function PosBillingPage({
           value={selectedCategory}
           onValueChange={setSelectedCategory}
         >
-          <SelectTrigger className="h-10 w-full border-border bg-background shadow-sm">
+          <SelectTrigger
+            ref={categorySelectRef}
+            onKeyDown={(e) => handleStepNavigation(e, 2)}
+            className="h-10 w-full border-border bg-background shadow-sm"
+          >
             <SelectValue placeholder="Category" />
           </SelectTrigger>
           <SelectContent>
@@ -1436,7 +1565,11 @@ export default function PosBillingPage({
         </Select>
 
         <Select value={selectedBrand} onValueChange={setSelectedBrand}>
-          <SelectTrigger className="h-10 w-full border-border bg-background text-sm shadow-sm">
+          <SelectTrigger
+            ref={brandSelectRef}
+            onKeyDown={(e) => handleStepNavigation(e, 3)}
+            className="h-10 w-full border-border bg-background text-sm shadow-sm"
+          >
             <SelectValue placeholder="All Brands" />
           </SelectTrigger>
           <SelectContent>
@@ -1454,7 +1587,11 @@ export default function PosBillingPage({
           onValueChange={setSelectedSubBrand}
           disabled={selectedBrand === "All" || subBrandOptions.length === 0}
         >
-          <SelectTrigger className="h-10 w-full border-border bg-background text-sm shadow-sm disabled:opacity-50">
+          <SelectTrigger
+            ref={subBrandSelectRef}
+            onKeyDown={(e) => handleStepNavigation(e, 4)}
+            className="h-10 w-full border-border bg-background text-sm shadow-sm disabled:opacity-50"
+          >
             <SelectValue
               placeholder={
                 selectedBrand === "All"
@@ -1482,12 +1619,14 @@ export default function PosBillingPage({
             Invoice Date
           </label>
           <Input
+            ref={invoiceDateRef}
             id="invoice-date"
             type="date"
             value={invoiceDate}
             max={getLocalDateInputValue()}
             required
             onChange={(event) => setInvoiceDate(event.target.value)}
+            onKeyDown={(e) => handleStepNavigation(e, 7)}
             className="h-10 w-full bg-background font-medium shadow-sm"
             aria-label="Invoice date"
           />
@@ -1548,7 +1687,11 @@ export default function PosBillingPage({
                   value={selectedCustomer}
                   onValueChange={setSelectedCustomer}
                 >
-                  <SelectTrigger className="h-8 w-full min-w-0 border-border bg-muted/30 text-xs">
+                  <SelectTrigger
+                    ref={customerSelectRef}
+                    onKeyDown={(e) => handleStepNavigation(e, 5)}
+                    className="h-8 w-full min-w-0 border-border bg-muted/30 text-xs"
+                  >
                     <SelectValue placeholder="Select customer" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1575,7 +1718,11 @@ export default function PosBillingPage({
                   value={selectedSalesman}
                   onValueChange={setSelectedSalesman}
                 >
-                  <SelectTrigger className="h-8 w-full min-w-0 border-border bg-muted/30 text-xs gap-1.5">
+                  <SelectTrigger
+                    ref={salesmanSelectRef}
+                    onKeyDown={(e) => handleStepNavigation(e, 6)}
+                    className="h-8 w-full min-w-0 border-border bg-muted/30 text-xs gap-1.5"
+                  >
                     <UserCog className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     <SelectValue placeholder="Select salesman" />
                   </SelectTrigger>
@@ -1776,9 +1923,15 @@ export default function PosBillingPage({
                 <div className="relative flex-1">
                   <Tag className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
                   <Input
+                    ref={couponInputRef}
                     placeholder="Coupon code…"
                     value={couponCode}
                     onChange={(e) => setCouponCode(e.target.value)}
+                    onKeyDown={(e) =>
+                      handleStepNavigation(e, 8, () => {
+                        if (couponCode.trim()) applyCoupon();
+                      })
+                    }
                     disabled={couponDiscountPercent > 0}
                     className="pl-7 h-8 text-xs bg-card disabled:opacity-60"
                   />
@@ -1813,6 +1966,7 @@ export default function PosBillingPage({
                 <div className="relative flex-1">
                   <Percent className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
                   <Input
+                    ref={manualDiscountPercentRef}
                     type="number"
                     min={0}
                     max={100}
@@ -1825,12 +1979,14 @@ export default function PosBillingPage({
                         v === "" ? "" : Math.min(Math.max(Number(v), 0), 100),
                       );
                     }}
+                    onKeyDown={(e) => handleStepNavigation(e, 9)}
                     className="pl-7 h-8 text-xs bg-card"
                   />
                 </div>
                 <div className="relative flex-1">
                   <IndianRupee className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
                   <Input
+                    ref={manualDiscountAmountRef}
                     type="number"
                     min={0}
                     step="0.01"
@@ -1842,6 +1998,7 @@ export default function PosBillingPage({
                         v === "" ? "" : Math.max(Number(v), 0),
                       );
                     }}
+                    onKeyDown={(e) => handleStepNavigation(e, 10)}
                     className="pl-7 h-8 text-xs bg-card"
                   />
                 </div>
@@ -2015,6 +2172,12 @@ export default function PosBillingPage({
                             onChange={(e) =>
                               updateSplitAmount(idx, e.target.value)
                             }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                checkoutButtonRef.current?.focus();
+                              }
+                            }}
                             className="pl-6 h-8 w-full text-xs bg-card"
                           />
                         </div>
@@ -2072,8 +2235,10 @@ export default function PosBillingPage({
                   <PauseCircle className="h-4 w-4" /> Hold
                 </Button>
                 <Button
+                  ref={checkoutButtonRef}
                   className="flex-[2] bg-purple-600 hover:bg-purple-700 text-white gap-1 h-9 shadow-md shadow-purple-600/20 font-bold disabled:opacity-60"
                   onClick={checkout}
+                  onKeyDown={(e) => handleStepNavigation(e, 11, checkout)}
                   disabled={
                     isCheckingOut ||
                     cart.length === 0 ||
@@ -2192,12 +2357,21 @@ export default function PosBillingPage({
                   : "No products available."}
               </div>
             ) : (
-              filteredProducts.map((prod) => (
-                <Card
-                  key={prod.id}
-                  onClick={() => addToCart(prod)}
-                  className="cursor-pointer hover:border-purple-500 transition-all hover:shadow-md bg-card group border border-border flex flex-col justify-between h-36"
-                >
+              filteredProducts.map((prod, idx) => {
+                const isSelected = idx === selectedProductIndex;
+                return (
+                  <Card
+                    key={prod.id}
+                    onClick={() => {
+                      addToCart(prod);
+                      setSelectedProductIndex(-1);
+                    }}
+                    className={`cursor-pointer transition-all hover:shadow-md bg-card group border flex flex-col justify-between h-36 ${
+                      isSelected
+                        ? "border-purple-600 ring-2 ring-purple-600 bg-purple-50/50 dark:bg-purple-950/20"
+                        : "border-border hover:border-purple-500"
+                    }`}
+                  >
                   <CardContent className="p-3.5 flex flex-col justify-between h-full w-full">
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
@@ -2236,8 +2410,9 @@ export default function PosBillingPage({
                     </div>
                   </CardContent>
                 </Card>
-              ))
-            )}
+              );
+            })
+          )}
           </div>
         </div>
       </div>
