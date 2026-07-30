@@ -210,10 +210,10 @@ function exportToPDF(
 ) {
     const dateLabel =
         filters.from && filters.to
-            ? `${filters.from} to ${filters.to}`
-            : filters.month
+            ? filters.from === filters.to ? filters.from : `${filters.from} to ${filters.to}`
+            : filters.from || filters.to || (filters.month
                 ? `${MONTHS.find((m) => m.value === filters.month)?.label ?? ""} ${filters.year}`
-                : filters.year;
+                : filters.year);
 
     const rowsHtml = rows.map((r) => `
     <tr>
@@ -327,6 +327,8 @@ export default function SalesReportPage() {
     // ── Date range builder ─────────────────────────────────────────────────────
     function buildDateRange(f: Filters) {
         if (f.from && f.to) return { from: f.from, to: f.to };
+        if (f.from && !f.to) return { from: f.from, to: f.from };
+        if (!f.from && f.to) return { from: f.to, to: f.to };
         if (f.month && f.year) {
             const y = Number(f.year), m = Number(f.month);
             return {
