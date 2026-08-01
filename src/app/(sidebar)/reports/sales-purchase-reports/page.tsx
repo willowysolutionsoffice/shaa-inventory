@@ -308,6 +308,8 @@ export default function PurchaseReportPage() {
     // ── Date range builder ─────────────────────────────────────────────────────
     function buildDateRange(f: Filters) {
         if (f.from && f.to) return { from: f.from, to: f.to };
+        if (f.from && !f.to) return { from: f.from, to: f.from };
+        if (!f.from && f.to) return { from: f.to, to: f.to };
         if (f.month && f.year) {
             const y = Number(f.year), m = Number(f.month);
             return {

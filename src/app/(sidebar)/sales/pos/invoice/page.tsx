@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useTransition, useMemo } from "react";
 import {
-  Receipt, Search, Eye, Printer,
+  Receipt, Search, Eye, Printer, Trash2,
   TrendingUp, Clock, CheckCircle2,
   AlertCircle, ChevronLeft, ChevronRight, Calendar,
   RefreshCw, ArrowUpDown, ShoppingBag,
@@ -13,12 +13,21 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { getSalesList } from "@/actions/sales-action";
+import { getSalesList, getSaleById, deleteSale } from "@/actions/sales-action";
 import { formatCurrency } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { printThermalDirect } from "@/lib/thermal-print";
-import { getSaleById } from "@/actions/sales-action";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 type PaymentStatus = "paid" | "partial" | "due";
 
 interface SaleRow {
@@ -81,16 +90,37 @@ export default function InvoicesPage() {
   const [dateFrom,     setDateFrom]     = useState("");
   const [dateTo,       setDateTo]       = useState("");
   const [sortDir,      setSortDir]      = useState<"asc" | "desc">("desc");
+  const [deletingSale, setDeletingSale] = useState<SaleRow | null>(null);
+  const [isDeleting,   setIsDeleting]   = useState(false);
 
   const LIMIT = 10;
+
+  const handleDeleteSale = async () => {
+    if (!deletingSale) return;
+    setIsDeleting(true);
+    try {
+      const res = await deleteSale({ id: deletingSale.id });
+      if (res?.data) {
+        toast.success(`Invoice ${deletingSale.invoiceNo} deleted successfully.`);
+        fetchSales();
+      } else {
+        toast.error(res?.error ?? "Failed to delete invoice.");
+      }
+    } catch (error: any) {
+      toast.error(error?.message ?? "An error occurred while deleting invoice.");
+    } finally {
+      setIsDeleting(false);
+      setDeletingSale(null);
+    }
+  };
 
   const fetchSales = () => {
     startTransition(async () => {
       const result = await getSalesList({
         page,
         limit: LIMIT,
-        // from:  dateFrom || undefined,
-        // to:    dateTo   || undefined,
+        from:  dateFrom || undefined,
+        to:    dateTo   || undefined,
       });
 
       // next-safe-action wraps return value under result.data
@@ -369,13 +399,15 @@ const handleThermalPrint = async (sale: SaleRow) => {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button size="icon" variant="ghost" className="h-7 w-7 hover:text-purple-600 hover:bg-purple-50" onClick={() => router.push(`/sales/pos/invoice/${sale.id}`)}>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 hover:text-purple-600 hover:bg-purple-50" title="View Details" onClick={() => router.push(`/sales/pos/invoice/${sale.id}`)}>
                             <Eye size={13} />
                           </Button>
-                          <Button size="icon" variant="ghost" className="h-7 w-7 hover:text-blue-600 hover:bg-blue-50"
-  onClick={() => handleThermalPrint(sale)}>
-  <Printer size={13} />
-</Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 hover:text-blue-600 hover:bg-blue-50" title="Thermal Print" onClick={() => handleThermalPrint(sale)}>
+                            <Printer size={13} />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 hover:text-red-600 hover:bg-red-50" title="Delete Invoice" onClick={() => setDeletingSale(sale)}>
+                            <Trash2 size={13} />
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -404,12 +436,23 @@ const handleThermalPrint = async (sale: SaleRow) => {
               const cfg       = statusConfig[status] ?? statusConfig.due;
               const saleDate  = (sale as any).salesDate ?? (sale as any).salesdate;
               return (
-                <div key={sale.id} className="p-4 hover:bg-muted/20 cursor-pointer transition-colors" onClick={() => router.push(`/sales/pos/invoice/${sale.id}`)}>
+                <div key={sale.id} className="p-4 hover:bg-muted/20 transition-colors">
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="font-bold text-purple-700 dark:text-purple-400 font-mono text-xs">{sale.invoiceNo}</span>
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ color: cfg.color, background: cfg.bg }}>
-                      {cfg.icon} {cfg.label}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ color: cfg.color, background: cfg.bg }}>
+                        {cfg.icon} {cfg.label}
+                      </span>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 hover:text-purple-600" title="View Details" onClick={() => router.push(`/sales/pos/invoice/${sale.id}`)}>
+                        <Eye size={13} />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 hover:text-blue-600" title="Thermal Print" onClick={() => handleThermalPrint(sale)}>
+                        <Printer size={13} />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 hover:text-red-600" title="Delete Invoice" onClick={() => setDeletingSale(sale)}>
+                        <Trash2 size={13} />
+                      </Button>
+                    </div>
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
@@ -449,6 +492,32 @@ const handleThermalPrint = async (sale: SaleRow) => {
           </>
         )}
       </Card>
+
+      {/* Delete Confirmation Modal */}
+      <AlertDialog open={!!deletingSale} onOpenChange={(open) => !open && setDeletingSale(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Invoice</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete invoice <strong className="font-mono text-purple-700">{deletingSale?.invoiceNo}</strong>?
+              This will permanently delete the sale bill from the database and adjust customer opening balance accordingly. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleDeleteSale();
+              }}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {isDeleting ? "Deleting..." : "Delete Invoice"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
