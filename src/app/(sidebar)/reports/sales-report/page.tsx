@@ -55,7 +55,10 @@ interface ProductMeta {
 
 interface DropdownItem { id: string; name: string }
 
+type DatePreset = "" | "today" | "yesterday" | "last3days" | "last7days" | "lastMonth" | "lastYear" | "custom";
+
 interface Filters {
+    datePreset: DatePreset;
     from: string;
     to: string;
     month: string;
@@ -106,13 +109,69 @@ const MONTHS = [
     { value: "12", label: "December" },
 ];
 
+const DATE_PRESETS: { value: DatePreset; label: string }[] = [
+    { value: "today", label: "Today" },
+    { value: "yesterday", label: "Yesterday" },
+    { value: "last3days", label: "Last 3 Days" },
+    { value: "last7days", label: "Last 7 Days" },
+    { value: "lastMonth", label: "Last Month" },
+    { value: "lastYear", label: "Last Year" },
+    { value: "custom", label: "Custom Date" },
+];
+
 const currentYear = new Date().getFullYear();
 const YEARS = Array.from({ length: 5 }, (_, i) => String(currentYear - i));
 
 const DEFAULT_FILTERS: Filters = {
+    datePreset: "",
     from: "", to: "", month: "", year: String(currentYear),
     brandId: "", subBrandId: "", branchId: "", salesmanId: "",
 };
+
+function formatDateForInput(date: Date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+function getPresetDateRange(preset: DatePreset): { from: string; to: string } {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const from = new Date(today);
+    const to = new Date(today);
+
+    switch (preset) {
+        case "today":
+            break;
+        case "yesterday":
+            from.setDate(from.getDate() - 1);
+            to.setDate(to.getDate() - 1);
+            break;
+        case "last3days":
+            from.setDate(from.getDate() - 2);
+            break;
+        case "last7days":
+            from.setDate(from.getDate() - 6);
+            break;
+        case "lastMonth":
+            from.setFullYear(today.getFullYear(), today.getMonth() - 1, 1);
+            to.setFullYear(today.getFullYear(), today.getMonth(), 0);
+            break;
+        case "lastYear":
+            from.setFullYear(today.getFullYear() - 1, 0, 1);
+            to.setFullYear(today.getFullYear() - 1, 11, 31);
+            break;
+        default:
+            return { from: "", to: "" };
+    }
+
+    return {
+        from: formatDateForInput(from),
+        to: formatDateForInput(to),
+    };
+}
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -467,13 +526,56 @@ export default function SalesReportPage() {
     // Re-number after client filter
     const rows = filteredRows.map((r, i) => ({ ...r, slNo: i + 1 }));
 
-    // ── Filter setter ──────────────────────────────────────────────────────────
+    // ── Date preset + filter setters ───────────────────────────────────────────
+    function setDatePreset(value: string) {
+        const datePreset = value as DatePreset;
+
+        setFilters((prev) => {
+            if (!datePreset) {
+                return {
+                    ...prev,
+                    datePreset: "",
+                    from: "",
+                    to: "",
+                };
+            }
+
+            if (datePreset === "custom") {
+                return {
+                    ...prev,
+                    datePreset,
+                    from: "",
+                    to: "",
+                    month: "",
+                    year: "",
+                };
+            }
+
+            const range = getPresetDateRange(datePreset);
+            return {
+                ...prev,
+                datePreset,
+                ...range,
+                month: "",
+                year: "",
+            };
+        });
+    }
+
     function setFilter(key: keyof Filters, value: string) {
         setFilters((prev) => {
             const next = { ...prev, [key]: value };
             if (key === "brandId") next.subBrandId = "";
-            if (key === "month" || key === "year") { next.from = ""; next.to = ""; }
-            if (key === "from" || key === "to") next.month = "";
+            if (key === "month" || key === "year") {
+                next.datePreset = "";
+                next.from = "";
+                next.to = "";
+            }
+            if (key === "from" || key === "to") {
+                next.datePreset = "custom";
+                next.month = "";
+                next.year = "";
+            }
             return next;
         });
     }
@@ -535,6 +637,21 @@ export default function SalesReportPage() {
                 <CardContent className="pt-4 pb-4">
                     <div className="flex flex-wrap gap-4 items-end">
                         <FilterSelect
+                            label="Date Range"
+                            value={filters.datePreset}
+                            onChange={setDatePreset}
+                            options={DATE_PRESETS}
+                            placeholder="Select Date Range"
+                        />
+
+                        {filters.datePreset === "custom" && (
+                            <>
+                                <DateInput label="From" value={filters.from} onChange={(v) => setFilter("from", v)} />
+                                <DateInput label="To" value={filters.to} onChange={(v) => setFilter("to", v)} />
+                            </>
+                        )}
+
+                        <FilterSelect
                             label="Year" value={filters.year}
                             onChange={(v) => setFilter("year", v)}
                             options={YEARS.map((y) => ({ value: y, label: y }))}
@@ -545,8 +662,6 @@ export default function SalesReportPage() {
                             onChange={(v) => setFilter("month", v)}
                             options={MONTHS} placeholder="All Months"
                         />
-                        <DateInput label="From" value={filters.from} onChange={(v) => setFilter("from", v)} />
-                        <DateInput label="To" value={filters.to} onChange={(v) => setFilter("to", v)} />
 
                         <FilterSelect
                             label={mastersLoading ? "Brand (loading…)" : "Brand"}
