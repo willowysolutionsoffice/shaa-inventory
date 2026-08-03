@@ -55,7 +55,7 @@ interface ProductMeta {
 
 interface DropdownItem { id: string; name: string }
 
-type DatePreset = "" | "today" | "yesterday" | "last3days" | "last7days" | "lastMonth" | "lastYear" | "custom";
+type DatePreset = "" | "today" | "yesterday" | "last3days" | "last7days" | "lastMonth" | "lastYear" | "singleDay" | "custom";
 
 interface Filters {
     datePreset: DatePreset;
@@ -116,7 +116,8 @@ const DATE_PRESETS: { value: DatePreset; label: string }[] = [
     { value: "last7days", label: "Last 7 Days" },
     { value: "lastMonth", label: "Last Month" },
     { value: "lastYear", label: "Last Year" },
-    { value: "custom", label: "Custom Date" },
+    { value: "singleDay", label: "Specific Date" },
+    { value: "custom", label: "Custom Date Range" },
 ];
 
 const currentYear = new Date().getFullYear();
@@ -391,8 +392,8 @@ export default function SalesReportPage() {
         if (f.month && f.year) {
             const y = Number(f.year), m = Number(f.month);
             return {
-                from: new Date(y, m - 1, 1).toISOString().split("T")[0],
-                to: new Date(y, m, 0).toISOString().split("T")[0],
+                from: formatDateForInput(new Date(y, m - 1, 1)),
+                to: formatDateForInput(new Date(y, m, 0)),
             };
         }
         if (f.year) {
@@ -402,6 +403,16 @@ export default function SalesReportPage() {
         return { from: "", to: "" };
     }
 
+    // Convert browser-local calendar dates into complete ISO boundaries.
+    // This prevents the selected "To" date from becoming 00:00:00 and
+    // accidentally excluding sales created later on that same day.
+    function toApiDateBoundary(value: string, endOfDay = false) {
+        if (!value) return undefined;
+
+        const time = endOfDay ? "23:59:59.999" : "00:00:00.000";
+        return new Date(`${value}T${time}`).toISOString();
+    }
+
     // ── API fetch (date + branch only — those are server-supported) ────────────
     const fetchReport = useCallback(async (f: Filters) => {
     setLoading(true);
@@ -409,10 +420,18 @@ export default function SalesReportPage() {
     try {
       const { from, to } = buildDateRange(f);
 
+      if (from && to && from > to) {
+        setError("From date cannot be later than To date.");
+        return;
+      }
+
+      const apiFrom = toApiDateBoundary(from, false);
+      const apiTo = toApiDateBoundary(to, true);
+
       // ── Now runs server-side — cookies forwarded correctly on Vercel ──
       const result = await getSalesReport({
-        from:     from || undefined,
-        to:       to   || undefined,
+        from:     apiFrom,
+        to:       apiTo,
         branchId: f.branchId || undefined,
         salesmanId: f.salesmanId || undefined,
         limit:    500,
@@ -540,7 +559,7 @@ export default function SalesReportPage() {
                 };
             }
 
-            if (datePreset === "custom") {
+            if (datePreset === "singleDay" || datePreset === "custom") {
                 return {
                     ...prev,
                     datePreset,
@@ -560,6 +579,17 @@ export default function SalesReportPage() {
                 year: "",
             };
         });
+    }
+
+    function setSingleDay(value: string) {
+        setFilters((prev) => ({
+            ...prev,
+            datePreset: "singleDay",
+            from: value,
+            to: value,
+            month: "",
+            year: "",
+        }));
     }
 
     function setFilter(key: keyof Filters, value: string) {
@@ -643,6 +673,14 @@ export default function SalesReportPage() {
                             options={DATE_PRESETS}
                             placeholder="Select Date Range"
                         />
+
+                        {filters.datePreset === "singleDay" && (
+                            <DateInput
+                                label="Date"
+                                value={filters.from}
+                                onChange={setSingleDay}
+                            />
+                        )}
 
                         {filters.datePreset === "custom" && (
                             <>
@@ -829,3 +867,4 @@ export default function SalesReportPage() {
         </div>
     );
 }
+
