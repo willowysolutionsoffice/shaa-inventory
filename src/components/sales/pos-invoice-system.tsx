@@ -6,11 +6,12 @@ import { useAction } from "next-safe-action/hooks";
 import {
   CheckCircle, Printer, Download, RotateCcw, X, Plus, Minus,
   Receipt, RefreshCw, Search, ChevronRight, ArrowLeft,
-  CreditCard, Wallet, IndianRupee, AlertTriangle, FileText,
+  CreditCard, Wallet, IndianRupee, AlertTriangle, FileText, Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { printHtmlWithQZ } from "@/lib/thermal-print";
 import { posRefund } from "@/actions/sales-return-action";
+import { InvoiceEditDialog } from "./invoice-edit-dialog";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -701,6 +702,7 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
 
   const payments = normalizePayments(invoice);
   const isSplit = payments.length > 1;
+  const [isEditOpen, setIsEditOpen] = useState(false);
 
   const tabs = [
     { id: "payment-done" as const, label: "Payment Complete", icon: <CheckCircle size={15} /> },
@@ -992,6 +994,9 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
             <button onClick={() => handlePrint(paymentPrintMode)} style={{ flex: 1, padding: "11px", background: "#7F77DD", border: "none", borderRadius: "var(--border-radius-md)", color: "white", cursor: "pointer", fontSize: 13, fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
               <Printer size={15} /> Print {paymentPrintMode === "a4" ? "A4" : "Thermal"}
             </button>
+            <button onClick={() => setIsEditOpen(true)} style={{ flex: 1, padding: "11px", border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+              <Pencil size={15} /> Edit Invoice
+            </button>
             <button onClick={() => setActiveTab("refund")} style={{ flex: 1, padding: "11px", border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
               <RotateCcw size={15} /> Refund
             </button>
@@ -1009,6 +1014,10 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 8, flexWrap: "wrap" }}>
             <PrintModeToggle mode={previewPrintMode} onChange={setPreviewPrintMode} />
             <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setIsEditOpen(true)}
+                style={{ padding: "8px 16px", border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                <Pencil size={14} /> Edit Invoice
+              </button>
               <button onClick={() => handleDownload(previewPrintMode)}
                 style={{ padding: "8px 16px", border: "0.5px solid var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
                 <Download size={14} /> Download {previewPrintMode === "a4" ? "PDF" : "Receipt"}
@@ -1033,6 +1042,16 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
           onComplete={() => router.push("/sales/pos")}
         />
       )}
+
+      {/* Dynamic Invoice Edit Dialog */}
+      <InvoiceEditDialog
+        saleId={invoice.saleId}
+        open={isEditOpen}
+        onOpenChange={setIsEditOpen}
+        onSuccess={() => {
+          router.refresh();
+        }}
+      />
     </div>
   );
 }

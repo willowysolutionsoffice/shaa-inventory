@@ -169,6 +169,8 @@ export const updateSale = actionClient
       const sale = raw?.data ?? raw;
 
       revalidatePath('/sales');
+      revalidatePath('/sales/pos/invoice');
+      revalidatePath(`/sales/pos/invoice/${id}`);
       return { data: normalizeSale(sale) };
     } catch (error: any) {
       return { error: error.message ?? 'Something went wrong' };
