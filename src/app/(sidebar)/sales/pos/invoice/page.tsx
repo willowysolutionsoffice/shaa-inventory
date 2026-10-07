@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useTransition, useMemo } from "react";
 import {
-  Receipt, Search, Eye, Printer, Trash2,
+  Receipt, Search, Eye, Printer, Trash2, Pencil,
   TrendingUp, Clock, CheckCircle2,
   AlertCircle, ChevronLeft, ChevronRight, Calendar,
   RefreshCw, ArrowUpDown, ShoppingBag,
@@ -18,6 +18,7 @@ import { formatCurrency } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { printThermalDirect } from "@/lib/thermal-print";
+import { InvoiceEditDialog } from "@/components/sales/invoice-edit-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -92,6 +93,7 @@ export default function InvoicesPage() {
   const [sortDir,      setSortDir]      = useState<"asc" | "desc">("desc");
   const [deletingSale, setDeletingSale] = useState<SaleRow | null>(null);
   const [isDeleting,   setIsDeleting]   = useState(false);
+  const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
 
   const LIMIT = 10;
 
@@ -402,6 +404,9 @@ const handleThermalPrint = async (sale: SaleRow) => {
                           <Button size="icon" variant="ghost" className="h-7 w-7 hover:text-purple-600 hover:bg-purple-50" title="View Details" onClick={() => router.push(`/sales/pos/invoice/${sale.id}`)}>
                             <Eye size={13} />
                           </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 hover:text-amber-600 hover:bg-amber-50" title="Edit Invoice" onClick={() => setEditingSaleId(sale.id)}>
+                            <Pencil size={13} />
+                          </Button>
                           <Button size="icon" variant="ghost" className="h-7 w-7 hover:text-blue-600 hover:bg-blue-50" title="Thermal Print" onClick={() => handleThermalPrint(sale)}>
                             <Printer size={13} />
                           </Button>
@@ -445,6 +450,9 @@ const handleThermalPrint = async (sale: SaleRow) => {
                       </span>
                       <Button size="icon" variant="ghost" className="h-7 w-7 hover:text-purple-600" title="View Details" onClick={() => router.push(`/sales/pos/invoice/${sale.id}`)}>
                         <Eye size={13} />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 hover:text-amber-600" title="Edit Invoice" onClick={() => setEditingSaleId(sale.id)}>
+                        <Pencil size={13} />
                       </Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7 hover:text-blue-600" title="Thermal Print" onClick={() => handleThermalPrint(sale)}>
                         <Printer size={13} />
@@ -492,6 +500,14 @@ const handleThermalPrint = async (sale: SaleRow) => {
           </>
         )}
       </Card>
+
+      {/* Dynamic Invoice Edit Modal */}
+      <InvoiceEditDialog
+        saleId={editingSaleId}
+        open={!!editingSaleId}
+        onOpenChange={(open) => !open && setEditingSaleId(null)}
+        onSuccess={fetchSales}
+      />
 
       {/* Delete Confirmation Modal */}
       <AlertDialog open={!!deletingSale} onOpenChange={(open) => !open && setDeletingSale(null)}>
