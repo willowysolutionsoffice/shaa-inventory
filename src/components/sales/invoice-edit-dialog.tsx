@@ -393,12 +393,17 @@ export function InvoiceEditDialog({
       };
 
       const res = await updateSale(payload as any);
-      if (res?.data) {
+      if (res?.data?.data && !res.data.error) {
         toast.success(`Invoice ${invoiceNo} updated successfully!`);
         onOpenChange(false);
         if (onSuccess) onSuccess();
       } else {
-        toast.error(res?.error ?? "Failed to update invoice.");
+        const errMsg =
+          res?.data?.error ||
+          res?.serverError ||
+          (res?.validationErrors ? Object.values(res.validationErrors).flat().join(", ") : null) ||
+          "Failed to update invoice.";
+        toast.error(errMsg);
       }
     } catch (err: any) {
       toast.error(err?.message ?? "An unexpected error occurred while saving.");
