@@ -9,6 +9,8 @@ import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import NextTopLoader from "nextjs-toploader";
 
+import { KeyboardNavigationProvider } from "@/components/providers/keyboard-navigation-provider";
+
 const fontSans = DM_Sans({
   variable: "--font-sans",
   subsets:  ["latin"],
@@ -33,7 +35,9 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <NextTopLoader color="#ea580c" showSpinner={false} />
-          {children}
+          <KeyboardNavigationProvider>
+            {children}
+          </KeyboardNavigationProvider>
           <Toaster richColors position="top-right" />
           {/* RoleSwitcher removed — was mock dev tool only */}
         </ThemeProvider>
