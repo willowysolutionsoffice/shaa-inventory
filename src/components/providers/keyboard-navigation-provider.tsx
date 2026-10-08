@@ -3,22 +3,64 @@
 import React, { useEffect } from 'react';
 
 /**
- * Global Keyboard Navigation & Hotkeys Provider
+ * Universal Keyboard Navigation & Hotkeys Provider
+ * Applies POS-style keyboard-first navigation across the ENTIRE application:
  * 
- * Features:
- * 1. Enter Key Navigation:
- *    - In any form or modal, pressing Enter on an input field advances focus to the next field.
- *    - On the last field or submit button, pressing Enter submits the form.
- *    - Ctrl+Enter or Cmd+Enter immediately submits the active form.
- *    - Textareas retain standard multi-line Enter behavior (unless Ctrl+Enter is used).
+ * 1. Automatic Dialog First-Field Focus:
+ *    - When any modal or drawer opens (e.g. Add User, Add Customer, Add Product),
+ *      the first input field is automatically focused so you can type immediately without a mouse.
  * 
- * 2. Hotkeys:
- *    - Alt+N or F2: Triggers the primary "Add / New" button on the current page (e.g. Add User, New Customer, New Sale, Add Product, etc.)
- *    - Ctrl+S / Cmd+S: Submits the active form without triggering the browser's save web page dialog.
- *    - Ctrl+K or F3: Focuses the first search/filter input on the current page.
+ * 2. Bi-directional Step Navigation (POS / Zoho / Excel Style):
+ *    - Enter: Advances focus to the NEXT field in forms, modals, or table rows.
+ *    - Shift + Enter: Moves focus to the PREVIOUS field.
+ *    - Last field + Enter: Automatically triggers form submission.
+ * 
+ * 3. Hotkeys & Global Shortcuts:
+ *    - Alt + N or F2: Triggers "Add / New / Create" modal or action on any page.
+ *    - Ctrl + S or Cmd + S: Saves / Submits the active form.
+ *    - Ctrl + Enter or Cmd + Enter: Instantly submits the form from any field.
+ *    - F3 or Ctrl + K: Focuses the search / filter input.
+ *    - Escape: Closes open dialogs / drawers.
+ * 
+ * Zero UI alterations — works purely on the DOM event level.
  */
 export function KeyboardNavigationProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
+    // ──────────────────────────────────────────────────────────────────────────
+    // Auto-focus first input when a dialog / modal opens
+    // ──────────────────────────────────────────────────────────────────────────
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === 'childList') {
+          for (const node of Array.from(mutation.addedNodes)) {
+            if (node instanceof HTMLElement) {
+              const dialog = node.matches('[role="dialog"]')
+                ? node
+                : node.querySelector<HTMLElement>('[role="dialog"]');
+              if (dialog) {
+                setTimeout(() => {
+                  const firstInput = dialog.querySelector<HTMLElement>(
+                    'input:not([type="hidden"]):not([disabled]):not([readonly]), textarea:not([disabled]):not([readonly]), select:not([disabled]), [role="combobox"]:not([aria-disabled="true"])'
+                  );
+                  if (firstInput) {
+                    firstInput.focus();
+                    if (firstInput instanceof HTMLInputElement && firstInput.type !== 'date') {
+                      firstInput.select?.();
+                    }
+                  }
+                }, 50);
+              }
+            }
+          }
+        }
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Global Keyboard Event Handler
+    // ──────────────────────────────────────────────────────────────────────────
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (!target) return;
@@ -30,9 +72,7 @@ export function KeyboardNavigationProvider({ children }: { children: React.React
       const isButton = tagName === 'button';
       const isCombobox = target.getAttribute('role') === 'combobox';
 
-      // ──────────────────────────────────────────────────────────────────────────
-      // 1. Hotkey: Ctrl+S / Cmd+S to submit active form
-      // ──────────────────────────────────────────────────────────────────────────
+      // 1. Hotkey: Ctrl+S / Cmd+S (Save active form)
       if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
         const activeForm = target.closest('form');
         if (activeForm) {
@@ -47,18 +87,14 @@ export function KeyboardNavigationProvider({ children }: { children: React.React
         }
       }
 
-      // ──────────────────────────────────────────────────────────────────────────
-      // 2. Hotkey: Alt+N or F2 to trigger "Add / New / Create" modal/page
-      // ──────────────────────────────────────────────────────────────────────────
-      const isAltN = (e.altKey && (e.key === 'n' || e.key === 'N'));
+      // 2. Hotkey: Alt+N or F2 (Trigger Add / New action)
+      const isAltN = e.altKey && (e.key === 'n' || e.key === 'N');
       const isF2 = e.key === 'F2';
 
       if (isAltN || isF2) {
-        // Only trigger if not already typing inside an open dialog or form
         const openDialog = document.querySelector('[role="dialog"]');
         if (!openDialog) {
           e.preventDefault();
-          // Look for Add / New / Create button or link on the page
           const candidateButtons = Array.from(
             document.querySelectorAll<HTMLElement>('button:not([disabled]), a[href]')
           );
@@ -86,9 +122,7 @@ export function KeyboardNavigationProvider({ children }: { children: React.React
         }
       }
 
-      // ──────────────────────────────────────────────────────────────────────────
-      // 3. Hotkey: F3 or Ctrl+K to focus search input
-      // ──────────────────────────────────────────────────────────────────────────
+      // 3. Hotkey: F3 or Ctrl+K (Focus search)
       const isF3 = e.key === 'F3';
       const isCtrlK = (e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K');
       if (isF3 || isCtrlK) {
@@ -103,44 +137,41 @@ export function KeyboardNavigationProvider({ children }: { children: React.React
         }
       }
 
-      // ──────────────────────────────────────────────────────────────────────────
-      // 4. Enter Key Navigation inside Forms and Modals
-      // ──────────────────────────────────────────────────────────────────────────
+      // 4. Enter / Shift+Enter Navigation in Forms, Tables, and Modals
       if (e.key === 'Enter') {
         // Allow textareas standard multi-line enter unless Ctrl/Cmd is pressed
         if (isTextarea && !e.ctrlKey && !e.metaKey) {
           return;
         }
 
-        // Allow buttons and regular links to be clicked with Enter
-        if (isButton && (target as HTMLButtonElement).type !== 'submit') {
+        // Allow standalone buttons (like non-submit buttons / icon buttons) to activate on Enter
+        if (isButton && (target as HTMLButtonElement).type !== 'submit' && !isCombobox) {
           return;
         }
 
-        const container = target.closest('form') || target.closest('[role="dialog"]');
+        const container = target.closest('form') || target.closest('[role="dialog"]') || target.closest('table');
         if (!container) return;
 
         // If Ctrl+Enter / Cmd+Enter: force form submission
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
-          if (container instanceof HTMLFormElement) {
-            const submitBtn = container.querySelector<HTMLButtonElement>('button[type="submit"]:not([disabled])');
+          const form = container instanceof HTMLFormElement ? container : container.querySelector<HTMLFormElement>('form') || target.closest('form');
+          if (form) {
+            const submitBtn = form.querySelector<HTMLButtonElement>('button[type="submit"]:not([disabled])');
             if (submitBtn) {
               submitBtn.click();
             } else {
-              container.requestSubmit?.();
+              form.requestSubmit?.();
             }
           }
           return;
         }
 
-        // For inputs, selects, and comboboxes: move to next field
+        // For inputs, selects, and comboboxes: move to next/prev field
         if (isInput || isSelect || isCombobox) {
           const type = (target as HTMLInputElement).type;
-          // Skip submit buttons or checkbox/radio where Enter is native
           if (type === 'submit' || type === 'reset') return;
 
-          // Find all interactive focusable form elements in order
           const selector = [
             'input:not([type="hidden"]):not([type="submit"]):not([type="reset"]):not([disabled]):not([readonly])',
             'select:not([disabled])',
@@ -159,26 +190,39 @@ export function KeyboardNavigationProvider({ children }: { children: React.React
 
           const currentIndex = focusable.indexOf(target);
 
-          if (currentIndex > -1 && currentIndex < focusable.length - 1) {
-            e.preventDefault();
-            const nextElement = focusable[currentIndex + 1];
-            nextElement.focus();
-            if (nextElement instanceof HTMLInputElement && nextElement.type !== 'date') {
-              nextElement.select?.();
+          if (e.shiftKey) {
+            // Shift + Enter: Move Backward
+            if (currentIndex > 0) {
+              e.preventDefault();
+              const prevElement = focusable[currentIndex - 1];
+              prevElement.focus();
+              if (prevElement instanceof HTMLInputElement && prevElement.type !== 'date') {
+                prevElement.select?.();
+              }
             }
-          } else if (currentIndex === focusable.length - 1) {
-            // Last element reached
-            if (target instanceof HTMLButtonElement && target.type === 'submit') {
-              // Standard button click will fire
-              return;
-            }
-            e.preventDefault();
-            if (container instanceof HTMLFormElement) {
-              const submitBtn = container.querySelector<HTMLButtonElement>('button[type="submit"]:not([disabled])');
-              if (submitBtn) {
-                submitBtn.click();
-              } else {
-                container.requestSubmit?.();
+          } else {
+            // Enter: Move Forward
+            if (currentIndex > -1 && currentIndex < focusable.length - 1) {
+              e.preventDefault();
+              const nextElement = focusable[currentIndex + 1];
+              nextElement.focus();
+              if (nextElement instanceof HTMLInputElement && nextElement.type !== 'date') {
+                nextElement.select?.();
+              }
+            } else if (currentIndex === focusable.length - 1) {
+              // Last element reached -> submit
+              if (target instanceof HTMLButtonElement && target.type === 'submit') {
+                return;
+              }
+              e.preventDefault();
+              const form = container instanceof HTMLFormElement ? container : container.querySelector<HTMLFormElement>('form') || target.closest('form');
+              if (form) {
+                const submitBtn = form.querySelector<HTMLButtonElement>('button[type="submit"]:not([disabled])');
+                if (submitBtn) {
+                  submitBtn.click();
+                } else {
+                  form.requestSubmit?.();
+                }
               }
             }
           }
@@ -187,7 +231,10 @@ export function KeyboardNavigationProvider({ children }: { children: React.React
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   return <>{children}</>;
