@@ -4,28 +4,94 @@ import React, { useEffect } from 'react';
 
 /**
  * Universal Keyboard Navigation & Hotkeys Provider
- * Applies POS-style keyboard-first navigation across the ENTIRE application:
+ * Full keyboard-driven navigation across all forms, dialogs, and dropdowns:
  * 
- * 1. Automatic Dialog First-Field Focus:
- *    - When any modal or drawer opens (e.g. Add User, Add Customer, Add Product),
- *      the first input field is automatically focused so you can type immediately without a mouse.
+ * 1. Dropdown / Select Enter Navigation:
+ *    - On closed Select: Pressing 'Enter' advances focus to the NEXT field.
+ *      (Press 'Space' or 'ArrowDown' to open dropdown for selection).
+ *    - In open Select list: Pressing 'Enter' on an option selects it AND automatically
+ *      advances focus to the NEXT form field!
+ *    - Shift + Enter moves backward to the previous field.
  * 
- * 2. Bi-directional Step Navigation (POS / Zoho / Excel Style):
- *    - Enter: Advances focus to the NEXT field in forms, modals, or table rows.
- *    - Shift + Enter: Moves focus to the PREVIOUS field.
- *    - Last field + Enter: Automatically triggers form submission.
+ * 2. Inputs & Forms:
+ *    - Enter advances to next field, Shift+Enter moves back.
+ *    - On last field, Enter triggers form submit.
+ *    - Ctrl+S / Ctrl+Enter submits active form immediately.
  * 
- * 3. Hotkeys & Global Shortcuts:
- *    - Alt + N or F2: Triggers "Add / New / Create" modal or action on any page.
- *    - Ctrl + S or Cmd + S: Saves / Submits the active form.
- *    - Ctrl + Enter or Cmd + Enter: Instantly submits the form from any field.
- *    - F3 or Ctrl + K: Focuses the search / filter input.
- *    - Escape: Closes open dialogs / drawers.
- * 
- * Zero UI alterations — works purely on the DOM event level.
+ * 3. Modals & Dialogs:
+ *    - Automatically focuses first input when any modal opens.
+ *    - Alt+N or F2 triggers New/Add on any page.
+ *    - Escape closes modals.
  */
 export function KeyboardNavigationProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
+    // ──────────────────────────────────────────────────────────────────────────
+    // Helper: Find all focusable interactive elements within a container
+    // ──────────────────────────────────────────────────────────────────────────
+    const getFocusableElements = (container: HTMLElement): HTMLElement[] => {
+      const selector = [
+        'input:not([type="hidden"]):not([type="submit"]):not([type="reset"]):not([disabled]):not([readonly])',
+        'select:not([disabled])',
+        'textarea:not([disabled]):not([readonly])',
+        '[data-slot="select-trigger"]:not([disabled])',
+        'button[role="combobox"]:not([aria-disabled="true"]):not([disabled])',
+        'button[type="submit"]:not([disabled])',
+      ].join(', ');
+
+      return Array.from(container.querySelectorAll<HTMLElement>(selector)).filter((el) => {
+        return (
+          el.tabIndex !== -1 &&
+          (el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0) &&
+          window.getComputedStyle(el).visibility !== 'hidden' &&
+          window.getComputedStyle(el).display !== 'none'
+        );
+      });
+    };
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Helper: Focus next or previous element
+    // ──────────────────────────────────────────────────────────────────────────
+    const navigateFocus = (
+      container: HTMLElement,
+      currentEl: HTMLElement,
+      direction: 'next' | 'prev' = 'next'
+    ) => {
+      const focusable = getFocusableElements(container);
+      const currentIndex = focusable.indexOf(currentEl);
+
+      if (direction === 'prev') {
+        if (currentIndex > 0) {
+          const prevEl = focusable[currentIndex - 1];
+          prevEl.focus();
+          if (prevEl instanceof HTMLInputElement && prevEl.type !== 'date') {
+            prevEl.select?.();
+          }
+        }
+      } else {
+        if (currentIndex > -1 && currentIndex < focusable.length - 1) {
+          const nextEl = focusable[currentIndex + 1];
+          nextEl.focus();
+          if (nextEl instanceof HTMLInputElement && nextEl.type !== 'date') {
+            nextEl.select?.();
+          }
+        } else if (currentIndex === focusable.length - 1) {
+          // Last element -> Submit form
+          const form =
+            container instanceof HTMLFormElement
+              ? container
+              : container.querySelector<HTMLFormElement>('form') || currentEl.closest('form');
+          if (form) {
+            const submitBtn = form.querySelector<HTMLButtonElement>('button[type="submit"]:not([disabled])');
+            if (submitBtn) {
+              submitBtn.click();
+            } else {
+              form.requestSubmit?.();
+            }
+          }
+        }
+      }
+    };
+
     // ──────────────────────────────────────────────────────────────────────────
     // Auto-focus first input when a dialog / modal opens
     // ──────────────────────────────────────────────────────────────────────────
@@ -39,13 +105,12 @@ export function KeyboardNavigationProvider({ children }: { children: React.React
                 : node.querySelector<HTMLElement>('[role="dialog"]');
               if (dialog) {
                 setTimeout(() => {
-                  const firstInput = dialog.querySelector<HTMLElement>(
-                    'input:not([type="hidden"]):not([disabled]):not([readonly]), textarea:not([disabled]):not([readonly]), select:not([disabled]), [role="combobox"]:not([aria-disabled="true"])'
-                  );
-                  if (firstInput) {
-                    firstInput.focus();
-                    if (firstInput instanceof HTMLInputElement && firstInput.type !== 'date') {
-                      firstInput.select?.();
+                  const focusables = getFocusableElements(dialog);
+                  if (focusables.length > 0) {
+                    const first = focusables[0];
+                    first.focus();
+                    if (first instanceof HTMLInputElement && first.type !== 'date') {
+                      first.select?.();
                     }
                   }
                 }, 50);
@@ -70,9 +135,18 @@ export function KeyboardNavigationProvider({ children }: { children: React.React
       const isSelect = tagName === 'select';
       const isTextarea = tagName === 'textarea';
       const isButton = tagName === 'button';
-      const isCombobox = target.getAttribute('role') === 'combobox';
+      const isSelectTrigger =
+        target.getAttribute('data-slot') === 'select-trigger' ||
+        target.getAttribute('role') === 'combobox' ||
+        target.classList.contains('select-trigger');
+      const isSelectOption =
+        target.getAttribute('role') === 'option' ||
+        target.getAttribute('data-slot') === 'select-item' ||
+        Boolean(target.closest('[role="listbox"], [data-slot="select-content"]'));
 
+      // ────────────────────────────────────────────────────────────────────────
       // 1. Hotkey: Ctrl+S / Cmd+S (Save active form)
+      // ────────────────────────────────────────────────────────────────────────
       if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
         const activeForm = target.closest('form');
         if (activeForm) {
@@ -87,7 +161,9 @@ export function KeyboardNavigationProvider({ children }: { children: React.React
         }
       }
 
+      // ────────────────────────────────────────────────────────────────────────
       // 2. Hotkey: Alt+N or F2 (Trigger Add / New action)
+      // ────────────────────────────────────────────────────────────────────────
       const isAltN = e.altKey && (e.key === 'n' || e.key === 'N');
       const isF2 = e.key === 'F2';
 
@@ -122,7 +198,9 @@ export function KeyboardNavigationProvider({ children }: { children: React.React
         }
       }
 
+      // ────────────────────────────────────────────────────────────────────────
       // 3. Hotkey: F3 or Ctrl+K (Focus search)
+      // ────────────────────────────────────────────────────────────────────────
       const isF3 = e.key === 'F3';
       const isCtrlK = (e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K');
       if (isF3 || isCtrlK) {
@@ -137,25 +215,70 @@ export function KeyboardNavigationProvider({ children }: { children: React.React
         }
       }
 
-      // 4. Enter / Shift+Enter Navigation in Forms, Tables, and Modals
+      // ────────────────────────────────────────────────────────────────────────
+      // 4. Enter on an open Dropdown Option (Selects option & advances to next field)
+      // ────────────────────────────────────────────────────────────────────────
+      if (e.key === 'Enter' && isSelectOption) {
+        // Find the trigger button for this open select dropdown
+        const activeTrigger = document.querySelector<HTMLElement>(
+          '[data-slot="select-trigger"][data-state="open"], button[role="combobox"][data-state="open"], button[aria-expanded="true"]'
+        );
+
+        if (activeTrigger) {
+          const container =
+            activeTrigger.closest('form') ||
+            activeTrigger.closest('[role="dialog"]') ||
+            activeTrigger.closest('table') ||
+            document.body;
+
+          // Allow Radix UI to process the selection first, then advance focus to next field
+          setTimeout(() => {
+            navigateFocus(container as HTMLElement, activeTrigger, e.shiftKey ? 'prev' : 'next');
+          }, 60);
+        }
+        return;
+      }
+
+      // ────────────────────────────────────────────────────────────────────────
+      // 5. Enter on a Closed Select Trigger (Advances to next field without reopening)
+      // ────────────────────────────────────────────────────────────────────────
+      if (e.key === 'Enter' && isSelectTrigger) {
+        const isOpen = target.getAttribute('data-state') === 'open' || target.getAttribute('aria-expanded') === 'true';
+        if (!isOpen) {
+          e.preventDefault();
+          const container =
+            target.closest('form') || target.closest('[role="dialog"]') || target.closest('table');
+          if (container) {
+            navigateFocus(container as HTMLElement, target, e.shiftKey ? 'prev' : 'next');
+          }
+          return;
+        }
+      }
+
+      // ────────────────────────────────────────────────────────────────────────
+      // 6. Enter / Shift+Enter Navigation in Inputs and Text controls
+      // ────────────────────────────────────────────────────────────────────────
       if (e.key === 'Enter') {
-        // Allow textareas standard multi-line enter unless Ctrl/Cmd is pressed
+        // Multi-line in textarea unless Ctrl/Cmd is pressed
         if (isTextarea && !e.ctrlKey && !e.metaKey) {
           return;
         }
 
-        // Allow standalone buttons (like non-submit buttons / icon buttons) to activate on Enter
-        if (isButton && (target as HTMLButtonElement).type !== 'submit' && !isCombobox) {
+        // Standalone action buttons (excluding submit or select triggers) activate normally
+        if (isButton && (target as HTMLButtonElement).type !== 'submit' && !isSelectTrigger) {
           return;
         }
 
         const container = target.closest('form') || target.closest('[role="dialog"]') || target.closest('table');
         if (!container) return;
 
-        // If Ctrl+Enter / Cmd+Enter: force form submission
+        // Force Submit with Ctrl+Enter / Cmd+Enter
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
-          const form = container instanceof HTMLFormElement ? container : container.querySelector<HTMLFormElement>('form') || target.closest('form');
+          const form =
+            container instanceof HTMLFormElement
+              ? container
+              : container.querySelector<HTMLFormElement>('form') || target.closest('form');
           if (form) {
             const submitBtn = form.querySelector<HTMLButtonElement>('button[type="submit"]:not([disabled])');
             if (submitBtn) {
@@ -167,73 +290,21 @@ export function KeyboardNavigationProvider({ children }: { children: React.React
           return;
         }
 
-        // For inputs, selects, and comboboxes: move to next/prev field
-        if (isInput || isSelect || isCombobox) {
+        // Move to next / previous field
+        if (isInput || isSelect || isSelectTrigger) {
           const type = (target as HTMLInputElement).type;
           if (type === 'submit' || type === 'reset') return;
 
-          const selector = [
-            'input:not([type="hidden"]):not([type="submit"]):not([type="reset"]):not([disabled]):not([readonly])',
-            'select:not([disabled])',
-            'textarea:not([disabled]):not([readonly])',
-            '[role="combobox"]:not([aria-disabled="true"])',
-            'button[type="submit"]:not([disabled])',
-          ].join(', ');
-
-          const focusable = Array.from(container.querySelectorAll<HTMLElement>(selector)).filter((el) => {
-            return (
-              el.tabIndex !== -1 &&
-              (el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0) &&
-              window.getComputedStyle(el).visibility !== 'hidden'
-            );
-          });
-
-          const currentIndex = focusable.indexOf(target);
-
-          if (e.shiftKey) {
-            // Shift + Enter: Move Backward
-            if (currentIndex > 0) {
-              e.preventDefault();
-              const prevElement = focusable[currentIndex - 1];
-              prevElement.focus();
-              if (prevElement instanceof HTMLInputElement && prevElement.type !== 'date') {
-                prevElement.select?.();
-              }
-            }
-          } else {
-            // Enter: Move Forward
-            if (currentIndex > -1 && currentIndex < focusable.length - 1) {
-              e.preventDefault();
-              const nextElement = focusable[currentIndex + 1];
-              nextElement.focus();
-              if (nextElement instanceof HTMLInputElement && nextElement.type !== 'date') {
-                nextElement.select?.();
-              }
-            } else if (currentIndex === focusable.length - 1) {
-              // Last element reached -> submit
-              if (target instanceof HTMLButtonElement && target.type === 'submit') {
-                return;
-              }
-              e.preventDefault();
-              const form = container instanceof HTMLFormElement ? container : container.querySelector<HTMLFormElement>('form') || target.closest('form');
-              if (form) {
-                const submitBtn = form.querySelector<HTMLButtonElement>('button[type="submit"]:not([disabled])');
-                if (submitBtn) {
-                  submitBtn.click();
-                } else {
-                  form.requestSubmit?.();
-                }
-              }
-            }
-          }
+          e.preventDefault();
+          navigateFocus(container as HTMLElement, target, e.shiftKey ? 'prev' : 'next');
         }
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
     return () => {
       observer.disconnect();
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown, true);
     };
   }, []);
 
