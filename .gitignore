@@ -44,4 +44,6 @@ next-env.d.ts
 # AI files
 .cursor/*
 .kiro/*
+.playwright-mcp/
+all_endpoints*.txt
 
