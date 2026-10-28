@@ -5,10 +5,12 @@ import { SalesTable } from "@/components/sales/sales-table";
 import { salesColumns } from "@/components/sales/sales-colums";
 import { fetchSales } from "@/actions/sales-action";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Plus, Store } from "lucide-react";
 import Link from "next/link";
 import { DateRangeFilter } from "@/components/common/date-range-filter";
 import { getTodayUtcMidnight, formatUtcDate } from "@/lib/date-utils";
+import { LiveDateTime } from "@/components/dashboard/live-date-time";
 
 interface SalesPageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -32,12 +34,24 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
     <div className="flex flex-1 flex-col">
       <div className="@container/main flex flex-1 flex-col gap-2">
         <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-border/40">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Sales</h1>
-              <p className="text-muted-foreground">Manage your sales</p>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="text-2xl font-bold tracking-tight">Sales</h1>
+                <Badge
+                  variant="outline"
+                  className="px-2.5 py-1 bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 font-semibold text-xs flex items-center gap-1.5 shadow-xs"
+                >
+                  <Store className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+                  <span>SHAASHOPY CHEMMAD</span>
+                </Badge>
+              </div>
+              <p className="text-muted-foreground text-sm mt-0.5">
+                Manage sales orders, view invoices, and track payments
+              </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <LiveDateTime />
               <DateRangeFilter defaultDate={{ from: today, to: today }} />
               <Link href="/sales/new">
                 <Button>

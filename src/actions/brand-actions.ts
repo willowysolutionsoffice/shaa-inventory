@@ -73,6 +73,15 @@ export const deleteBrand = actionClient
     }
   });
 
+export const getBrandListWithSubBrands = async (): Promise<Brand[]> => {
+  try {
+    const brands = await api.get<Brand[]>('/brands?take=200');
+    return Array.isArray(brands) ? brands : (brands as any)?.data ?? [];
+  } catch {
+    return [];
+  }
+};
+
 export const getBrandListForDropdown = async (): Promise<{ id: string; name: string }[]> => {
   try {
     const brands = await api.get<Brand[]>('/brands?take=200');

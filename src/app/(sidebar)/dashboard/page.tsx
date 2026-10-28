@@ -9,14 +9,18 @@ import { getOptimizedDashboardData } from "@/lib/actions/optimized-dashboard";
 import { ChartAreaInteractive } from "@/components/dashboard/chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { prisma } from "@/lib/prisma";
+import { api } from "@/lib/api";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import DashboardCharts from "@/components/graphs/sales-purchase-graph";
 import { getMonthlyData } from "@/lib/actions/getMonthlyData";
 import { getPermissionsForRole, PERMISSIONS } from "@/constants/permissions";
 import type { Permission } from "@/constants/permissions";
 import { getDashboardData } from "@/lib/actions/dashboard";
 import { cookies } from "next/headers";
+import { BranchPerformanceCard } from "@/components/dashboard/branch-performance-card";
+import { BranchHeaderSelector } from "@/components/dashboard/branch-header-selector";
+import { LiveDateTime } from "@/components/dashboard/live-date-time";
+import { BrandSalesCard } from "@/components/dashboard/brand-sales-card";
+import { getBranchListForDropdown, BranchDropdownItem } from "@/actions/branch-action";
 
 import {
   IconUsers,
@@ -123,6 +127,7 @@ function StaffDashboard({
   recentPurchases,
   recentExpenses,
   lowStock,
+  brandPerformance = [],
 }: {
   userName: string;
   roleLabel: string;
@@ -132,6 +137,7 @@ function StaffDashboard({
   recentPurchases: RecentPurchase[];
   recentExpenses: RecentExpense[];
   lowStock: LowStockProduct[];
+  brandPerformance?: any[];
 }) {
   const {
     totalSaleAmount,
@@ -154,21 +160,25 @@ function StaffDashboard({
     <div className="space-y-6">
       {/* Welcome banner */}
       <div className="rounded-xl border border-border bg-gradient-to-r from-[#4F7DF3]/10 to-[#3B66D9]/05 px-6 py-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">
-              Welcome back, {userName} 👋
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Logged in as{" "}
-              <span className="font-medium text-[#4F7DF3]">{roleLabel}</span>
-              {" · "}Shaa Calicut
-            </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <img
+              src="https://shaacalicut.com/cdn/shop/files/ChatGPT_Image_Jul_12_2025_11_44_52_PM.png?height=100&v=1752344140"
+              alt="SHAA"
+              className="h-12 w-auto object-contain bg-white dark:bg-slate-900 rounded-xl p-1.5 border border-border shadow-xs shrink-0"
+            />
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">
+                Welcome back, {userName} 👋
+              </h1>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Logged in as{" "}
+                <span className="font-medium text-[#4F7DF3]">{roleLabel}</span>
+                {" · "}Shaa Calicut Enterprise
+              </p>
+            </div>
           </div>
-          <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground">
-            <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-            Live
-          </div>
+          <LiveDateTime />
         </div>
       </div>
 
@@ -243,8 +253,8 @@ function StaffDashboard({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {can(PERMISSIONS.MANAGE_SALES) && (
           <div className="rounded-xl border border-border bg-card shadow-sm">
-            <div className="px-5 py-4 border-b border-border">
-              <h3 className="font-semibold text-sm">Recent Sales</h3>
+            <div className="px-5 py-3.5 border-b border-border">
+              <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-foreground">RECENT SALES</h3>
               <p className="text-xs text-muted-foreground mt-0.5">Last 5 invoices</p>
             </div>
             <div className="divide-y divide-border">
@@ -270,8 +280,8 @@ function StaffDashboard({
 
         {can(PERMISSIONS.MANAGE_PURCHASES) && (
           <div className="rounded-xl border border-border bg-card shadow-sm">
-            <div className="px-5 py-4 border-b border-border">
-              <h3 className="font-semibold text-sm">Recent Purchases</h3>
+            <div className="px-5 py-3.5 border-b border-border">
+              <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-foreground">RECENT PURCHASES</h3>
               <p className="text-xs text-muted-foreground mt-0.5">Last 4 purchase orders</p>
             </div>
             <div className="divide-y divide-border">
@@ -297,9 +307,9 @@ function StaffDashboard({
 
         {can(PERMISSIONS.MANAGE_EXPENSES) && (
           <div className="rounded-xl border border-border bg-card shadow-sm">
-            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+            <div className="px-5 py-3.5 border-b border-border flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-sm">Recent Expenses</h3>
+                <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-foreground">RECENT EXPENSES</h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Total: ₹{totalExpenseAmount.toLocaleString("en-IN")}
                 </p>
@@ -321,8 +331,8 @@ function StaffDashboard({
 
         {can(PERMISSIONS.MANAGE_PRODUCTS) && (
           <div className="rounded-xl border border-border bg-card shadow-sm">
-            <div className="px-5 py-4 border-b border-border">
-              <h3 className="font-semibold text-sm">Low Stock Alert</h3>
+            <div className="px-5 py-3.5 border-b border-border">
+              <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-foreground">LOW STOCK ALERT</h3>
               <p className="text-xs text-muted-foreground mt-0.5">Products with stock &lt; 15</p>
             </div>
             <div className="divide-y divide-border">
@@ -344,6 +354,10 @@ function StaffDashboard({
           </div>
         )}
       </div>
+
+      {can(PERMISSIONS.MANAGE_SALES) && brandPerformance.length > 0 && (
+        <BrandSalesCard brandPerf={brandPerformance} />
+      )}
 
       {noWidgets && (
         <div className="rounded-xl border border-border bg-card px-6 py-10 text-center">
@@ -375,319 +389,220 @@ function timeAgo(date: Date): string {
 async function AdminDashboard({
   session,
   displayBranch,
+  branchId,
+  branches,
 }: {
   session: any;
   displayBranch: string;
+  branchId?: string;
+  branches: BranchDropdownItem[];
 }) {
-  const now        = new Date();
-  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
-  const weekAgo    = new Date(now); weekAgo.setDate(now.getDate() - 7);
-  const twoWeekAgo = new Date(now); twoWeekAgo.setDate(now.getDate() - 14);
-
-  const [
-    dashboardData,
-    chartData,
-    // Branch performance: sales per branch for last 7 days
-    branchSalesThisWeek,
-    branchSalesLastWeek,
-    allBranches,
-    // Pending POs (PENDING or PARTIAL)
-    pendingPOs,
-    // Notifications sources
-    recentCustomers,
-    recentPaidSales,
-    lowStockProducts,
-  ] = await Promise.all([
-    getOptimizedDashboardData(),
-    getMonthlyData(),
-
-    prisma.sale.groupBy({
-      by:      ["branchId"],
-      where:   { salesDate: { gte: weekAgo } },
-      _sum:    { grandTotal: true },
-    }),
-    prisma.sale.groupBy({
-      by:      ["branchId"],
-      where:   { salesDate: { gte: twoWeekAgo, lt: weekAgo } },
-      _sum:    { grandTotal: true },
-    }),
-    prisma.branch.findMany({ select: { id: true, name: true } }),
-
-    prisma.purchase.findMany({
-      where:   { paymentStatus: { in: ["PENDING", "PARTIAL"] } },
-      orderBy: { purchaseDate: "desc" },
-      take:    5,
-      select: {
-        id:           true,
-        purchaseNo:   true,
-        totalAmount:  true,
-        paymentDue:   true,
-        paymentStatus: true,
-        supplier:     { select: { name: true } },
-      },
-    }),
-
-    // New customers in last 48h
-    prisma.customer.findMany({
-      where:   { createdAt: { gte: new Date(Date.now() - 172800000) } },
-      orderBy: { createdAt: "desc" },
-      take:    3,
-      select:  { id: true, name: true, createdAt: true },
-    }),
-    // Recently fully-paid sales (PAID, grandTotal > 1000)
-    prisma.sale.findMany({
-      where:   { paymentStatus: "PAID", grandTotal: { gte: 1000 }, salesDate: { gte: weekAgo } },
-      orderBy: { salesDate: "desc" },
-      take:    3,
-      select: {
-        id:         true,
-        invoiceNo:  true,
-        grandTotal: true,
-        salesDate:  true,
-        payments:   { orderBy: { paidOn: "desc" }, take: 1, select: { paymentMethod: true } },
-      },
-    }),
-    // Low stock items (≤ 10)
-    prisma.product.findMany({
-      where:   { stock: { lte: 10 } },
-      orderBy: { stock: "asc" },
-      take:    3,
-      select:  { id: true, productName: true, stock: true, updatedAt: true },
-    }),
+  const [dashboardData, chartData] = await Promise.all([
+    getOptimizedDashboardData(branchId),
+    getMonthlyData(branchId),
   ]);
 
-  // ── Branch performance %: this week vs last week ───────────────────────────
-  const lastWeekMap = new Map(
-    branchSalesLastWeek.map((r) => [r.branchId, Number(r._sum.grandTotal ?? 0)])
-  );
-  const branchPerf = allBranches.map((branch) => {
-    const thisWeek = branchSalesThisWeek.find((r) => r.branchId === branch.id);
-    const curr  = Number(thisWeek?._sum?.grandTotal ?? 0);
-    const prev  = lastWeekMap.get(branch.id) ?? 0;
-    // % of target: use prev week as baseline; if no prior data show curr > 0 as 100%
-    const pct   = prev > 0 ? Math.min(Math.round((curr / prev) * 100), 150) : (curr > 0 ? 100 : 0);
-    return { id: branch.id, name: branch.name, pct, curr, prev };
-  })
-  .filter((b) => b.curr > 0 || b.prev > 0)  // hide completely inactive branches
-  .sort((a, b) => b.pct - a.pct)
-  .slice(0, 4);
+  const {
+    totalCustomers = 0,
+    totalProducts = 0,
+    todaysSales = 0,
+    todaysSalesCount = 0,
+    todaysPurchases = 0,
+    todaysPurchasesCount = 0,
+    recentSales = [],
+    topProducts = [],
+    stockLevels = [],
+    totalOutstanding = 0,
+    outstandingCount = 0,
+    branchPerformance = [],
+    brandPerformance = [],
+    pendingPOs = [],
+    recentCustomers = [],
+    recentPaidSales = [],
+    salesGrowthPct = 0,
+  } = dashboardData;
 
+  const branchPerf = branchPerformance;
   const overallStatus = branchPerf.length === 0
     ? "No Data"
-    : branchPerf.every((b) => b.pct >= 80)
+    : branchPerf.every((b: any) => b.pct >= 80)
     ? "Optimal"
-    : branchPerf.some((b) => b.pct < 50)
+    : branchPerf.some((b: any) => b.pct < 50)
     ? "Needs Attention"
     : "On Track";
 
-  // ── Synthesised notifications ──────────────────────────────────────────────
+  const lowStockProducts = (stockLevels || []).filter((p: any) => p.stock <= 10);
+
+  // ── Synthesised notifications from live backend data ───────────────────────
   type Notif = { id: string; icon: "user" | "dollar" | "package"; color: string; title: string; body: string; time: string };
   const notifications: Notif[] = [
-    ...recentCustomers.map((c) => ({
+    ...recentCustomers.map((c: any) => ({
       id:    `cust-${c.id}`,
       icon:  "user" as const,
       color: "blue",
       title: "New Customer Registered",
       body:  `${c.name} was onboarded.`,
-      time:  timeAgo(new Date(c.createdAt)),
+      time:  c.createdAt ? timeAgo(new Date(c.createdAt)) : "recently",
     })),
-    ...recentPaidSales.map((s) => ({
+    ...recentPaidSales.map((s: any) => ({
       id:    `sale-${s.id}`,
       icon:  "dollar" as const,
       color: "green",
       title: "Large Payment Cleared",
-      body:  `Invoice #${s.invoiceNo} fully paid (${formatCurrency(Number(s.grandTotal))}) via ${s.payments[0]?.paymentMethod ?? "—"}.`,
-      time:  timeAgo(new Date(s.salesDate)),
+      body:  `Invoice #${s.invoiceNo} fully paid (${formatCurrency(Number(s.grandTotal))}) via ${s.payments?.[0]?.paymentMethod ?? "card"}.`,
+      time:  s.salesDate ? timeAgo(new Date(s.salesDate)) : "recently",
     })),
-    ...lowStockProducts.map((p) => ({
+    ...lowStockProducts.slice(0, 3).map((p: any) => ({
       id:    `stock-${p.id}`,
       icon:  "package" as const,
       color: "red",
       title: "Low Stock Alert",
       body:  `${p.productName} has only ${p.stock} units left.`,
-      time:  timeAgo(new Date(p.updatedAt)),
+      time:  p.updatedAt ? timeAgo(new Date(p.updatedAt)) : "critical",
     })),
   ].slice(0, 5);
-
-  const {
-    totalCustomers,
-    totalProducts,
-    todaysSales,
-    todaysSalesCount,
-    todaysPurchases,
-    todaysPurchasesCount,
-    recentSales,
-    topProducts,
-    stockLevels,
-    totalOutstanding,
-    outstandingCount,
-  } = dashboardData;
 
   return (
     <div className="bg-background min-h-screen flex flex-col">
       {/* Header */}
-      <div className="bg-card border-border border-b px-6 py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="h-2 w-2 rounded-full bg-blue-600 animate-pulse"></div>
-            <h1 className="text-foreground text-2xl font-bold tracking-tight">
-              Welcome, {session.user.name || "User"}
-              {displayBranch}
-            </h1>
+      <div className="bg-card border-border border-b px-6 py-4 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
+        <div className="flex items-center gap-3.5">
+          <img
+            src="https://shaacalicut.com/cdn/shop/files/ChatGPT_Image_Jul_12_2025_11_44_52_PM.png?height=100&v=1752344140"
+            alt="SHAA"
+            className="h-11 w-auto object-contain bg-white dark:bg-slate-900 rounded-xl p-1.5 border border-border shadow-xs shrink-0"
+          />
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-foreground text-xl sm:text-2xl font-bold tracking-tight">
+                Welcome, {session.user.name || "User"}
+              </h1>
+              {displayBranch && (
+                <Badge variant="outline" className="text-xs font-semibold bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300">
+                  {displayBranch.replace(/^ — /, "")}
+                </Badge>
+              )}
+            </div>
+            <p className="text-muted-foreground text-xs sm:text-sm mt-0.5">
+              SHAA Calicut Enterprise Overview &amp; Real-Time Analytics
+            </p>
           </div>
-          <p className="text-muted-foreground text-sm mt-1">
-            Your enterprise dashboard overview and real-time alerts
-          </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <a href="/sales/pos" className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 shadow-md">
+
+        <div className="flex flex-wrap items-center gap-2.5 w-full xl:w-auto justify-start xl:justify-end">
+          <LiveDateTime />
+          <BranchHeaderSelector branches={branches} selectedBranchId={branchId} />
+          <a href="/sales/pos" className="bg-purple-600 hover:bg-purple-700 text-white px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 shadow-md">
             <IconCurrencyDollar className="h-4 w-4" /> POS Terminal
           </a>
-          <a href="/purchase/new" className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 shadow-md">
+          <a href="/purchase/new" className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 shadow-md">
             <IconPackage className="h-4 w-4" /> New PO
           </a>
-          <a href="/admin/stock-adjustment" className="bg-card border border-border hover:bg-muted text-foreground px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 shadow-sm">
+          <a href="/admin/stock-adjustment" className="bg-card border border-border hover:bg-muted text-foreground px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 shadow-xs">
             <IconRefresh className="h-4 w-4" /> Sync Stock
           </a>
         </div>
       </div>
 
       <div className="flex flex-col xl:flex-row flex-1 p-4 md:p-6 gap-6">
-        <div className="flex-1 space-y-6 md:space-y-8 max-w-7xl mx-auto w-full">
+        <div className="flex-1 space-y-6 md:space-y-8 min-w-0 w-full">
 
-          {/* KPI Row */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* KPI Row - Balanced 3-card layout across all screen sizes */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-5">
             {/* Today's Revenue */}
-            <div className="rounded-2xl bg-gradient-to-br from-purple-800 to-indigo-900 p-6 text-white shadow-lg relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 opacity-20">
+            <div className="rounded-2xl bg-gradient-to-br from-purple-800 to-indigo-900 p-4 sm:p-5 text-white shadow-lg relative overflow-hidden flex flex-col justify-between h-full">
+              <div className="absolute top-0 right-0 p-4 opacity-20 pointer-events-none">
                 <IconTrophy className="h-24 w-24" />
               </div>
               <div className="relative z-10">
-                <h2 className="text-lg font-medium text-purple-100 uppercase tracking-wider mb-2">Today's Revenues</h2>
-                <div className="text-4xl font-extrabold mb-1">{formatCurrency(todaysSales)}</div>
-                <p className="text-sm text-purple-200">Across {todaysSalesCount} retail transactions</p>
+                <h2 className="text-xs sm:text-sm font-bold text-purple-200 uppercase tracking-wider mb-1">TODAY&apos;S REVENUES</h2>
+                <div className="text-2xl sm:text-3xl font-extrabold mb-1 tracking-tight">{formatCurrency(todaysSales)}</div>
+                <p className="text-xs text-purple-200 mt-2">Across {todaysSalesCount} retail transactions</p>
               </div>
             </div>
 
             {/* Profile card */}
-            <Card className="border-border shadow-md bg-card">
-              <CardContent className="p-6 h-full flex flex-col justify-center">
-                <div className="flex items-center gap-4">
-                  <div className="relative">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 text-2xl font-bold text-white shadow-inner">
+            <Card className="border-border shadow-md bg-card h-full flex flex-col justify-between">
+              <CardContent className="p-4 sm:p-5 h-full flex flex-col justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="relative shrink-0">
+                    <div className="flex h-12 w-12 sm:h-13 sm:w-13 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 text-lg sm:text-xl font-bold text-white shadow-inner">
                       {session.user.name?.charAt(0) || "U"}
                     </div>
-                    <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-yellow-500 border-2 border-card">
-                      <IconStar className="h-3 w-3 text-white" />
+                    <div className="absolute -bottom-1 -right-1 flex h-4.5 w-4.5 sm:h-5 sm:w-5 items-center justify-center rounded-full bg-yellow-500 border-2 border-card">
+                      <IconStar className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-white" />
                     </div>
                   </div>
-                  <div>
-                    <h4 className="text-foreground text-lg font-bold">{session.user.name || "User"}</h4>
-                    <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">{session.user.role || "USER"} ROLE</p>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="text-foreground text-sm sm:text-base font-bold truncate">{session.user.name || "User"}</h4>
+                    <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wider">{session.user.role || "USER"} ROLE</p>
                   </div>
                 </div>
-                <div className="mt-5 grid grid-cols-3 gap-2 border-t border-border pt-4">
+                <div className="mt-3 grid grid-cols-3 gap-1.5 border-t border-border pt-2.5">
                   <div className="text-center">
-                    <p className="text-2xl font-bold text-foreground">{totalCustomers}</p>
+                    <p className="text-lg sm:text-xl font-bold text-foreground">{totalCustomers}</p>
                     <p className="text-[10px] text-muted-foreground uppercase font-bold">Clients</p>
                   </div>
                   <div className="text-center border-l border-r border-border">
-                    <p className="text-2xl font-bold text-foreground">{totalProducts}</p>
+                    <p className="text-lg sm:text-xl font-bold text-foreground">{totalProducts}</p>
                     <p className="text-[10px] text-muted-foreground uppercase font-bold">Items</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-2xl font-bold text-green-600">{todaysPurchasesCount}</p>
+                    <p className="text-lg sm:text-xl font-bold text-green-600">{todaysPurchasesCount}</p>
                     <p className="text-[10px] text-muted-foreground uppercase font-bold">POs Today</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Branch performance */}
-            <Card className="border-border shadow-md bg-card relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
-              <CardContent className="p-6">
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-foreground text-sm font-bold uppercase tracking-wider">Branch Performance</h3>
-                  <Badge
-                    variant="outline"
-                    className={
-                      overallStatus === "Optimal"
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]"
-                        : overallStatus === "Needs Attention"
-                        ? "bg-red-50 text-red-700 border-red-200 text-[10px]"
-                        : "bg-blue-50 text-blue-700 border-blue-200 text-[10px]"
-                    }
-                  >
-                    {overallStatus}
-                  </Badge>
-                </div>
-                <div className="space-y-4">
-                  {branchPerf.length === 0 ? (
-                    <p className="text-xs text-muted-foreground italic">No branch sales data yet.</p>
-                  ) : (
-                    branchPerf.map((branch, i) => {
-                      const colors = ["emerald", "blue", "purple", "orange"];
-                      const c = colors[i % colors.length];
-                      const barColor =
-                        c === "emerald" ? "bg-emerald-500" :
-                        c === "blue"    ? "bg-blue-500"    :
-                        c === "purple"  ? "bg-purple-500"  : "bg-orange-500";
-                      const textColor =
-                        c === "emerald" ? "text-emerald-600" :
-                        c === "blue"    ? "text-blue-600"    :
-                        c === "purple"  ? "text-purple-600"  : "text-orange-600";
-                      return (
-                        <div key={branch.id}>
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="font-medium truncate max-w-[140px]">{branch.name}</span>
-                            <span className={`font-bold ${textColor}`}>{branch.pct}%</span>
-                          </div>
-                          <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                            <div
-                              className={`h-full ${barColor} rounded-full transition-all duration-700`}
-                              style={{ width: `${Math.min(branch.pct, 100)}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                  <p className="text-[10px] text-muted-foreground italic mt-2">
-                    This week vs last week sales
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+            {/* Branch Performance & Switcher Card */}
+            <BranchPerformanceCard
+              branchPerf={branchPerf}
+              overallStatus={overallStatus}
+              branches={branches}
+              selectedBranchId={branchId}
+              className="col-span-1 md:col-span-2 lg:col-span-1 h-full"
+            />
           </div>
 
-          {/* Charts */}
-          <div className="grid grid-cols-1 gap-6">
-            <div className="w-full overflow-hidden rounded-xl shadow-sm border border-border">
-              <ChartAreaInteractive data={chartData} />
-            </div>
-            <div className="w-full overflow-hidden rounded-xl shadow-sm border border-border">
-              {/* DashboardCharts now takes a single `data` prop */}
-              <DashboardCharts data={chartData} />
-            </div>
+          {/* Sales vs Purchases Interactive Area Chart */}
+          <div className="w-full overflow-hidden rounded-xl shadow-sm border border-border">
+            <ChartAreaInteractive data={chartData} />
           </div>
+
+          {/* Brand-Wise Sales Performance */}
+          <BrandSalesCard brandPerf={brandPerformance} />
 
           {/* Financial Summary */}
           <div>
-            <h2 className="text-foreground text-lg font-bold uppercase tracking-wider mb-4 border-b border-border pb-2">Financial Records &amp; Accruals</h2>
+            <div className="border-b border-border pb-2 mb-4">
+              <h2 className="text-foreground text-base sm:text-lg font-bold uppercase tracking-wider">
+                FINANCIAL RECORDS &amp; ACCRUALS
+              </h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Real-time summary of today&apos;s sales, purchases, and outstanding receivables
+              </p>
+            </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <Card className="border-l-4 border-l-green-500 bg-card shadow-sm hover:shadow-md transition-shadow">
                 <CardContent className="p-5">
-                  <p className="text-xs font-bold text-muted-foreground uppercase mb-1">Today's Sales</p>
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">TODAY&apos;S SALES</p>
                   <div className="text-2xl font-extrabold text-foreground mb-2">{formatCurrency(todaysSales)}</div>
-                  <div className="flex items-center gap-1 text-xs font-semibold text-green-600">
-                    <IconArrowUp className="h-3 w-3" /> +12.5% vs yesterday
+                  <div className={`flex items-center gap-1 text-xs font-semibold ${
+                    salesGrowthPct >= 0 ? "text-green-600" : "text-red-500"
+                  }`}>
+                    {salesGrowthPct >= 0 ? (
+                      <IconArrowUp className="h-3 w-3" />
+                    ) : (
+                      <IconArrowDown className="h-3 w-3" />
+                    )}
+                    {`${salesGrowthPct >= 0 ? "+" : ""}${salesGrowthPct}% vs yesterday`}
                   </div>
                 </CardContent>
               </Card>
               <Card className="border-l-4 border-l-orange-500 bg-card shadow-sm hover:shadow-md transition-shadow">
                 <CardContent className="p-5">
-                  <p className="text-xs font-bold text-muted-foreground uppercase mb-1">Today's Purchases</p>
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">TODAY&apos;S PURCHASES</p>
                   <div className="text-2xl font-extrabold text-foreground mb-2">{formatCurrency(todaysPurchases)}</div>
                   <div className="flex items-center gap-1 text-xs font-semibold text-orange-600">
                     <IconArrowUp className="h-3 w-3" /> {todaysPurchasesCount} POs processed
@@ -696,7 +611,7 @@ async function AdminDashboard({
               </Card>
               <Card className="border-l-4 border-l-blue-500 bg-card shadow-sm hover:shadow-md transition-shadow">
                 <CardContent className="p-5">
-                  <p className="text-xs font-bold text-muted-foreground uppercase mb-1">Total Outstanding (AR)</p>
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">TOTAL OUTSTANDING (AR)</p>
                   <div className="text-2xl font-extrabold text-foreground mb-2">{formatCurrency(totalOutstanding || 0)}</div>
                   <div className="flex items-center gap-1 text-xs font-semibold text-blue-600">
                     <IconUsers className="h-3 w-3" /> From {outstandingCount} clients
@@ -708,10 +623,19 @@ async function AdminDashboard({
 
           {/* Top Products */}
           <div>
-            <h2 className="text-foreground text-lg font-bold uppercase tracking-wider mb-4 border-b border-border pb-2 flex justify-between items-end">
-              <span>Top Moving Products</span>
-              <a href="/admin/products" className="text-xs text-purple-600 hover:underline">View catalog</a>
-            </h2>
+            <div className="border-b border-border pb-2 mb-4 flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <h2 className="text-foreground text-base sm:text-lg font-bold uppercase tracking-wider">
+                  TOP MOVING PRODUCTS
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Fastest moving inventory ranked by total quantity sold
+                </p>
+              </div>
+              <a href="/admin/products" className="text-xs font-semibold text-purple-600 hover:text-purple-700 hover:underline">
+                View catalog &rarr;
+              </a>
+            </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
               {topProducts.length > 0 ? (
                 topProducts.slice(0, 4).map((product, index) => (
@@ -745,23 +669,30 @@ async function AdminDashboard({
         </div>
 
         {/* Right Sidebar */}
-        <div className="w-full xl:w-96 flex flex-col gap-6">
+        <div className="w-full xl:w-72 2xl:w-80 flex flex-col gap-6 shrink-0">
 
           {/* Notifications */}
           <Card className="border-border shadow-sm bg-card">
-            <CardHeader className="py-4 border-b border-border bg-muted/20">
-              <CardTitle className="text-sm font-bold uppercase tracking-wider flex items-center gap-2">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                </span>
-                Live Notifications
+            <CardHeader className="py-3.5 px-4 border-b border-border bg-muted/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-xs sm:text-sm font-bold uppercase tracking-wider flex items-center gap-2 text-foreground">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                    </span>
+                    LIVE NOTIFICATIONS
+                  </CardTitle>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Real-time alerts and activity updates
+                  </p>
+                </div>
                 {notifications.length > 0 && (
-                  <span className="ml-auto text-[10px] font-semibold bg-red-500 text-white rounded-full px-1.5 py-0.5">
+                  <span className="text-[10px] font-semibold bg-red-500 text-white rounded-full px-1.5 py-0.5">
                     {notifications.length}
                   </span>
                 )}
-              </CardTitle>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               {notifications.length === 0 ? (
@@ -793,9 +724,18 @@ async function AdminDashboard({
 
           {/* Pending POs */}
           <Card className="border-border shadow-sm bg-card">
-            <CardHeader className="py-4 border-b border-border flex flex-row items-center justify-between">
-              <CardTitle className="text-sm font-bold uppercase tracking-wider">Pending POs</CardTitle>
-              <Badge variant="secondary" className="text-[10px]">{pendingPOs.length} Active</Badge>
+            <CardHeader className="py-3.5 px-4 border-b border-border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-xs sm:text-sm font-bold uppercase tracking-wider text-foreground">
+                    PENDING POS
+                  </CardTitle>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Orders awaiting fulfillment or payment
+                  </p>
+                </div>
+                <Badge variant="secondary" className="text-[10px]">{pendingPOs.length} Active</Badge>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               {pendingPOs.length === 0 ? (
@@ -830,9 +770,18 @@ async function AdminDashboard({
 
           {/* Latest Invoices */}
           <Card className="border-border shadow-sm bg-card">
-            <CardHeader className="py-4 border-b border-border flex flex-row items-center justify-between">
-              <CardTitle className="text-sm font-bold uppercase tracking-wider">Latest Invoices</CardTitle>
-              <a href="/sales" className="text-[10px] font-semibold text-purple-600 hover:underline">See Ledger</a>
+            <CardHeader className="py-3.5 px-4 border-b border-border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-xs sm:text-sm font-bold uppercase tracking-wider text-foreground">
+                    LATEST INVOICES
+                  </CardTitle>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Recent retail billing transactions
+                  </p>
+                </div>
+                <a href="/sales" className="text-[10px] font-semibold text-purple-600 hover:underline">See Ledger →</a>
+              </div>
             </CardHeader>
             <CardContent className="p-4">
               <div className="space-y-4">
@@ -848,8 +797,18 @@ async function AdminDashboard({
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-foreground text-xs font-bold">{formatCurrency(sale.grandTotal)}</p>
-                      <Badge variant="outline" className="text-[8px] px-1 py-0 h-4 border-green-200 text-green-700 bg-green-50">Cleared</Badge>
+                      <Badge
+                        variant="outline"
+                        className={`text-[8px] px-1 py-0 h-4 ${
+                          sale.paymentStatus === "PAID"
+                            ? "border-green-200 text-green-700 bg-green-50"
+                            : sale.paymentStatus === "PARTIAL"
+                            ? "border-yellow-200 text-yellow-700 bg-yellow-50"
+                            : "border-red-200 text-red-700 bg-red-50"
+                        }`}
+                      >
+                        {sale.paymentStatus === "PAID" ? "Cleared" : sale.paymentStatus === "PARTIAL" ? "Partial" : "Unpaid"}
+                      </Badge>
                     </div>
                   </div>
                 ))}
@@ -862,10 +821,15 @@ async function AdminDashboard({
 
           {/* Low Stock */}
           <Card className="border-border shadow-sm bg-card border-t-4 border-t-red-500">
-            <CardHeader className="py-4 border-b border-border">
-              <CardTitle className="text-sm font-bold uppercase tracking-wider text-red-600 dark:text-red-400 flex items-center gap-2">
-                <IconArrowDown className="h-4 w-4" /> Low Stock Alerts
-              </CardTitle>
+            <CardHeader className="py-3.5 px-4 border-b border-border">
+              <div>
+                <CardTitle className="text-xs sm:text-sm font-bold uppercase tracking-wider text-red-600 dark:text-red-400 flex items-center gap-1.5">
+                  <IconArrowDown className="h-4 w-4" /> LOW STOCK ALERTS
+                </CardTitle>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Items below minimum stock threshold
+                </p>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <div className="divide-y divide-border">
@@ -901,8 +865,16 @@ async function AdminDashboard({
 // Page entry point
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default async function DashboardPage() {
-  const session = await auth.api.getSession({ headers: await headers() });
+export default async function DashboardPage(props: {
+  searchParams?: Promise<{ branchId?: string }>;
+}) {
+  const searchParams = props.searchParams ? await props.searchParams : {};
+  const selectedBranchId = searchParams?.branchId;
+
+  const [session, branches] = await Promise.all([
+    auth.api.getSession({ headers: await headers() }),
+    getBranchListForDropdown(),
+  ]);
 
   if (!session) redirect("/login");
 
@@ -925,12 +897,10 @@ export default async function DashboardPage() {
   const isAdmin  = role === "admin";
 
   let branchName: string | undefined;
-  if (!isAdmin && session.user.branchId) {
-    const branch = await prisma.branch.findUnique({
-      where:  { id: session.user.branchId },
-      select: { name: true },
-    });
-    branchName = branch?.name;
+  const currentBranchId = selectedBranchId || (!isAdmin ? session.user.branchId : undefined);
+  if (currentBranchId) {
+    const matched = branches.find((b) => b.id === currentBranchId);
+    branchName = matched?.name;
   }
   const displayBranch = branchName ? ` — ${branchName}` : "";
 
@@ -948,42 +918,34 @@ export default async function DashboardPage() {
   const can = (p: Permission) => userPermissions.includes(p);
 
   if (isAdmin) {
-    return <AdminDashboard session={session} displayBranch={displayBranch} />;
+    return (
+      <AdminDashboard
+        session={session}
+        displayBranch={displayBranch}
+        branchId={selectedBranchId}
+        branches={branches}
+      />
+    );
   }
 
   // ── Staff: fetch real data scoped to the user's branch ──────────────────────
   const branchId = session.user.branchId as string | undefined;
-
-  const [staffDashboard, recentExpensesRaw] = await Promise.all([
-    getOptimizedDashboardData(branchId),
-    prisma.expense.findMany({
-      where:   branchId ? { branchId } : {},
-      orderBy: { expenseDate: "desc" },
-      take:    5,
-      select: {
-        id:          true,
-        title:       true,
-        amount:      true,
-        category:    { select: { name: true } },
-      },
-    }),
-  ]);
+  const staffDashboard = await getOptimizedDashboardData(branchId);
+  const recentExpenses = (staffDashboard.recentExpenses ?? []).map((e: any) => ({
+    ...e,
+    amount: Number(e.amount),
+  }));
 
   const staffStats = {
     totalSaleAmount:     staffDashboard.todaysSales,          // scoped totals via optimized
     totalPurchaseAmount: staffDashboard.todaysPurchases,
-    totalExpenseAmount:  recentExpensesRaw.reduce((s: number, e: any) => s + Number(e.amount), 0),
+    totalExpenseAmount:  recentExpenses.reduce((s: number, e: any) => s + Number(e.amount), 0),
     totalOutstanding:    staffDashboard.totalOutstanding,
     totalProducts:       staffDashboard.totalProducts,
     lowStockItems:       staffDashboard.lowStockItems,
     totalCustomers:      staffDashboard.totalCustomers,
     totalSuppliers:      staffDashboard.totalSuppliers,
   };
-
-  const recentExpenses = recentExpensesRaw.map((e: any) => ({
-    ...e,
-    amount: Number(e.amount),
-  }));
 
   return (
     <div className="p-4 md:p-6">
@@ -996,6 +958,7 @@ export default async function DashboardPage() {
         recentPurchases={staffDashboard.recentPurchases as any}
         recentExpenses={recentExpenses}
         lowStock={staffDashboard.stockLevels as any}
+        brandPerformance={staffDashboard.brandPerformance ?? []}
       />
     </div>
   );

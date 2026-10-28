@@ -7,15 +7,8 @@ import { api } from "@/lib/api";
 
 export default async function POSPage() {
   const session = await auth.api.getSession();
-  const branchId = session?.user?.branchId ?? "";
-
-  let branchName = "Branch";
-  if (branchId) {
-    try {
-      const branch = await api.get<any>(`/branches/${branchId}`);
-      branchName = branch?.name ?? "Branch";
-    } catch {}
-  }
+  const branchId = session?.user?.branchId || "branch-calicut-main";
+  const branchName = "SHAASHOPY CHEMMAD";
 
   return <PosBillingPage branchId={branchId} branchName={branchName} />;
 }

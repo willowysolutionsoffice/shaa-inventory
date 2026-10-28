@@ -5,8 +5,9 @@ import {
   Receipt, Search, Eye, Printer, Trash2, Pencil,
   TrendingUp, Clock, CheckCircle2,
   AlertCircle, ChevronLeft, ChevronRight, Calendar,
-  RefreshCw, ArrowUpDown, ShoppingBag,
+  RefreshCw, ArrowUpDown, ShoppingBag, Store,
 } from "lucide-react";
+import { LiveDateTime } from "@/components/dashboard/live-date-time";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -248,16 +249,26 @@ const handleThermalPrint = async (sale: SaleRow) => {
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
-      <div className="flex flex-col gap-2 md:flex-row md:items-center justify-between">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center justify-between pb-1 border-b border-border/40">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
-            <Receipt className="text-purple-600 h-8 w-8" /> Invoices
-          </h1>
-          <p className="text-muted-foreground text-sm">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
+              <Receipt className="text-purple-600 h-8 w-8" /> Invoices
+            </h1>
+            <Badge
+              variant="outline"
+              className="px-2.5 py-1 bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 font-semibold text-xs flex items-center gap-1.5 shadow-xs"
+            >
+              <Store className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+              <span>SHAASHOPY CHEMMAD</span>
+            </Badge>
+          </div>
+          <p className="text-muted-foreground text-sm mt-0.5">
             All sales invoices • filter, search, and manage
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <LiveDateTime />
           <Button variant="outline" size="sm" className="gap-1.5 h-9" onClick={fetchSales} disabled={isPending}>
             <RefreshCw size={14} className={isPending ? "animate-spin" : ""} /> Refresh
           </Button>
@@ -335,7 +346,7 @@ const handleThermalPrint = async (sale: SaleRow) => {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/30">
-                {["Invoice", "Date", "Customer", "Items", "Payment", "Total", "Due", "Status", ""].map((h) => (
+                {["Invoice", "Date & Time", "Customer", "Branch", "Items", "Payment", "Total", "Due", "Status", ""].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">
                     {h}
                   </th>
@@ -346,7 +357,7 @@ const handleThermalPrint = async (sale: SaleRow) => {
               {isPending ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="border-b border-border/50">
-                    {Array.from({ length: 9 }).map((_, j) => (
+                    {Array.from({ length: 10 }).map((_, j) => (
                       <td key={j} className="px-4 py-3">
                         <div className="h-4 rounded bg-muted animate-pulse w-20" />
                       </td>
@@ -355,7 +366,7 @@ const handleThermalPrint = async (sale: SaleRow) => {
                 ))
               ) : displayed.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-16 text-muted-foreground text-sm">
+                  <td colSpan={10} className="text-center py-16 text-muted-foreground text-sm">
                     <Receipt className="h-10 w-10 mx-auto mb-2 opacity-20" />
                     No invoices found
                   </td>
@@ -379,6 +390,12 @@ const handleThermalPrint = async (sale: SaleRow) => {
                       </td>
                       <td className="px-4 py-3">
                         <span className="font-medium text-foreground text-xs">{sale.customer?.name ?? "Walk-in"}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant="outline" className="text-[10px] bg-slate-50 dark:bg-slate-900 border-slate-200 flex items-center gap-1 w-fit">
+                          <Store className="h-2.5 w-2.5 text-purple-600" />
+                          <span>{sale.branch?.name || "SHAASHOPY CHEMMAD"}</span>
+                        </Badge>
                       </td>
                       <td className="px-4 py-3 text-xs text-muted-foreground text-center">{itemCount}</td>
                       <td className="px-4 py-3">

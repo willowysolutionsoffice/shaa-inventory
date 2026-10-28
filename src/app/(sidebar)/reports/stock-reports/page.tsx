@@ -4,6 +4,10 @@ import { StockReportTable } from "@/components/reports/stock-report-table";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { api } from "@/lib/api";
+import { getBrandListWithSubBrands } from "@/actions/brand-actions";
+import { getBranchListForDropdown } from "@/actions/branch-action";
+import { StockReportItem } from "@/actions/stock-report-actions";
 
 export default async function StockReportPage() {
   const session = await auth.api.getSession({
@@ -15,48 +19,99 @@ export default async function StockReportPage() {
 
   const whereClause = role === "admin" ? {} : { branchId };
 
-  // Get all products with their related data
-  const products = await prisma.product.findMany({
-    where: whereClause,
-    include: {
-      brand: true,
-      branch: true,
-    },
-    orderBy: {
-      // Ensure consistent ordering
-      id: "asc",
-    },
-  });
+  // 1. Fetch Brands with Sub-Brands and Branches
+  const [brandsWithSubs, branches] = await Promise.all([
+    getBrandListWithSubBrands().catch(() => []),
+    getBranchListForDropdown().catch(() => []),
+  ]);
+
+  const brandNameMap = new Map<string, string>();
+  const subBrandMap = new Map<string, { id: string; name: string; brandId: string; brandName: string }>();
+  const branchNameMap = new Map<string, string>();
+
+  for (const b of brandsWithSubs) {
+    if (b.id) brandNameMap.set(b.id, b.name);
+    if (Array.isArray(b.subBrands)) {
+      for (const sb of b.subBrands) {
+        subBrandMap.set(sb.id, {
+          id: sb.id,
+          name: sb.name,
+          brandId: b.id,
+          brandName: b.name,
+        });
+      }
+    }
+  }
+
+  for (const br of branches) {
+    if (br.id) branchNameMap.set(br.id, br.name);
+  }
+
+  // 2. Fetch Products
+  let products: any[] = [];
+  try {
+    const apiRes = await api.get<any>("/products?limit=5000");
+    const list = apiRes?.products ?? apiRes?.data ?? (Array.isArray(apiRes) ? apiRes : []);
+    if (Array.isArray(list) && list.length > 0) {
+      products = role === "admin" ? list : list.filter((p: any) => p.branchId === branchId);
+    }
+  } catch {
+    // fallback
+  }
+
+  if (products.length === 0) {
+    try {
+      products = await prisma.product.findMany({
+        where: whereClause,
+        include: {
+          brand: true,
+          branch: true,
+        },
+        orderBy: {
+          id: "asc",
+        },
+      });
+    } catch {
+      products = [];
+    }
+  }
 
   const productIds = products.map((p) => p.id);
 
-  // Get sales data for each product
-  const salesData = await prisma.saleItem.groupBy({
-    by: ["productId"],
-    _sum: {
-      quantity: true,
-    },
-    where: {
-      productId: {
-        in: productIds,
-      },
-    },
-  });
+  // 3. Sales & Sales Returns
+  let salesData: any[] = [];
+  let salesReturnData: any[] = [];
 
-  // Get sales return data
-  const salesReturnData = await prisma.salesReturnItem.groupBy({
-    by: ["productId"],
-    _sum: {
-      quantity: true,
-    },
-    where: {
-      productId: {
-        in: productIds,
-      },
-    },
-  });
+  try {
+    [salesData, salesReturnData] = await Promise.all([
+      prisma.saleItem.groupBy({
+        by: ["productId"],
+        _sum: {
+          quantity: true,
+        },
+        where: {
+          productId: {
+            in: productIds,
+          },
+        },
+      }),
+      prisma.salesReturnItem.groupBy({
+        by: ["productId"],
+        _sum: {
+          quantity: true,
+        },
+        where: {
+          productId: {
+            in: productIds,
+          },
+        },
+      }),
+    ]);
+  } catch {
+    salesData = [];
+    salesReturnData = [];
+  }
 
-  // Create maps for quick lookup
   const salesMap = new Map(
     salesData.map((item) => [item.productId, item._sum?.quantity || 0])
   );
@@ -64,37 +119,59 @@ export default async function StockReportPage() {
     salesReturnData.map((item) => [item.productId, item._sum?.quantity || 0])
   );
 
-  // Calculate stock report data
-  const stockReport = products.map((product) => {
+  // 4. Build Stock Report Data
+  const stockReport: StockReportItem[] = products.map((product) => {
     const totalSold = salesMap.get(product.id) || 0;
     const totalSalesReturned = salesReturnMap.get(product.id) || 0;
 
-    // Calculate current stock value by purchase price (using excTax as purchase price)
-    const currentStockValuePurchase = product.stock * product.purchasePrice;
+    const stock = Number(product.stock ?? 0);
+    const purchasePrice = Number(product.purchasePrice ?? 0);
+    const sellingPrice = Number(product.sellingPrice ?? purchasePrice);
 
-    // Calculate current stock value by sale price
-    const currentStockValueSale = product.stock * product.purchasePrice;
-
-    // Calculate potential profit
+    const currentStockValuePurchase = stock * purchasePrice;
+    const currentStockValueSale = stock * sellingPrice;
     const potentialProfit = currentStockValueSale - currentStockValuePurchase;
-
-    // Calculate total units sold (sales - sales returns)
     const totalUnitSold = totalSold - totalSalesReturned;
+
+    const bId = product.brandId ?? product.brand?.id;
+    const sbId = product.subBrandId ?? product.subBrand?.id;
+    const brId = product.branchId ?? product.branch?.id;
+
+    const brandName =
+      product.brand?.name ??
+      (bId ? brandNameMap.get(bId) : undefined) ??
+      (sbId ? subBrandMap.get(sbId)?.brandName : undefined) ??
+      "Unbranded";
+
+    const subBrandName =
+      product.subBrand?.name ??
+      (sbId ? subBrandMap.get(sbId)?.name : undefined) ??
+      "—";
+
+    const branchName =
+      product.branch?.name ??
+      (brId ? branchNameMap.get(brId) : undefined) ??
+      "Main Location";
 
     return {
       id: product.id,
-      sku: product.sku,
-      product_name: product.product_name,
-      variation: product.unit, // Using unit as variation for now
-
-      location: product.branch?.name || "No Location",
-      unit_selling_price: product.purchasePrice,
-      current_stock: product.stock,
+      sku: product.sku || `SKU-${product.id}`,
+      product_name: product.product_name || product.productName || "Unnamed Product",
+      brand_name: brandName,
+      sub_brand_name: subBrandName,
+      brandId: bId,
+      subBrandId: sbId,
+      branchId: brId,
+      variation: product.unit || "Unit",
+      location: branchName,
+      unit_purchase_price: purchasePrice,
+      unit_selling_price: sellingPrice,
+      current_stock: stock,
       current_stock_value_purchase: currentStockValuePurchase,
       current_stock_value_sale: currentStockValueSale,
       potential_profit: potentialProfit,
       total_unit_sold: totalUnitSold,
-      unit: product.unit,
+      unit: product.unit || "pc",
     };
   });
 

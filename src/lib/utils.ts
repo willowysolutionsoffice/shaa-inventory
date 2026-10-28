@@ -85,6 +85,25 @@ export function formatDate(
   );
 }
 
+/**
+ * Format a Date object or date string into date & time (e.g. 27 Oct 2026, 07:28 PM)
+ */
+export function formatDateTime(
+  date: Date | string | null | undefined
+): string {
+  if (!date) return "—";
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(d);
+}
+
 
 
 export function groupPurchasesByMonth(purchases: { purchaseDate: Date; totalAmount: number }[]) {

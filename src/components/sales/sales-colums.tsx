@@ -5,15 +5,16 @@
 import { Sale } from "@/types/sales";
 import { ColumnDef } from "@tanstack/react-table";
 import {
-  ArrowDown, ArrowUp, ArrowUpDown, Edit2, Trash2, Eye, Check,
+  ArrowDown, ArrowUp, ArrowUpDown, Edit2, Trash2, Eye, Check, Store,
 } from "lucide-react";
 import { Button }              from "@/components/ui/button";
+import { Badge }               from "@/components/ui/badge";
 import { SalesDeleteDialog }   from "./sales-delete-dailog";
 import { SalesFormSheet }      from "./sales-form";
 import { ExportInvoiceButton } from "../common/export-invoice-button";
 import { useState }            from "react";
 import { useRouter }           from "next/navigation";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import { updateSalesStatus }   from "@/actions/sales-action";
 import { useAction }           from "next-safe-action/hooks";
 import { toast }               from "sonner";
@@ -59,25 +60,39 @@ export const salesColumns: ColumnDef<Sale>[] = [
       const sort = column.getIsSorted();
       return (
         <Button variant="ghost" onClick={() => column.toggleSorting(sort === "asc")}>
-          Ref No{" "}
+          Invoice No{" "}
           {sort === "asc" ? <ArrowUp /> : sort === "desc" ? <ArrowDown /> : <ArrowUpDown />}
         </Button>
       );
     },
+    cell: ({ row }) => (
+      <span className="font-bold text-purple-700 dark:text-purple-400 font-mono text-xs">
+        {row.getValue("invoiceNo")}
+      </span>
+    ),
   },
   {
     accessorKey: "salesdate",
-    header: "Date",
+    header: "Date & Time",
     cell: ({ row }) => {
       // API returns salesDate (Prisma field) — handle both cases
       const raw = (row.original as any).salesDate ?? row.getValue("salesdate");
-      return <div>{raw ? formatDate(raw) : "—"}</div>;
+      return (
+        <div className="text-xs text-muted-foreground whitespace-nowrap">
+          {raw ? formatDateTime(raw) : "—"}
+        </div>
+      );
     },
   },
   {
     id: "location",
-    header: "Location",
-    cell: ({ row }) => <span>{row.original.branch?.name ?? "—"}</span>,
+    header: "Branch",
+    cell: ({ row }) => (
+      <Badge variant="outline" className="text-[10px] bg-slate-50 dark:bg-slate-900 border-slate-200 flex items-center gap-1 w-fit">
+        <Store className="h-2.5 w-2.5 text-purple-600" />
+        <span>{row.original.branch?.name ?? "SHAASHOPY CHEMMAD"}</span>
+      </Badge>
+    ),
   },
   {
     id: "customer",

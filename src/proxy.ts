@@ -87,6 +87,7 @@ export default async function proxy(req: NextRequest) {
         Cookie: `refresh_token=${refreshToken}`,
       },
       cache: "no-store",
+      signal: AbortSignal.timeout(5000),
     });
 
     if (!refreshResponse.ok) {

@@ -36,7 +36,8 @@ export const createBranch = actionClient
   .action(async (values) => {
     try {
       const branch = await api.post<Branch>('/branches', values.parsedInput);
-      revalidatePath('/branch');
+      revalidatePath('/admin/branches');
+      revalidatePath('/dashboard');
       return { data: branch };
     } catch (error: any) {
       console.error('Create Branch Error:', error);
@@ -75,7 +76,8 @@ export const updateBranch = actionClient
     const { id, ...data } = values.parsedInput;
     try {
       const branch = await api.patch<Branch>(`/branches/${id}`, data);
-      revalidatePath('/branch');
+      revalidatePath('/admin/branches');
+      revalidatePath('/dashboard');
       return { data: branch };
     } catch (error: any) {
       console.error('Update Branch Error:', error);
@@ -91,7 +93,8 @@ export const deleteBranch = actionClient
     const { id } = values.parsedInput;
     try {
       const result = await api.delete<{ id: string }>(`/branches/${id}`);
-      revalidatePath('/branch');
+      revalidatePath('/admin/branches');
+      revalidatePath('/dashboard');
       return { data: result };
     } catch (error: any) {
       console.error('Delete Branch Error:', error);

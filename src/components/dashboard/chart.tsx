@@ -5,7 +5,7 @@ import { useState } from "react"
 import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
 
 import { useIsMobile } from "@/hooks/use-mobile"
-import { formatDate } from "@/lib/utils"
+import { formatDate, CURRENCY_SYMBOL } from "@/lib/utils"
 import {
   Card,
   CardAction,
@@ -31,6 +31,7 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@/components/ui/toggle-group"
+import { YAxis } from "recharts"
 
 type MonthlyData = {
   date: string
@@ -45,11 +46,11 @@ interface ChartAreaInteractiveProps {
 const chartConfig = {
   sales: {
     label: "Sales",
-    color: "hsl(var(--chart-1))",
+    color: "#6366f1",
   },
   purchases: {
     label: "Purchases",
-    color: "hsl(var(--chart-2))",
+    color: "#f43f5e",
   },
 } satisfies ChartConfig
 
@@ -88,14 +89,21 @@ export function ChartAreaInteractive({ data }: ChartAreaInteractiveProps) {
       <div className="absolute inset-0 opacity-30 blur-3xl bg-gradient-to-br from-indigo-300/30 to-emerald-300/30 pointer-events-none" />
 
       <CardHeader className="relative z-10">
-        <CardTitle className="text-gray-800 dark:text-gray-100">
-          Sales vs Purchases
+        <CardTitle className="text-sm sm:text-base font-bold uppercase tracking-wider text-foreground flex flex-wrap items-center gap-3">
+          <span>SALES VS PURCHASES</span>
+          <div className="flex items-center gap-2 text-xs font-semibold normal-case tracking-normal">
+            <span className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-900">
+              <span className="h-2 w-2 rounded-full bg-indigo-600 inline-block" />
+              Sales
+            </span>
+            <span className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-900">
+              <span className="h-2 w-2 rounded-full bg-rose-500 inline-block" />
+              Purchases
+            </span>
+          </div>
         </CardTitle>
-        <CardDescription className="text-gray-600 dark:text-gray-400">
-          <span className="hidden @[540px]/card:block">{selectedLabel}</span>
-          <span className="@[540px]/card:hidden">
-            {timeRange === "30d" ? "30 days" : timeRange === "14d" ? "14 days" : "7 days"}
-          </span>
+        <CardDescription className="text-xs text-muted-foreground mt-1">
+          Comparison of sales revenue and purchase expenses over {selectedLabel.toLowerCase()}
         </CardDescription>
         <CardAction>
           <ToggleGroup
@@ -139,28 +147,40 @@ export function ChartAreaInteractive({ data }: ChartAreaInteractiveProps) {
           <AreaChart data={filteredData}>
             <defs>
               <linearGradient id="fillSales" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor="hsl(var(--chart-1))" stopOpacity={0.8} />
-                <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0.05} />
+                <stop offset="5%"  stopColor="#6366f1" stopOpacity={0.8} />
+                <stop offset="95%" stopColor="#6366f1" stopOpacity={0.05} />
               </linearGradient>
               <linearGradient id="fillPurchases" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor="hsl(var(--chart-2))" stopOpacity={0.8} />
-                <stop offset="95%" stopColor="hsl(var(--chart-2))" stopOpacity={0.05} />
+                <stop offset="5%"  stopColor="#f43f5e" stopOpacity={0.8} />
+                <stop offset="95%" stopColor="#f43f5e" stopOpacity={0.05} />
               </linearGradient>
             </defs>
-            <CartesianGrid vertical={false} stroke="#e5e7eb" />
+            <CartesianGrid vertical={false} stroke="#e5e7eb" strokeDasharray="3 3" opacity={0.6} />
             <XAxis
               dataKey="date"
               tickLine={false}
               axisLine={false}
               tickMargin={8}
               minTickGap={32}
-              tick={{ fill: "#6b7280" }}
+              tick={{ fill: "#6b7280", fontSize: 11 }}
               tickFormatter={(value) =>
                 new Date(value).toLocaleDateString("en-US", {
                   month: "short",
                   day:   "numeric",
                 })
               }
+            />
+            <YAxis
+              tickLine={false}
+              axisLine={false}
+              tickMargin={8}
+              tick={{ fill: "#6b7280", fontSize: 11 }}
+              tickFormatter={(value) => {
+                if (value === 0) return `${CURRENCY_SYMBOL}0`;
+                if (Math.abs(value) >= 100000) return `${CURRENCY_SYMBOL}${(value / 100000).toFixed(1)}L`;
+                if (Math.abs(value) >= 1000) return `${CURRENCY_SYMBOL}${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`;
+                return `${CURRENCY_SYMBOL}${value}`;
+              }}
             />
             <ChartTooltip
               cursor={false}
@@ -175,14 +195,14 @@ export function ChartAreaInteractive({ data }: ChartAreaInteractiveProps) {
               dataKey="sales"
               type="natural"
               fill="url(#fillSales)"
-              stroke="hsl(var(--chart-1))"
+              stroke="#6366f1"
               strokeWidth={2}
             />
             <Area
               dataKey="purchases"
               type="natural"
               fill="url(#fillPurchases)"
-              stroke="hsl(var(--chart-2))"
+              stroke="#f43f5e"
               strokeWidth={2}
             />
           </AreaChart>

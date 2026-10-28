@@ -10,7 +10,8 @@ export async function getOptimizedDashboardData(branchId?: string) {
     const url  = `/dashboard/optimized${params.toString() ? `?${params}` : ''}`;
     const data = await api.get<any>(url);
     return data;
-  } catch {
+  } catch (err) {
+    console.error('getOptimizedDashboardData caught error:', err);
     return {
       totalSuppliers:       0,
       totalCustomers:       0,
@@ -38,6 +39,15 @@ export async function getOptimizedDashboardData(branchId?: string) {
 
       totalOutstanding:     0,
       outstandingCount:     0,
+
+      branchPerformance:    [],
+      brandPerformance:     [],
+      pendingPOs:           [],
+      recentCustomers:      [],
+      recentPaidSales:      [],
+      recentExpenses:       [],
+      yesterdaySales:       0,
+      salesGrowthPct:       0,
     };
   }
 }

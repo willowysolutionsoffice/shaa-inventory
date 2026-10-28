@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { SalesReturnFormSheet } from "./sales-return-form";
 import { SalesReturnDeleteDialog } from "./sales-return-delete-dailog";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDateTime } from "@/lib/utils";
 
 export const salesReturnColumns: ColumnDef<SalesReturn>[] = [
   {
@@ -21,6 +21,11 @@ export const salesReturnColumns: ColumnDef<SalesReturn>[] = [
         </Button>
       );
     },
+    cell: ({ row }) => (
+      <span className="font-mono text-xs font-semibold">
+        {row.getValue("returnNo")}
+      </span>
+    ),
   },
   {
     id: "invoiceNo",
@@ -32,7 +37,7 @@ export const salesReturnColumns: ColumnDef<SalesReturn>[] = [
     header: "Return Date",
     cell: ({ row }) => {
       const date = row.getValue("returnDate") as string | Date | null;
-      return <div>{date ? formatDate(date) : "—"}</div>;
+      return <div>{date ? formatDateTime(date) : "—"}</div>;
     },
   },
   {
@@ -41,11 +46,21 @@ export const salesReturnColumns: ColumnDef<SalesReturn>[] = [
     cell: ({ row }) => <span>{row.original.customer?.name ?? "—"}</span>,
   },
   {
+    id: "branch",
+    header: "Branch",
+    cell: ({ row }) => <span>{row.original.branch?.name ?? "SHAASHOPY CHEMMAD"}</span>,
+  },
+  {
     id: "refundMethod",
     header: "Refund Method",
-    cell: ({ row }) => (
-      <span className="capitalize">{row.original.refundMethod}</span>
-    ),
+    cell: ({ row }) => {
+      const method = String(row.original.refundMethod ?? "").toLowerCase();
+      return (
+        <span className="capitalize">
+          {method === "credit" ? "Credit Note (Store Credit)" : method || "Original"}
+        </span>
+      );
+    },
   },
   {
     accessorKey: "grandTotal",
@@ -73,7 +88,7 @@ const SalesReturnActions = ({ returnData }: { returnData: SalesReturn }) => {
 
   return (
     <div className="flex items-center gap-2">
-      <Button variant="ghost" size="sm" onClick={() => setOpenEdit(true)} className="h-8 w-8 p0">
+      <Button variant="ghost" size="sm" onClick={() => setOpenEdit(true)} className="h-8 w-8 p-0">
         <Edit2 className="h-4 w-4" />
       </Button>
       <Button variant="ghost" size="sm" onClick={() => setOpenDelete(true)}

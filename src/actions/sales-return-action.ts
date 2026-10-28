@@ -105,12 +105,14 @@ export const deleteSalesReturn = actionClient
 export const getSalesReturnList = actionClient
   .inputSchema(listSalesReturnsSchema)
   .action(async ({ parsedInput }) => {
-    const { page, limit, saleId, branchId } = parsedInput;
+    const { page, limit, saleId, branchId, from, to } = parsedInput;
     const params = new URLSearchParams({
       page: String(page),
       limit: String(limit),
       ...(saleId && { saleId }),
       ...(branchId && { branchId }),
+      ...(from && { from }),
+      ...(to && { to }),
     });
     const raw = await api.get<any>(`/sales-returns?${params}`);
     const payload = raw?.data ?? raw;
