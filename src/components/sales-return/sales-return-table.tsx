@@ -170,11 +170,11 @@ export function SalesReturnTable<TValue>({
 
             <TableFooter className="bg-muted/50 border-t text-sm font-medium">
               <TableRow>
-                <TableCell colSpan={3} className="border-r-2 text-right">
+                <TableCell colSpan={6} className="text-right font-semibold">
                   Total Returned:
                 </TableCell>
 
-                <TableCell className="border-r-2 text-center font-semibold">
+                <TableCell className="text-right font-bold text-foreground">
                   {formatCurrency(totals?.grandTotal || 0)}
                 </TableCell>
 

@@ -113,6 +113,7 @@ export async function fetchSales(params: {
   from?: string;
   to?: string;
   branchId?: string;
+  salesmanId?: string;
 }) {
   const query = new URLSearchParams({
     page: String(params.page ?? 1),
@@ -120,6 +121,7 @@ export async function fetchSales(params: {
     ...(params.from && { from: params.from }),
     ...(params.to && { to: params.to }),
     ...(params.branchId && { branchId: params.branchId }),
+      ...(params.salesmanId && { salesmanId: params.salesmanId }),
   });
 
   const raw = await api.get<any>(`/sales?${query}`);
@@ -213,6 +215,7 @@ export const deleteSale = actionClient
   from?: string;
   to?: string;
   branchId?: string;
+  salesmanId?: string;
   limit?: number;
   page?: number;
 }): Promise<{ sales: any[] } | { error: string }> {  // ← explicit return type
@@ -223,6 +226,7 @@ export const deleteSale = actionClient
       ...(params.from     && { from:     params.from }),
       ...(params.to       && { to:       params.to }),
       ...(params.branchId && { branchId: params.branchId }),
+      ...(params.salesmanId && { salesmanId: params.salesmanId }),
     });
 
     const raw     = await api.get<any>(`/sales?${query}`);

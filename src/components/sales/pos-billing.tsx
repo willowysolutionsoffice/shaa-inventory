@@ -63,6 +63,8 @@ import {
 } from "@/actions/customer-action";
 import { getProductDropdown } from "@/actions/product-actions";
 import { CustomerFormDialog } from "@/components/customers/customer-form";
+import { LiveDateTime } from "@/components/dashboard/live-date-time";
+import { Store } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1510,14 +1512,51 @@ export default function PosBillingPage({
       )}
 
       {/* Header */}
-      <div>
-        <h1 className="flex items-center gap-2 text-3xl font-extrabold tracking-tight">
-          <ShoppingBag className="h-8 w-8 text-purple-600" /> POS Billing
-          Terminal
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          High-speed smart billing checkout
-        </p>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between pb-1 border-b border-border/50">
+        <div>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="flex items-center gap-2 text-2xl md:text-3xl font-extrabold tracking-tight">
+              <ShoppingBag className="h-7 w-7 text-purple-600" /> POS Billing Terminal
+            </h1>
+            <Badge
+              variant="outline"
+              className="px-2.5 py-1 bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 font-semibold text-xs flex items-center gap-1.5 shadow-xs"
+            >
+              <Store className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+              <span>{branchName || "SHAASHOPY CHEMMAD"}</span>
+            </Badge>
+          </div>
+          <p className="text-xs md:text-sm text-muted-foreground mt-0.5">
+            High-speed smart billing checkout • Active Terminal
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Active / Next Invoice indicator */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/70 bg-card shadow-xs text-xs">
+            <Receipt className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+            <span className="text-muted-foreground">Next Invoice:</span>
+            <span className="font-mono font-bold text-foreground">
+              INV-{new Date().getFullYear()}-AUTO
+            </span>
+          </div>
+
+          {/* Live Date & Time clock */}
+          <LiveDateTime />
+
+          {/* If there was a last invoice generated, quick button to re-view or print */}
+          {lastInvoice && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setLastInvoiceOpen(true)}
+              className="gap-1.5 text-xs h-9 border-purple-200 dark:border-purple-800 bg-purple-50/50 hover:bg-purple-100 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300"
+            >
+              <Receipt className="h-3.5 w-3.5" />
+              <span>Last: {lastInvoice.invoiceNo}</span>
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Search, product filters and invoice date */}
@@ -1648,11 +1687,18 @@ export default function PosBillingPage({
             <CardHeader className="px-4 py-2.5 border-b border-border shrink-0">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <CardTitle className="text-base font-bold">
-                    Active Cart ({cart.reduce((s, i) => s + i.quantity, 0)})
-                  </CardTitle>
-                  <CardDescription className="text-xs">
-                    Manage quantities and finalise
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base font-bold">
+                      Active Cart ({cart.reduce((s, i) => s + i.quantity, 0)})
+                    </CardTitle>
+                    <Badge variant="outline" className="text-[10px] font-mono font-medium border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/30">
+                      Invoice: Auto-Assigned
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-xs flex items-center gap-1.5 mt-0.5">
+                    <span>{branchName || "SHAASHOPY CHEMMAD"}</span>
+                    <span>•</span>
+                    <span>Manage quantities & finalise checkout</span>
                   </CardDescription>
                 </div>
 

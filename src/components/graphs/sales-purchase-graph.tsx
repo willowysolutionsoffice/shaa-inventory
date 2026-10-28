@@ -63,10 +63,13 @@ export default function DashboardCharts({ data }: DashboardChartsProps) {
                 axisLine={false}
               />
               <YAxis
-                tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
-                tickFormatter={(value) =>
-                  `${CURRENCY_SYMBOL}${(value / 1000).toFixed(0)}k`
-                }
+                tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                tickFormatter={(value) => {
+                  if (value === 0) return `${CURRENCY_SYMBOL}0`;
+                  if (Math.abs(value) >= 100000) return `${CURRENCY_SYMBOL}${(value / 100000).toFixed(1)}L`;
+                  if (Math.abs(value) >= 1000) return `${CURRENCY_SYMBOL}${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`;
+                  return `${CURRENCY_SYMBOL}${value}`;
+                }}
                 tickLine={false}
                 axisLine={false}
               />
@@ -82,7 +85,7 @@ export default function DashboardCharts({ data }: DashboardChartsProps) {
                 itemStyle={{ color: "var(--popover-foreground)" }}
                 labelStyle={{ color: "var(--muted-foreground)" }}
                 formatter={(value: number, name: string) => [
-                  `${CURRENCY_SYMBOL}${value.toLocaleString()}`,
+                  `${CURRENCY_SYMBOL}${Number(value).toLocaleString("en-IN")}`,
                   name === "sales" ? "Sales" : "Purchases",
                 ]}
                 labelFormatter={(label) => label}
@@ -97,13 +100,13 @@ export default function DashboardCharts({ data }: DashboardChartsProps) {
 
               <Bar
                 dataKey="sales"
-                fill="var(--chart-1)"
+                fill="#4F46E5"
                 name="Sales"
                 radius={[6, 6, 0, 0]}
               />
               <Bar
                 dataKey="purchases"
-                fill="var(--chart-2)"
+                fill="#F43F5E"
                 name="Purchases"
                 radius={[6, 6, 0, 0]}
               />

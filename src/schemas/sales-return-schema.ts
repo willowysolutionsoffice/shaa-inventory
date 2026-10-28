@@ -46,6 +46,8 @@ export const listSalesReturnsSchema = z.object({
   limit: z.coerce.number().int().positive().default(10),
   saleId: z.string().optional(),
   branchId: z.string().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
 });
 
 export const getSalesReturnByIdSchema = z.object({

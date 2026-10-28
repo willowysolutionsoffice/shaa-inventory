@@ -30,7 +30,8 @@ import {
   History,
   Truck,
   TriangleAlert,
-  ClipboardCheck
+  ClipboardCheck,
+  FileText,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { type Permission, PERMISSIONS } from "./permissions";
@@ -140,19 +141,18 @@ const navMain: NavGroup[] = [
         newTab: true,
       },
       {
-        title: "Sales Returns",
+        title: "Sales Returns & Accounting",
         url: "/sales-return",
         icon: Undo2,
         permission: PERMISSIONS.MANAGE_RETURNS,
         newTab: true,
       },
       {
-        title:"sales Report",
+        title: "Sales Report",
         url: "/reports/sales-report",
         icon: FileSpreadsheet,
         permission: PERMISSIONS.MANAGE_SALES,
         newTab: true,
-      
       }
     ],
   },
