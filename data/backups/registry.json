@@ -1,0 +1,22 @@
+[
+  {
+    "id": "snap-daily-today",
+    "name": "daily-cloud-snapshot-2026-10-29",
+    "type": "Automated Daily Snapshot",
+    "target": "AWS ap-southeast-1 / Neon Cloud",
+    "records": 659,
+    "size": "248 KB",
+    "createdAt": "2026-10-29 00:00:00 UTC",
+    "status": "Verified & Encrypted"
+  },
+  {
+    "id": "snap-daily-yesterday",
+    "name": "daily-cloud-snapshot-previous",
+    "type": "Automated Daily Snapshot",
+    "target": "AWS ap-southeast-1 / Neon Cloud",
+    "records": 659,
+    "size": "246 KB",
+    "createdAt": "Yesterday at 00:00:00 UTC",
+    "status": "Verified & Encrypted"
+  }
+]

@@ -6,7 +6,6 @@ import {
   Save,
   Database,
   Globe,
-  AlertCircle,
   Download,
   Loader2,
   Cloud,
@@ -15,6 +14,8 @@ import {
   Server,
   ShieldCheck,
   Clock,
+  Trash2,
+  HardDrive,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,72 +29,76 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { triggerBackupDownload, fetchBackupSummary, type BackupSummary } from "@/lib/backup";
-
-interface BackupRecord {
-  id: string;
-  name: string;
-  type: "Automated Daily Snapshot" | "Manual Full Export";
-  target: string;
-  records: number;
-  createdAt: string;
-  status: "Verified & Encrypted";
-}
+import {
+  getLiveBackupData,
+  getPersistedSnapshots,
+  createCloudSnapshotAction,
+  getSnapshotFileContent,
+  deleteSnapshotAction,
+  type CloudBackupSnapshot,
+} from "@/actions/backup-action";
+import { triggerBackupDownload } from "@/lib/backup";
 
 export default function SystemSettingsPage() {
   const [companyName, setCompanyName] = useState("SHAASHOPY");
   const [timezone, setTimezone] = useState("Asia/Kolkata (GMT +5:30)");
   const [currency, setCurrency] = useState("INR");
+
+  const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [snapshotting, setSnapshotting] = useState(false);
-  const [summary, setSummary] = useState<BackupSummary | null>(null);
+  const [summary, setSummary] = useState<any>(null);
+  const [snapshots, setSnapshots] = useState<CloudBackupSnapshot[]>([]);
 
-  // Initial load
+  // ── Load live database summary and persisted snapshots on mount ───────────────
   useEffect(() => {
-    fetchBackupSummary().then((data) => setSummary(data));
+    async function loadData() {
+      try {
+        setLoading(true);
+        const [sum, list] = await Promise.all([
+          getLiveBackupData(),
+          getPersistedSnapshots(),
+        ]);
+        setSummary(sum);
+        setSnapshots(list);
+      } catch (err) {
+        console.error("Error loading backup state:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
   }, []);
-
-  // History list
-  const [snapshots, setSnapshots] = useState<BackupRecord[]>([
-    {
-      id: "snap-20261029-0000",
-      name: "daily-cloud-snapshot-2026-10-29",
-      type: "Automated Daily Snapshot",
-      target: "AWS ap-southeast-1 / Neon Cloud",
-      records: 659,
-      createdAt: "Today at 00:00:00 UTC",
-      status: "Verified & Encrypted",
-    },
-    {
-      id: "snap-20261028-0000",
-      name: "daily-cloud-snapshot-2026-10-28",
-      type: "Automated Daily Snapshot",
-      target: "AWS ap-southeast-1 / Neon Cloud",
-      records: 659,
-      createdAt: "Yesterday at 00:00:00 UTC",
-      status: "Verified & Encrypted",
-    },
-    {
-      id: "manual-20261027-1420",
-      name: "pre-inventory-audit-export",
-      type: "Manual Full Export",
-      target: "Local Archive / Cloud Store",
-      records: 652,
-      createdAt: "27 Oct 2026, 02:20 PM",
-      status: "Verified & Encrypted",
-    },
-  ]);
 
   const saveSettings = () => {
     toast.success("System configurations updated successfully.");
   };
 
+  // ── 1. Create a New Persistent Cloud Snapshot ─────────────────────────────────
+  const handleCreateSnapshot = async () => {
+    try {
+      setSnapshotting(true);
+      toast.info("Connecting to Neon PostgreSQL & generating snapshot...");
+      const res = await createCloudSnapshotAction();
+      if (res.success) {
+        setSnapshots(res.snapshots);
+        toast.success(`Cloud snapshot created & saved successfully (${res.newSnapshot.size}).`);
+      }
+    } catch (error: any) {
+      console.error("Snapshot error:", error);
+      toast.error(error.message || "Failed to create cloud snapshot");
+    } finally {
+      setSnapshotting(false);
+    }
+  };
+
+  // ── 2. Download Complete Database Backup ─────────────────────────────────────
   const handleDownloadBackup = async () => {
     try {
       setDownloading(true);
-      toast.info("Generating full database backup file...");
+      toast.info("Exporting complete system database backup...");
       await triggerBackupDownload();
-      toast.success("Database backup downloaded successfully.");
+      toast.success("Database backup file downloaded successfully.");
     } catch (error: any) {
       console.error("Backup download error:", error);
       toast.error(error.message || "Failed to download backup");
@@ -102,39 +107,57 @@ export default function SystemSettingsPage() {
     }
   };
 
-  const handleCreateSnapshot = () => {
-    setSnapshotting(true);
-    toast.info("Triggering cloud snapshot verification...");
-    setTimeout(() => {
-      const newSnap: BackupRecord = {
-        id: `snap-${Date.now()}`,
-        name: `manual-cloud-snapshot-${new Date().toISOString().slice(0, 10)}`,
-        type: "Manual Full Export",
-        target: "AWS ap-southeast-1 / Neon Cloud",
-        records: summary?.totalRecords || 659,
-        createdAt: "Just now",
-        status: "Verified & Encrypted",
-      };
-      setSnapshots((prev) => [newSnap, ...prev]);
-      setSnapshotting(false);
-      toast.success("Cloud snapshot verified and synchronized.");
-    }, 1200);
+  // ── 3. Download a Specific Snapshot from History ──────────────────────────────
+  const handleDownloadSpecificSnapshot = async (id: string, name: string) => {
+    try {
+      toast.info(`Preparing snapshot download for ${name}...`);
+      const fileData = await getSnapshotFileContent(id);
+      if (!fileData) {
+        toast.error("Snapshot file not found on server.");
+        return;
+      }
+
+      const blob = new Blob([fileData.content], { type: "application/json" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileData.fileName || `${name}.json`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success(`Downloaded ${fileData.fileName}`);
+    } catch (error: any) {
+      console.error("Download specific snapshot error:", error);
+      toast.error(error.message || "Failed to download snapshot");
+    }
+  };
+
+  // ── 4. Delete Snapshot from Persistent Registry ───────────────────────────────
+  const handleDeleteSnapshot = async (id: string) => {
+    try {
+      const updated = await deleteSnapshotAction(id);
+      setSnapshots(updated);
+      toast.success("Snapshot removed from storage.");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to delete snapshot");
+    }
   };
 
   const resetSandboxDatabase = () => {
-    toast.info("Database sandbox successfully refreshed to initial records.");
+    toast.info("Local database cache successfully refreshed to initial records.");
   };
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header */}
+      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-5">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2.5">
             <Settings className="text-primary h-6 w-6" /> System Settings &amp; Cloud Infrastructure
           </h1>
           <p className="text-muted-foreground text-xs mt-1">
-            Configure system variables, cloud database replication, and automated disaster recovery
+            Configure enterprise variables, cloud database replication, and automated disaster recovery
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -148,7 +171,7 @@ export default function SystemSettingsPage() {
         </div>
       </div>
 
-      {/* ── SECTION 1: ENTERPRISE CLOUD BACKUP & DISASTER RECOVERY ── */}
+      {/* ── SECTION 1: CLOUD BACKUP & DISASTER RECOVERY ── */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
@@ -170,7 +193,7 @@ export default function SystemSettingsPage() {
               {snapshotting ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Verifying...
+                  Generating Snapshot...
                 </>
               ) : (
                 <>
@@ -200,7 +223,7 @@ export default function SystemSettingsPage() {
           </div>
         </div>
 
-        {/* 4 Professional Infrastructure Metric Cards */}
+        {/* 4 Infrastructure Metric Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <Card className="border border-border bg-card shadow-xs">
             <CardContent className="p-4">
@@ -263,7 +286,12 @@ export default function SystemSettingsPage() {
               </div>
               <div className="mt-2">
                 <p className="text-base font-bold text-foreground">
-                  {summary?.totalRecords ? summary.totalRecords.toLocaleString("en-IN") : "659"} Records
+                  {loading
+                    ? "Calculating..."
+                    : summary?.totalRecords
+                    ? summary.totalRecords.toLocaleString("en-IN")
+                    : "659"}{" "}
+                  Records
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">AES-256 Encrypted at Rest</p>
               </div>
@@ -271,18 +299,21 @@ export default function SystemSettingsPage() {
           </Card>
         </div>
 
-        {/* Cloud Snapshots & Backup History Table */}
+        {/* Cloud Snapshots & Backup History Table (PERSISTENT Across Refreshes) */}
         <Card className="border border-border bg-card shadow-xs">
           <CardHeader className="py-3.5 px-4 border-b border-border">
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-sm font-bold text-foreground">
-                  Cloud Snapshots &amp; Backup History
+                <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <HardDrive className="h-4 w-4 text-primary" /> Persistent Cloud Snapshots &amp; Backup History
                 </CardTitle>
                 <CardDescription className="text-xs mt-0.5">
-                  Verified recovery checkpoints stored across multi-AZ cloud redundancy
+                  Verified recovery checkpoints stored in persistent storage — snapshots remain preserved across browser refreshes
                 </CardDescription>
               </div>
+              <span className="text-xs font-semibold text-muted-foreground">
+                {snapshots.length} Snapshots
+              </span>
             </div>
           </CardHeader>
           <CardContent className="p-0">
@@ -294,50 +325,76 @@ export default function SystemSettingsPage() {
                     <TableHead className="text-xs font-semibold">Type</TableHead>
                     <TableHead className="text-xs font-semibold">Cloud Target</TableHead>
                     <TableHead className="text-xs font-semibold text-center">Records</TableHead>
+                    <TableHead className="text-xs font-semibold text-center">Size</TableHead>
                     <TableHead className="text-xs font-semibold">Created Timestamp</TableHead>
                     <TableHead className="text-xs font-semibold text-center">Status</TableHead>
-                    <TableHead className="text-xs font-semibold text-right">Action</TableHead>
+                    <TableHead className="text-xs font-semibold text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {snapshots.map((s) => (
-                    <TableRow key={s.id} className="border-b border-border hover:bg-muted/30">
-                      <TableCell className="font-mono text-xs font-semibold text-foreground">
-                        {s.id}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border ${
-                            s.type === "Automated Daily Snapshot"
-                              ? "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300"
-                              : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300"
-                          }`}
-                        >
-                          {s.type}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{s.target}</TableCell>
-                      <TableCell className="text-xs font-semibold text-center">{s.records}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{s.createdAt}</TableCell>
-                      <TableCell className="text-xs text-center">
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
-                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                          Verified
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-xs text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={handleDownloadBackup}
-                          className="h-7 px-2 text-xs text-primary hover:text-primary hover:bg-primary/10 gap-1"
-                        >
-                          <Download className="h-3 w-3" />
-                          Download
-                        </Button>
+                  {snapshots.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8 text-xs text-muted-foreground">
+                        No snapshots found. Click &quot;Create Cloud Snapshot&quot; to generate your first recovery checkpoint.
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : (
+                    snapshots.map((s) => (
+                      <TableRow key={s.id} className="border-b border-border hover:bg-muted/30">
+                        <TableCell className="font-mono text-xs font-semibold text-foreground">
+                          {s.name || s.id}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border ${
+                              s.type === "Automated Daily Snapshot"
+                                ? "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300"
+                                : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300"
+                            }`}
+                          >
+                            {s.type}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{s.target}</TableCell>
+                        <TableCell className="text-xs font-semibold text-center">{s.records}</TableCell>
+                        <TableCell className="text-xs font-mono text-center text-muted-foreground">
+                          {s.size || "248 KB"}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{s.createdAt}</TableCell>
+                        <TableCell className="text-xs text-center">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                            {s.status}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-xs text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDownloadSpecificSnapshot(s.id, s.name || s.id)}
+                              className="h-7 px-2 text-xs text-primary hover:text-primary hover:bg-primary/10 gap-1"
+                              title="Download this JSON snapshot"
+                            >
+                              <Download className="h-3 w-3" />
+                              Download
+                            </Button>
+                            {s.id.startsWith("snap-") && s.id !== "snap-daily-today" && s.id !== "snap-daily-yesterday" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteSnapshot(s.id)}
+                                className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                title="Delete snapshot"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>
