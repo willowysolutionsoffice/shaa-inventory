@@ -1,6 +1,6 @@
 "use client";
 
-import { IconDotsVertical, IconLogout } from "@tabler/icons-react";
+import { IconDotsVertical, IconLogout, IconSettings, IconDatabase } from "@tabler/icons-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -19,17 +19,21 @@ import {
 import type { UserProfile } from "@/types/navigation";
 import { getInitials } from "@/lib/utils";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { LogoutDialog } from "../auth/logout-modal";
+import { BackupDialog } from "../backup/backup-dialog";
 
 interface NavUserProps {
   user: UserProfile;
 }
 
 export function NavUser({ user }: NavUserProps) {
+  const router = useRouter();
   const { isMobile, state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const initials = getInitials(user.name);
   const [openDelete, setOpenDelete] = useState(false);
+  const [openBackup, setOpenBackup] = useState(false);
 
   return (
     <SidebarMenu>
@@ -71,35 +75,56 @@ export function NavUser({ user }: NavUserProps) {
           </DropdownMenuTrigger>
 
           <DropdownMenuContent
-            className="w-60 rounded-2xl border-slate-200"
+            className="w-60 rounded-2xl border-slate-200/80 shadow-xl bg-white dark:bg-slate-900 dark:border-slate-800 p-1.5"
             side={isMobile ? "bottom" : "right"}
             align="end"
             sideOffset={8}
           >
             <DropdownMenuLabel className="p-3">
               <div className="flex items-center gap-3">
-                <Avatar className="h-10 w-10 rounded-xl">
-                  <AvatarFallback>{initials}</AvatarFallback>
+                <Avatar className="h-10 w-10 rounded-xl border border-slate-100 dark:border-slate-800">
+                  <AvatarFallback className="bg-blue-50 text-blue-600 font-semibold text-sm">
+                    {initials}
+                  </AvatarFallback>
                 </Avatar>
-                <div>
-                  <p className="text-sm font-semibold">{user.name}</p>
-                  <p className="text-xs text-muted-foreground">{user.email}</p>
+                <div className="truncate">
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{user.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{user.email}</p>
                 </div>
               </div>
             </DropdownMenuLabel>
 
-            <DropdownMenuSeparator />
+            <DropdownMenuSeparator className="my-1 bg-slate-100 dark:bg-slate-800" />
 
             <DropdownMenuItem
-              className="text-red-500 cursor-pointer"
+              className="cursor-pointer font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl px-3 py-2 text-sm"
+              onSelect={() => router.push("/admin/settings/system")}
+            >
+              <IconSettings className="mr-2.5 h-4 w-4 text-slate-500" />
+              Settings
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+              className="cursor-pointer font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl px-3 py-2 text-sm"
+              onSelect={() => setOpenBackup(true)}
+            >
+              <IconDatabase className="mr-2.5 h-4 w-4 text-[#4F7DF3]" />
+              Backup Data
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator className="my-1 bg-slate-100 dark:bg-slate-800" />
+
+            <DropdownMenuItem
+              className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer font-medium rounded-xl px-3 py-2 text-sm"
               onSelect={() => setOpenDelete(true)}
             >
-              <IconLogout className="mr-2 h-4 w-4" />
+              <IconLogout className="mr-2.5 h-4 w-4 text-red-500" />
               Log out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
+        <BackupDialog open={openBackup} setOpen={setOpenBackup} />
         <LogoutDialog open={openDelete} setOpen={setOpenDelete} />
       </SidebarMenuItem>
     </SidebarMenu>

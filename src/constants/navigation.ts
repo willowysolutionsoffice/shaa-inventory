@@ -478,6 +478,12 @@ const admin: NavGroup[] = [
         icon: Shield,
         permission: PERMISSIONS.MANAGE_ROLES,
       },
+      {
+        title: "System Settings",
+        url: "/admin/settings/system",
+        icon: Settings,
+        permission: PERMISSIONS.MANAGE_ROLES,
+      },
     ],
   },
   {
