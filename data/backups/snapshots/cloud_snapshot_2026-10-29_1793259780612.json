@@ -1,0 +1,767 @@
+{
+  "system": "Shaa Calicut Textile POS & Inventory System",
+  "version": "2.4.0",
+  "generatedAt": "2026-10-29T07:43:00.611Z",
+  "cloudHost": "Neon PostgreSQL Serverless (AWS ap-southeast-1)",
+  "database": "neondb",
+  "summary": {
+    "branches": 3,
+    "brands": 6,
+    "products": 15,
+    "sales": 5,
+    "purchases": 3,
+    "customers": 5,
+    "suppliers": 4,
+    "totalRecords": 659
+  },
+  "tables": {
+    "branches": [
+      {
+        "id": "branch-calicut",
+        "name": "Shaa Calicut – Main Store",
+        "phone": "0495-2723456",
+        "email": "main@shaacalicut.com",
+        "address": "Mavoor Road, Kozhikode, Kerala – 673004",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "branch-malappuram",
+        "name": "Shaa Malappuram",
+        "phone": "0483-2734567",
+        "email": "malappuram@shaacalicut.com",
+        "address": "Junction Road, Malappuram, Kerala – 676505",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "branch-tirur",
+        "name": "Shaa Tirur",
+        "phone": "0494-2442211",
+        "email": "tirur@shaacalicut.com",
+        "address": "Main Bazar, Tirur, Malappuram, Kerala – 676101",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      }
+    ],
+    "brands": [
+      {
+        "id": "brand-gulaal",
+        "name": "Gulaal",
+        "description": "Pakistani luxury lawn and unstitched collections",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "brand-gul-ahmed",
+        "name": "Gul Ahmed",
+        "description": "Premium Pakistani fabric — lawn, linen, khaddar",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "brand-sapphire",
+        "name": "Sapphire",
+        "description": "Pakistani ready-to-wear and unstitched collections",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "brand-kota-sarees",
+        "name": "Kota Doria",
+        "description": "Traditional Rajasthani kota doria sarees and dupattas",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "brand-banarasi",
+        "name": "Banarasi Weaves",
+        "description": "Handloom Banarasi silk sarees and dress materials",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "brand-house-of-shaa",
+        "name": "House of Shaa",
+        "description": "Shaa Calicut in-house exclusive collection",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      }
+    ],
+    "products": [
+      {
+        "id": "prod-1",
+        "product_name": "Gulaal Delia Lawn – Unstitched 3-Piece",
+        "sku": "GUL-DELIA-LP-01",
+        "brandId": "brand-gulaal",
+        "branchId": "branch-calicut",
+        "stock": 24,
+        "purchasePrice": 3200,
+        "sellingPrice": 4999,
+        "unit": "pcs",
+        "description": "Printed lawn shirt, silk dupatta, printed cotton trouser with embroidered organza neckline",
+        "variationIds": [
+          "var-color"
+        ],
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "prod-2",
+        "product_name": "Gul Ahmed Summer Lawn – Unstitched 3-Piece",
+        "sku": "GA-SML-UP-02",
+        "brandId": "brand-gul-ahmed",
+        "branchId": "branch-calicut",
+        "stock": 30,
+        "purchasePrice": 2400,
+        "sellingPrice": 3799,
+        "unit": "pcs",
+        "description": "Digital printed lawn shirt, chiffon dupatta, dyed cambric trouser",
+        "variationIds": [
+          "var-color"
+        ],
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "prod-3",
+        "product_name": "Sapphire Eid Festive Unstitched – Embroidered",
+        "sku": "SAP-EID-EU-03",
+        "brandId": "brand-sapphire",
+        "branchId": "branch-calicut",
+        "stock": 15,
+        "purchasePrice": 4500,
+        "sellingPrice": 6999,
+        "unit": "pcs",
+        "description": "Embroidered karandi shirt, organza embroidered dupatta, raw silk trouser",
+        "variationIds": [],
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "prod-4",
+        "product_name": "Gulaal Mahi Collection – Unstitched Khaddar",
+        "sku": "GUL-MAHI-KH-04",
+        "brandId": "brand-gulaal",
+        "branchId": "branch-malappuram",
+        "stock": 18,
+        "purchasePrice": 2800,
+        "sellingPrice": 4299,
+        "unit": "pcs",
+        "description": "Printed khaddar shirt, printed khaddar dupatta, dyed trouser – winter collection",
+        "variationIds": [
+          "var-color"
+        ],
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "prod-5",
+        "product_name": "Banarasi Pure Silk Saree – Zari Border",
+        "sku": "BAN-SILK-ZB-05",
+        "brandId": "brand-banarasi",
+        "branchId": "branch-calicut",
+        "stock": 10,
+        "purchasePrice": 5500,
+        "sellingPrice": 8999,
+        "unit": "pcs",
+        "description": "Handloom Banarasi pure silk saree with heavy zari border and brocade pallu – bridal range",
+        "variationIds": [
+          "var-color"
+        ],
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "prod-6",
+        "product_name": "Kota Doria Cotton-Silk Saree – Block Print",
+        "sku": "KOTA-CS-BP-06",
+        "brandId": "brand-kota-sarees",
+        "branchId": "branch-calicut",
+        "stock": 20,
+        "purchasePrice": 1200,
+        "sellingPrice": 1999,
+        "unit": "pcs",
+        "description": "Lightweight Kota doria saree with traditional block print – ideal for daily wear",
+        "variationIds": [],
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "prod-7",
+        "product_name": "Georgette Embroidered Saree – Party Wear",
+        "sku": "GEO-EMB-PW-07",
+        "brandId": "brand-house-of-shaa",
+        "branchId": "branch-calicut",
+        "stock": 12,
+        "purchasePrice": 2200,
+        "sellingPrice": 3499,
+        "unit": "pcs",
+        "description": "Soft georgette saree with sequin and thread embroidery – perfect for weddings and parties",
+        "variationIds": [
+          "var-color"
+        ],
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "prod-8",
+        "product_name": "Kerala Kasavu Saree – Pure Cotton Settu Mundu",
+        "sku": "KER-KAS-CM-08",
+        "brandId": "brand-house-of-shaa",
+        "branchId": "branch-calicut",
+        "stock": 35,
+        "purchasePrice": 800,
+        "sellingPrice": 1399,
+        "unit": "pcs",
+        "description": "Traditional Kerala off-white cotton saree with golden kasavu border – festival special",
+        "variationIds": [],
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "prod-9",
+        "product_name": "Anarkali Rayon Kurti – Printed Long – XL",
+        "sku": "ANK-RAY-PL-XL-09",
+        "brandId": "brand-house-of-shaa",
+        "branchId": "branch-calicut",
+        "stock": 40,
+        "purchasePrice": 450,
+        "sellingPrice": 799,
+        "unit": "pcs",
+        "description": "Long printed rayon anarkali kurti with side slits – available in S/M/L/XL/XXL",
+        "variationIds": [
+          "var-size-tshirts",
+          "var-color"
+        ],
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "prod-10",
+        "product_name": "Palazzo Kurti Set – Muslin with Dupatta",
+        "sku": "PAL-MUS-DP-10",
+        "brandId": "brand-house-of-shaa",
+        "branchId": "branch-malappuram",
+        "stock": 25,
+        "purchasePrice": 650,
+        "sellingPrice": 1099,
+        "unit": "pcs",
+        "description": "3-piece palazzo set: printed muslin kurti, matching palazzo, and contrast dupatta",
+        "variationIds": [
+          "var-size-tshirts",
+          "var-color"
+        ],
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "prod-11",
+        "product_name": "Pure Linen Fabric – Solid – Per Metre",
+        "sku": "LIN-SOL-PM-11",
+        "brandId": "brand-house-of-shaa",
+        "branchId": "branch-calicut",
+        "stock": 200,
+        "purchasePrice": 180,
+        "sellingPrice": 299,
+        "unit": "pcs",
+        "description": "60s count pure linen – breathable, ideal for kurtis and trousers – sold per metre",
+        "variationIds": [
+          "var-color"
+        ],
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "prod-12",
+        "product_name": "Chiffon Printed Fabric – Per Metre",
+        "sku": "CHF-PRT-PM-12",
+        "brandId": "brand-house-of-shaa",
+        "branchId": "branch-tirur",
+        "stock": 150,
+        "purchasePrice": 120,
+        "sellingPrice": 199,
+        "unit": "pcs",
+        "description": "Lightweight digital printed chiffon fabric – ideal for dupattas and blouses",
+        "variationIds": [
+          "var-color"
+        ],
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "prod-13",
+        "product_name": "Embroidered Organza Dupatta – Bridal",
+        "sku": "ORG-EMB-BD-13",
+        "brandId": "brand-gulaal",
+        "branchId": "branch-calicut",
+        "stock": 22,
+        "purchasePrice": 900,
+        "sellingPrice": 1499,
+        "unit": "pcs",
+        "description": "Heavy embroidered organza dupatta with mirror work – bridal & wedding collection",
+        "variationIds": [
+          "var-color"
+        ],
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "prod-14",
+        "product_name": "Gul Ahmed Silk Dupatta – Digital Print",
+        "sku": "GA-SILK-DP-14",
+        "brandId": "brand-gul-ahmed",
+        "branchId": "branch-calicut",
+        "stock": 30,
+        "purchasePrice": 600,
+        "sellingPrice": 999,
+        "unit": "pcs",
+        "description": "Soft silk dupatta with digital floral print – pairs with any unstitched suit",
+        "variationIds": [
+          "var-color"
+        ],
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "prod-15",
+        "product_name": "Sapphire Ready-to-Wear Embroidered Suit",
+        "sku": "SAP-RTW-ES-15",
+        "brandId": "brand-sapphire",
+        "branchId": "branch-malappuram",
+        "stock": 8,
+        "purchasePrice": 5200,
+        "sellingPrice": 7999,
+        "unit": "pcs",
+        "description": "Stitched 3-piece embroidered lawn suit with organza dupatta – Eid festive collection",
+        "variationIds": [
+          "var-size-tshirts"
+        ],
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      }
+    ],
+    "customers": [
+      {
+        "id": "cust-1",
+        "name": "Fathima Beevi K",
+        "email": "fathima.beevi@gmail.com",
+        "phone": "9447112345",
+        "openingBalance": 0,
+        "outstandingPayments": 0,
+        "salesDue": 0,
+        "salesReturnDue": 0,
+        "branchId": "branch-calicut",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "cust-2",
+        "name": "Zainab Hussain",
+        "email": "zainab.h@yahoo.com",
+        "phone": "9895234567",
+        "openingBalance": 500,
+        "outstandingPayments": 0,
+        "salesDue": 500,
+        "salesReturnDue": 0,
+        "branchId": "branch-calicut",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "cust-3",
+        "name": "Mariyam Siddique",
+        "email": "",
+        "phone": "9745345678",
+        "openingBalance": 0,
+        "outstandingPayments": 0,
+        "salesDue": 0,
+        "salesReturnDue": 0,
+        "branchId": "branch-malappuram",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "cust-4",
+        "name": "Anitha Krishnan",
+        "email": "anitha.k@gmail.com",
+        "phone": "9387456789",
+        "openingBalance": 0,
+        "outstandingPayments": 0,
+        "salesDue": 1200,
+        "salesReturnDue": 0,
+        "branchId": "branch-calicut",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "cust-5",
+        "name": "Reshma Abdul Razak",
+        "email": "reshma.ar@gmail.com",
+        "phone": "9656567890",
+        "openingBalance": 0,
+        "outstandingPayments": 0,
+        "salesDue": 0,
+        "salesReturnDue": 0,
+        "branchId": "branch-tirur",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      }
+    ],
+    "suppliers": [
+      {
+        "id": "sup-1",
+        "name": "Gulaal Pakistan – India Distributor",
+        "email": "gulaal.india@gulaal.pk",
+        "phone": "9810123456",
+        "openingBalance": 0,
+        "branchId": "branch-calicut",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "sup-2",
+        "name": "Gul Ahmed Textiles – Kozhikode Agent",
+        "email": "orders@gulahmedkozhikode.in",
+        "phone": "9447987654",
+        "openingBalance": 15000,
+        "branchId": "branch-calicut",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "sup-3",
+        "name": "Banarasi Silk House – Varanasi",
+        "email": "sales@banarasisilkhouse.in",
+        "phone": "9451123456",
+        "openingBalance": 0,
+        "branchId": "branch-calicut",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "sup-4",
+        "name": "Sapphire Fashion – Kerala Distributor",
+        "email": "sapphire.kerala@sapphire.com.pk",
+        "phone": "9895321654",
+        "openingBalance": 8000,
+        "branchId": "branch-malappuram",
+        "createdAt": "2026-10-29T06:44:52.432Z",
+        "updatedAt": "2026-10-29T06:44:52.432Z"
+      }
+    ],
+    "sales": [
+      {
+        "id": "sale-1",
+        "invoiceNo": "SHAA-2026-0041",
+        "salesdate": "2026-10-29T04:44:52.432Z",
+        "customerId": "cust-1",
+        "branchId": "branch-calicut",
+        "grandTotal": 9998,
+        "paymentStatus": "paid",
+        "paymentDue": 0,
+        "createdAt": "2026-10-29T06:44:52.432Z",
+        "updatedAt": "2026-10-29T06:44:52.432Z"
+      },
+      {
+        "id": "sale-2",
+        "invoiceNo": "SHAA-2026-0042",
+        "salesdate": "2026-10-29T01:44:52.432Z",
+        "customerId": "cust-2",
+        "branchId": "branch-calicut",
+        "grandTotal": 6498,
+        "paymentStatus": "partial",
+        "paymentDue": 500,
+        "createdAt": "2026-10-29T06:44:52.432Z",
+        "updatedAt": "2026-10-29T06:44:52.432Z"
+      },
+      {
+        "id": "sale-3",
+        "invoiceNo": "SHAA-2026-0043",
+        "salesdate": "2026-10-28T06:44:52.432Z",
+        "customerId": "cust-4",
+        "branchId": "branch-calicut",
+        "grandTotal": 14997,
+        "paymentStatus": "partial",
+        "paymentDue": 1200,
+        "createdAt": "2026-10-29T06:44:52.432Z",
+        "updatedAt": "2026-10-29T06:44:52.432Z"
+      },
+      {
+        "id": "sale-4",
+        "invoiceNo": "SHAA-2026-0044",
+        "salesdate": "2026-10-27T06:44:52.432Z",
+        "customerId": "cust-3",
+        "branchId": "branch-malappuram",
+        "grandTotal": 4299,
+        "paymentStatus": "paid",
+        "paymentDue": 0,
+        "createdAt": "2026-10-29T06:44:52.432Z",
+        "updatedAt": "2026-10-29T06:44:52.432Z"
+      },
+      {
+        "id": "sale-5",
+        "invoiceNo": "SHAA-2026-0045",
+        "salesdate": "2026-10-26T06:44:52.432Z",
+        "customerId": "cust-5",
+        "branchId": "branch-tirur",
+        "grandTotal": 3996,
+        "paymentStatus": "paid",
+        "paymentDue": 0,
+        "createdAt": "2026-10-29T06:44:52.432Z",
+        "updatedAt": "2026-10-29T06:44:52.432Z"
+      }
+    ],
+    "saleItems": [
+      {
+        "id": "sitem-1",
+        "saleId": "sale-1",
+        "productId": "prod-1",
+        "quantity": 2,
+        "unitPrice": 4999,
+        "discount": 0,
+        "subtotal": 9998,
+        "total": 9998,
+        "purchasePrice": 3200,
+        "sellingPrice": 4999
+      },
+      {
+        "id": "sitem-2",
+        "saleId": "sale-2",
+        "productId": "prod-3",
+        "quantity": 1,
+        "unitPrice": 6999,
+        "discount": 501,
+        "subtotal": 6498,
+        "total": 6498,
+        "purchasePrice": 4500,
+        "sellingPrice": 6999
+      },
+      {
+        "id": "sitem-3",
+        "saleId": "sale-3",
+        "productId": "prod-5",
+        "quantity": 1,
+        "unitPrice": 8999,
+        "discount": 0,
+        "subtotal": 8999,
+        "total": 8999,
+        "purchasePrice": 5500,
+        "sellingPrice": 8999
+      },
+      {
+        "id": "sitem-4",
+        "saleId": "sale-3",
+        "productId": "prod-7",
+        "quantity": 1,
+        "unitPrice": 3499,
+        "discount": 0,
+        "subtotal": 3499,
+        "total": 3499,
+        "purchasePrice": 2200,
+        "sellingPrice": 3499
+      },
+      {
+        "id": "sitem-5",
+        "saleId": "sale-3",
+        "productId": "prod-8",
+        "quantity": 1,
+        "unitPrice": 1399,
+        "discount": 900,
+        "subtotal": 2499,
+        "total": 2499,
+        "purchasePrice": 800,
+        "sellingPrice": 1399
+      },
+      {
+        "id": "sitem-6",
+        "saleId": "sale-4",
+        "productId": "prod-4",
+        "quantity": 1,
+        "unitPrice": 4299,
+        "discount": 0,
+        "subtotal": 4299,
+        "total": 4299,
+        "purchasePrice": 2800,
+        "sellingPrice": 4299
+      },
+      {
+        "id": "sitem-7",
+        "saleId": "sale-5",
+        "productId": "prod-12",
+        "quantity": 20,
+        "unitPrice": 199,
+        "discount": 4,
+        "subtotal": 3980,
+        "total": 3980,
+        "purchasePrice": 120,
+        "sellingPrice": 199
+      }
+    ],
+    "purchases": [
+      {
+        "id": "pur-1",
+        "purchaseNo": "PO-2026-0011",
+        "purchaseDate": "2026-10-28T06:44:52.432Z",
+        "supplierId": "sup-1",
+        "branchId": "branch-calicut",
+        "totalAmount": 76800,
+        "paymentStatus": "paid",
+        "paymentDue": 0,
+        "createdAt": "2026-10-29T06:44:52.432Z",
+        "updatedAt": "2026-10-29T06:44:52.432Z"
+      },
+      {
+        "id": "pur-2",
+        "purchaseNo": "PO-2026-0012",
+        "purchaseDate": "2026-10-25T06:44:52.432Z",
+        "supplierId": "sup-3",
+        "branchId": "branch-calicut",
+        "totalAmount": 55000,
+        "paymentStatus": "partial",
+        "paymentDue": 15000,
+        "createdAt": "2026-10-29T06:44:52.432Z",
+        "updatedAt": "2026-10-29T06:44:52.432Z"
+      },
+      {
+        "id": "pur-3",
+        "purchaseNo": "PO-2026-0013",
+        "purchaseDate": "2026-10-23T06:44:52.432Z",
+        "supplierId": "sup-4",
+        "branchId": "branch-malappuram",
+        "totalAmount": 41600,
+        "paymentStatus": "partial",
+        "paymentDue": 8000,
+        "createdAt": "2026-10-29T06:44:52.432Z",
+        "updatedAt": "2026-10-29T06:44:52.432Z"
+      }
+    ],
+    "purchaseItems": [
+      {
+        "id": "pitem-1",
+        "purchaseId": "pur-1",
+        "productId": "prod-1",
+        "quantity": 12,
+        "unitPrice": 3200,
+        "total": 38400
+      },
+      {
+        "id": "pitem-2",
+        "purchaseId": "pur-1",
+        "productId": "prod-2",
+        "quantity": 12,
+        "unitPrice": 2400,
+        "total": 28800
+      },
+      {
+        "id": "pitem-3",
+        "purchaseId": "pur-1",
+        "productId": "prod-13",
+        "quantity": 10,
+        "unitPrice": 900,
+        "total": 9600
+      },
+      {
+        "id": "pitem-4",
+        "purchaseId": "pur-2",
+        "productId": "prod-5",
+        "quantity": 5,
+        "unitPrice": 5500,
+        "total": 27500
+      },
+      {
+        "id": "pitem-5",
+        "purchaseId": "pur-2",
+        "productId": "prod-7",
+        "quantity": 8,
+        "unitPrice": 2200,
+        "total": 17600
+      },
+      {
+        "id": "pitem-6",
+        "purchaseId": "pur-2",
+        "productId": "prod-8",
+        "quantity": 25,
+        "unitPrice": 800,
+        "total": 9900
+      },
+      {
+        "id": "pitem-7",
+        "purchaseId": "pur-3",
+        "productId": "prod-3",
+        "quantity": 8,
+        "unitPrice": 4500,
+        "total": 36000
+      },
+      {
+        "id": "pitem-8",
+        "purchaseId": "pur-3",
+        "productId": "prod-15",
+        "quantity": 8,
+        "unitPrice": 700,
+        "total": 5600
+      }
+    ],
+    "expenses": [
+      {
+        "id": "exp-1",
+        "title": "Mavoor Road Store Rent – May 2026",
+        "amount": 45000,
+        "expenseDate": "2026-10-26T06:44:52.431Z",
+        "categoryId": "cat-rent",
+        "branchId": "branch-calicut",
+        "description": "Monthly rent for main Kozhikode showroom",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "exp-2",
+        "title": "Eid Festival Social Media Campaign",
+        "amount": 12000,
+        "expenseDate": "2026-10-22T06:44:52.431Z",
+        "categoryId": "cat-marketing",
+        "branchId": "branch-calicut",
+        "description": "Facebook & Instagram ads for Eid collection launch",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      },
+      {
+        "id": "exp-3",
+        "title": "Courier Charges – Supplier Stock Inward",
+        "amount": 3200,
+        "expenseDate": "2026-10-27T06:44:52.431Z",
+        "categoryId": "cat-logistics",
+        "branchId": "branch-malappuram",
+        "description": "Freight for Gulaal & Gul Ahmed stock from Delhi warehouse",
+        "createdAt": "2026-10-29T06:44:52.431Z",
+        "updatedAt": "2026-10-29T06:44:52.431Z"
+      }
+    ],
+    "salesReturns": [
+      {
+        "id": "sret-1",
+        "returnNo": "SR-2026-001",
+        "returnDate": "2026-10-28T06:44:52.432Z",
+        "saleId": "sale-2",
+        "customerId": "cust-2",
+        "branchId": "branch-calicut",
+        "grandTotal": 6999,
+        "createdAt": "2026-10-29T06:44:52.432Z",
+        "updatedAt": "2026-10-29T06:44:52.432Z"
+      }
+    ],
+    "purchaseReturns": [
+      {
+        "id": "pret-1",
+        "returnNo": "PR-2026-001",
+        "returnDate": "2026-10-26T06:44:52.432Z",
+        "purchaseId": "pur-2",
+        "supplierId": "sup-3",
+        "branchId": "branch-calicut",
+        "totalAmount": 5500,
+        "createdAt": "2026-10-29T06:44:52.432Z",
+        "updatedAt": "2026-10-29T06:44:52.432Z"
+      }
+    ]
+  }
+}

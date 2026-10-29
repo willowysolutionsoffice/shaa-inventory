@@ -1,5 +1,16 @@
 [
   {
+    "id": "snap-1793259780612",
+    "name": "manual-cloud-snapshot-2026-10-29-1313",
+    "type": "Manual Full Export",
+    "target": "AWS ap-southeast-1 / Neon Cloud",
+    "records": 659,
+    "size": "23 KB",
+    "createdAt": "29 Oct 2026, 1:13 pm",
+    "status": "Verified & Encrypted",
+    "fileName": "cloud_snapshot_2026-10-29_1793259780612.json"
+  },
+  {
     "id": "snap-daily-today",
     "name": "daily-cloud-snapshot-2026-10-29",
     "type": "Automated Daily Snapshot",
