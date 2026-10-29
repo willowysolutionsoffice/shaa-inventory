@@ -465,42 +465,62 @@ async function AdminDashboard({
   return (
     <div className="bg-background min-h-screen flex flex-col">
       {/* Header */}
-      <div className="bg-card border-border border-b px-6 py-4 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
-        <div className="flex items-center gap-3.5">
-          <img
-            src="https://shaacalicut.com/cdn/shop/files/ChatGPT_Image_Jul_12_2025_11_44_52_PM.png?height=100&v=1752344140"
-            alt="SHAA"
-            className="h-11 w-auto object-contain bg-white dark:bg-slate-900 rounded-xl p-1.5 border border-border shadow-xs shrink-0"
-          />
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-foreground text-xl sm:text-2xl font-bold tracking-tight">
-                Welcome, {session.user.name || "User"}
-              </h1>
-              {displayBranch && (
-                <Badge variant="outline" className="text-xs font-semibold bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300">
-                  {displayBranch.replace(/^ — /, "")}
-                </Badge>
-              )}
+      <div className="bg-card border-border border-b px-4 sm:px-6 py-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          {/* Left: Branding & Welcome */}
+          <div className="flex items-center gap-3.5">
+            <img
+              src="https://shaacalicut.com/cdn/shop/files/ChatGPT_Image_Jul_12_2025_11_44_52_PM.png?height=100&v=1752344140"
+              alt="SHAA"
+              className="h-11 w-auto object-contain bg-white dark:bg-slate-900 rounded-xl p-1.5 border border-border shadow-xs shrink-0"
+            />
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-foreground text-xl sm:text-2xl font-bold tracking-tight">
+                  Welcome, {session.user.name || "User"}
+                </h1>
+                {displayBranch && (
+                  <Badge variant="outline" className="text-xs font-semibold bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300">
+                    {displayBranch.replace(/^ — /, "")}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-muted-foreground text-xs sm:text-sm mt-0.5">
+                SHAA Calicut Enterprise Overview &amp; Real-Time Analytics
+              </p>
             </div>
-            <p className="text-muted-foreground text-xs sm:text-sm mt-0.5">
-              SHAA Calicut Enterprise Overview &amp; Real-Time Analytics
-            </p>
           </div>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 w-full xl:w-auto justify-start xl:justify-end">
-          <LiveDateTime />
-          <BranchHeaderSelector branches={branches} selectedBranchId={branchId} />
-          <a href="/sales/pos" className="bg-purple-600 hover:bg-purple-700 text-white px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 shadow-md">
-            <IconCurrencyDollar className="h-4 w-4" /> POS Terminal
-          </a>
-          <a href="/purchase/new" className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 shadow-md">
-            <IconPackage className="h-4 w-4" /> New PO
-          </a>
-          <a href="/admin/stock-adjustment" className="bg-card border border-border hover:bg-muted text-foreground px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 shadow-xs">
-            <IconRefresh className="h-4 w-4" /> Sync Stock
-          </a>
+          {/* Right Section: Date & Time in Right Corner + Quick Actions Toolbar */}
+          <div className="flex flex-col items-start lg:items-end gap-2.5 shrink-0">
+            {/* Top-Right Corner: Live Date and Time */}
+            <div className="self-end">
+              <LiveDateTime />
+            </div>
+
+            {/* Quick Actions Toolbar */}
+            <div className="flex flex-wrap items-center gap-2 justify-start lg:justify-end">
+              <BranchHeaderSelector branches={branches} selectedBranchId={branchId} />
+              <a
+                href="/sales/pos"
+                className="bg-purple-600 hover:bg-purple-700 text-white px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 shadow-xs whitespace-nowrap"
+              >
+                <IconCurrencyDollar className="h-4 w-4" /> POS Terminal
+              </a>
+              <a
+                href="/purchase/new"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 shadow-xs whitespace-nowrap"
+              >
+                <IconPackage className="h-4 w-4" /> New PO
+              </a>
+              <a
+                href="/admin/stock-adjustment"
+                className="bg-card border border-border hover:bg-muted text-foreground px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 shadow-xs whitespace-nowrap"
+              >
+                <IconRefresh className="h-4 w-4" /> Sync Stock
+              </a>
+            </div>
+          </div>
         </div>
       </div>
 
