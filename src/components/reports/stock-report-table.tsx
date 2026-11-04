@@ -37,6 +37,43 @@ import { StockReportItem } from "@/actions/stock-report-actions";
 import { formatCurrency } from "@/lib/utils";
 import * as XLSX from "xlsx";
 
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  placeholder: string;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-1 min-w-[140px] flex-1 sm:flex-initial">
+      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        {label}
+      </label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed w-full"
+      >
+        <option value="all">{placeholder}</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 interface StockReportTableProps {
   data: StockReportItem[];
 }
@@ -47,6 +84,8 @@ type StockFilterType = "all" | "positive" | "zero" | "negative";
 export function StockReportTable({ data }: StockReportTableProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [locationFilter, setLocationFilter] = useState("all");
+  const [brandFilter, setBrandFilter] = useState("all");
+  const [subBrandFilter, setSubBrandFilter] = useState("all");
   const [stockStatusFilter, setStockStatusFilter] = useState<StockFilterType>("all");
   const [activeView, setActiveView] = useState<ViewMode>("detailed");
 
@@ -59,6 +98,47 @@ export function StockReportTable({ data }: StockReportTableProps) {
     () => [...new Set(data.map((item) => item.location).filter(Boolean))],
     [data]
   );
+
+  // Unique brands for filter
+  const brands = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of data) {
+      if (item.brand_name && item.brand_name !== "Unbranded" && item.brand_name !== "—") {
+        const id = item.brandId || item.brand_name;
+        map.set(id, item.brand_name);
+      }
+    }
+    return Array.from(map.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [data]);
+
+  // Unique sub-brands for filter
+  const subBrands = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of data) {
+      if (
+        brandFilter !== "all" &&
+        item.brandId !== brandFilter &&
+        item.brand_name !== brandFilter
+      ) {
+        continue;
+      }
+      if (item.sub_brand_name && item.sub_brand_name !== "—") {
+        const id = item.subBrandId || item.sub_brand_name;
+        map.set(id, item.sub_brand_name);
+      }
+    }
+    return Array.from(map.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [data, brandFilter]);
+
+  const STOCK_STATUS_OPTIONS = [
+    { value: "positive", label: "Positive Stock (> 0)" },
+    { value: "zero", label: "Zero Stock (= 0)" },
+    { value: "negative", label: "Negative Stock (< 0)" },
+  ];
 
   // Filter products by search, location, and stock status
   const filteredData = useMemo(() => {
@@ -77,6 +157,18 @@ export function StockReportTable({ data }: StockReportTableProps) {
           locationFilter === "all" ||
           item.location === locationFilter;
 
+        const matchesBrand =
+          !brandFilter ||
+          brandFilter === "all" ||
+          item.brandId === brandFilter ||
+          item.brand_name === brandFilter;
+
+        const matchesSubBrand =
+          !subBrandFilter ||
+          subBrandFilter === "all" ||
+          item.subBrandId === subBrandFilter ||
+          item.sub_brand_name === subBrandFilter;
+
         let matchesStock = true;
         if (stockStatusFilter === "positive") {
           matchesStock = item.current_stock > 0;
@@ -86,7 +178,13 @@ export function StockReportTable({ data }: StockReportTableProps) {
           matchesStock = item.current_stock < 0;
         }
 
-        return matchesSearch && matchesLocation && matchesStock;
+        return (
+          matchesSearch &&
+          matchesLocation &&
+          matchesBrand &&
+          matchesSubBrand &&
+          matchesStock
+        );
       })
       .sort((a, b) => {
         const aValue = a[sortField];
@@ -104,7 +202,7 @@ export function StockReportTable({ data }: StockReportTableProps) {
 
         return 0;
       });
-  }, [data, searchTerm, locationFilter, stockStatusFilter, sortField, sortDirection]);
+  }, [data, searchTerm, locationFilter, brandFilter, subBrandFilter, stockStatusFilter, sortField, sortDirection]);
 
   // Overall calculations
   const totalStockValue = useMemo(
@@ -663,65 +761,182 @@ export function StockReportTable({ data }: StockReportTableProps) {
 
   return (
     <div className="space-y-4">
-      {/* 1. Filters Card - Strict Visual Continuity */}
+      {/* Action Header — Export buttons */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="text-sm text-muted-foreground">
+          Showing <span className="font-semibold text-foreground">{filteredData.length}</span> of {data.length} products
+          {locationFilter !== "all" && (
+            <span className="ml-1 text-xs font-medium text-purple-600">({locationFilter})</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={exportToExcel}
+            variant="outline"
+            size="sm"
+            className="h-9 gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 font-medium"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+            Export Excel
+          </Button>
+          <Button
+            onClick={exportToCSV}
+            variant="outline"
+            size="sm"
+            className="h-9 gap-1.5 font-medium"
+          >
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
+        </div>
+      </div>
+
+      {/* Filters Card — Exact Enterprise Design from sales-purchase-reports/page.tsx:L1694 + Integrated Stock Quantities */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>Stock Report Filters</span>
-            <div className="flex items-center gap-2">
+        <CardContent className="pt-4 pb-4 space-y-3.5">
+          <div className="flex flex-wrap gap-4 items-end">
+            <FilterSelect
+              label="Branch"
+              value={locationFilter}
+              onChange={setLocationFilter}
+              options={locations.map((loc) => ({ value: loc, label: loc }))}
+              placeholder="All Branches"
+            />
+
+            <FilterSelect
+              label="Brand"
+              value={brandFilter}
+              onChange={(v) => {
+                setBrandFilter(v);
+                setSubBrandFilter("all");
+              }}
+              options={brands}
+              placeholder="All Brands"
+            />
+
+            <FilterSelect
+              label="Sub-brand"
+              value={subBrandFilter}
+              onChange={setSubBrandFilter}
+              options={subBrands}
+              placeholder={brandFilter !== "all" ? "All Sub-brands" : "All Sub-brands"}
+              disabled={subBrands.length === 0}
+            />
+
+            <div className="flex flex-col gap-1 min-w-[220px] flex-1">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Search Product / SKU
+              </label>
+              <div className="relative">
+                <Search className="text-muted-foreground absolute top-2.5 left-3 h-4 w-4" />
+                <Input
+                  placeholder="Search products by name, SKU, brand…"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="h-9 pl-9 text-sm bg-background"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 items-end">
               <Button
-                onClick={exportToExcel}
                 variant="outline"
                 size="sm"
-                className="font-medium text-emerald-700 hover:text-emerald-800"
+                className="h-9 px-3 text-xs"
+                onClick={() => {
+                  setSearchTerm("");
+                  setLocationFilter("all");
+                  setBrandFilter("all");
+                  setSubBrandFilter("all");
+                  setStockStatusFilter("all");
+                }}
               >
-                <FileSpreadsheet className="mr-2 h-4 w-4 text-emerald-600" />
-                Export Excel
-              </Button>
-              <Button onClick={exportToCSV} variant="outline" size="sm">
-                <Download className="mr-2 h-4 w-4" />
-                Export CSV
+                Clear
               </Button>
             </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <div className="relative">
-              <Search className="text-muted-foreground absolute top-3 left-3 h-4 w-4" />
-              <Input
-                placeholder="Search products..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+          </div>
+
+          {/* Stock Quantities Indicator Filters inside the Filter Card */}
+          <div className="pt-2.5 border-t border-border/70 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mr-1">
+                Stock Quantities:
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  setStockStatusFilter(
+                    stockStatusFilter === "positive" ? "all" : "positive"
+                  )
+                }
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
+                  stockStatusFilter === "positive"
+                    ? "bg-emerald-100 border-emerald-500 text-emerald-900 ring-2 ring-emerald-500/30 dark:bg-emerald-950 dark:text-emerald-200"
+                    : "bg-emerald-50/70 border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-400"
+                }`}
+                title="Click to filter positive stock"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                <span className="font-semibold">Positive Stock:</span>
+                <span className="font-bold">{stockHealth.positiveCount} items</span>
+                <span className="text-muted-foreground/80">({stockHealth.positiveUnits} units)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setStockStatusFilter(
+                    stockStatusFilter === "zero" ? "all" : "zero"
+                  )
+                }
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
+                  stockStatusFilter === "zero"
+                    ? "bg-amber-100 border-amber-500 text-amber-900 ring-2 ring-amber-500/30 dark:bg-amber-950 dark:text-amber-200"
+                    : "bg-amber-50/70 border-amber-200 text-amber-700 hover:bg-amber-100 hover:border-amber-300 dark:bg-amber-950/40 dark:text-amber-400"
+                }`}
+                title="Click to filter zero stock"
+              >
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                <span className="font-semibold">Zero Stock:</span>
+                <span className="font-bold">{stockHealth.zeroCount} items</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setStockStatusFilter(
+                    stockStatusFilter === "negative" ? "all" : "negative"
+                  )
+                }
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
+                  stockStatusFilter === "negative"
+                    ? "bg-rose-100 border-rose-500 text-rose-900 ring-2 ring-rose-500/30 dark:bg-rose-950 dark:text-rose-200"
+                    : "bg-rose-50/70 border-rose-200 text-rose-700 hover:bg-rose-100 hover:border-rose-300 dark:bg-rose-950/40 dark:text-rose-400"
+                }`}
+                title="Click to filter negative stock"
+              >
+                <XCircle className="h-3.5 w-3.5 text-rose-600 shrink-0" />
+                <span className="font-semibold">Negative Stock:</span>
+                <span className="font-bold">{stockHealth.negativeCount} items</span>
+                {stockHealth.negativeUnits < 0 && (
+                  <span className="text-muted-foreground/80">
+                    ({stockHealth.negativeUnits} units)
+                  </span>
+                )}
+              </button>
+
+              {stockStatusFilter !== "all" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setStockStatusFilter("all")}
+                >
+                  Reset Status
+                </Button>
+              )}
             </div>
-
-            <Select value={locationFilter} onValueChange={setLocationFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Filter by Location" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Locations</SelectItem>
-                {locations.map((location) => (
-                  <SelectItem key={location} value={location}>
-                    {location}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Button
-              variant="outline"
-              onClick={() => {
-                setSearchTerm("");
-                setLocationFilter("all");
-                setStockStatusFilter("all");
-              }}
-            >
-              <Filter className="mr-2 h-4 w-4" />
-              Clear Filters
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -758,87 +973,7 @@ export function StockReportTable({ data }: StockReportTableProps) {
         </Card>
       </div>
 
-      {/* 3. Stock Health Indicators Strip (Positive, Zero, Negative Stock) */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-1 py-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground mr-1">
-            Stock Quantities:
-          </span>
-          <button
-            type="button"
-            onClick={() =>
-              setStockStatusFilter(
-                stockStatusFilter === "positive" ? "all" : "positive"
-              )
-            }
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-              stockStatusFilter === "positive"
-                ? "bg-emerald-100 border-emerald-400 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                : "bg-emerald-50/70 border-emerald-200 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400"
-            }`}
-            title="Click to filter positive stock"
-          >
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-            <span>Positive Stock:</span>
-            <span className="font-semibold">{stockHealth.positiveCount} items</span>
-            <span className="text-muted-foreground">({stockHealth.positiveUnits} units)</span>
-          </button>
 
-          <button
-            type="button"
-            onClick={() =>
-              setStockStatusFilter(
-                stockStatusFilter === "zero" ? "all" : "zero"
-              )
-            }
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-              stockStatusFilter === "zero"
-                ? "bg-amber-100 border-amber-400 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
-                : "bg-amber-50/70 border-amber-200 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-400"
-            }`}
-            title="Click to filter zero stock"
-          >
-            <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
-            <span>Zero Stock:</span>
-            <span className="font-semibold">{stockHealth.zeroCount} items</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              setStockStatusFilter(
-                stockStatusFilter === "negative" ? "all" : "negative"
-              )
-            }
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-              stockStatusFilter === "negative"
-                ? "bg-rose-100 border-rose-400 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
-                : "bg-rose-50/70 border-rose-200 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-400"
-            }`}
-            title="Click to filter negative stock"
-          >
-            <XCircle className="h-3.5 w-3.5 text-rose-600" />
-            <span>Negative Stock:</span>
-            <span className="font-semibold">{stockHealth.negativeCount} items</span>
-            {stockHealth.negativeUnits < 0 && (
-              <span className="text-muted-foreground">
-                ({stockHealth.negativeUnits} units)
-              </span>
-            )}
-          </button>
-
-          {stockStatusFilter !== "all" && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => setStockStatusFilter("all")}
-            >
-              Reset Filter
-            </Button>
-          )}
-        </div>
-      </div>
 
       {/* 4. Segmented View Switcher Tabs (Consistent with Vercel UI) */}
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
