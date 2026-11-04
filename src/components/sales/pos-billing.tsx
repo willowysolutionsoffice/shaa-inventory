@@ -700,6 +700,26 @@ export default function PosBillingPage({
   const [barcodeInput, setBarcodeInput] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(WALK_IN_SENTINEL);
   const [selectedProductIndex, setSelectedProductIndex] = useState<number>(-1);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const suggestionsContainerRef = useRef<HTMLDivElement>(null);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as Node;
+      if (
+        searchContainerRef.current?.contains(target) ||
+        suggestionsContainerRef.current?.contains(target) ||
+        barcodeInputRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setShowSuggestions(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [couponDiscountPercent, setCouponDiscountPercent] = useState(0);
   const [manualDiscountPercent, setManualDiscountPercent] = useState<
@@ -1299,12 +1319,12 @@ export default function PosBillingPage({
         if (e.key === "ArrowDown") {
           e.preventDefault();
           setSelectedProductIndex((prev) =>
-            Math.min(filteredProducts.length - 1, prev + 2),
+            Math.min(filteredProducts.length - 1, prev + 1),
           );
           return;
         } else if (e.key === "ArrowUp") {
           e.preventDefault();
-          setSelectedProductIndex((prev) => Math.max(0, prev - 2));
+          setSelectedProductIndex((prev) => Math.max(0, prev - 1));
           return;
         } else if (e.key === "ArrowRight") {
           e.preventDefault();
@@ -1561,19 +1581,27 @@ export default function PosBillingPage({
 
       {/* Search, product filters and invoice date */}
       <div className="grid grid-cols-1 items-end gap-3 rounded-xl border border-border bg-card p-3 shadow-sm sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[minmax(240px,1.45fr)_minmax(130px,0.65fr)_minmax(170px,0.85fr)_minmax(170px,0.85fr)_minmax(170px,0.85fr)_auto]">
-        <div className="relative min-w-0">
+        <div className="relative min-w-0" ref={searchContainerRef}>
           <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
           <Input
             ref={searchInputRef}
             placeholder="Search by SKU or name…"
             value={searchTerm}
+            onClick={() => setShowSuggestions(true)}
+            onFocus={() => setShowSuggestions(true)}
             onChange={(e) => {
               setSearchTerm(e.target.value);
+              setShowSuggestions(true);
               setBarcodeNotFound(false);
             }}
             onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setShowSuggestions(false);
+                return;
+              }
               if (e.key === "ArrowDown" && filteredProducts.length > 0) {
                 e.preventDefault();
+                setShowSuggestions(true);
                 setSelectedProductIndex(0);
                 return;
               }
@@ -1581,6 +1609,7 @@ export default function PosBillingPage({
             }}
             className="h-10 w-full border-border bg-background pl-9 shadow-sm"
           />
+
         </div>
 
         <Select
@@ -2363,8 +2392,10 @@ export default function PosBillingPage({
               autoFocus
               placeholder="Scan / type SKU and hit Enter…"
               value={barcodeInput}
+              onClick={() => setShowSuggestions(true)}
               onChange={(e) => {
                 setBarcodeInput(e.target.value);
+                setShowSuggestions(true);
                 setBarcodeNotFound(false);
               }}
               className={`h-8 text-xs bg-card ${barcodeNotFound
@@ -2384,82 +2415,54 @@ export default function PosBillingPage({
             </Button>
           </form>
 
-          {/* Product grid */}
-          <div
-            className="grid max-h-[calc(100vh-335px)] min-h-[420px] grid-cols-1 gap-4 overflow-y-auto pr-2 sm:grid-cols-2
-            [&::-webkit-scrollbar]:w-1.5
-            [&::-webkit-scrollbar-track]:rounded-full
-            [&::-webkit-scrollbar-track]:bg-muted/40
-            [&::-webkit-scrollbar-thumb]:rounded-full
-            [&::-webkit-scrollbar-thumb]:bg-purple-300
-            dark:[&::-webkit-scrollbar-thumb]:bg-purple-700"
-          >
-            {filteredProducts.length === 0 ? (
-              <div className="col-span-2 text-center text-muted-foreground py-16 text-sm">
-                {searchTerm ||
-                  selectedCategory !== "All" ||
-                  selectedBrand !== "All"
-                  ? "No products match your filters."
-                  : "No products available."}
-              </div>
-            ) : (
-              filteredProducts.map((prod, idx) => {
-                const isSelected = idx === selectedProductIndex;
-                return (
-                  <Card
-                    key={prod.id}
-                    onClick={() => {
-                      addToCart(prod);
-                      setSelectedProductIndex(-1);
-                    }}
-                    className={`cursor-pointer transition-all hover:shadow-md bg-card group border flex flex-col justify-between h-36 ${
-                      isSelected
-                        ? "border-purple-600 ring-2 ring-purple-600 bg-purple-50/50 dark:bg-purple-950/20"
-                        : "border-border hover:border-purple-500"
-                    }`}
-                  >
-                  <CardContent className="p-3.5 flex flex-col justify-between h-full w-full">
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-medium text-muted-foreground">
-                          {prod.sku}
-                        </span>
-                        <Badge
-                          className={`text-[10px] px-1.5 py-0 ${prod.stock <= 5
-                            ? "bg-red-50 text-red-700 border-red-100"
-                            : "bg-purple-50 text-purple-700 border-purple-100"
-                            }`}
-                        >
-                          Stock: {prod.stock}
-                        </Badge>
-                      </div>
-                      <h3 className="font-semibold text-sm line-clamp-2 group-hover:text-purple-600 transition-colors leading-tight">
+          {/* Product list — compact line by line showing only name (only shown when placeholder clicked, otherwise hidden completely) */}
+          {showSuggestions && (
+            <div
+              ref={suggestionsContainerRef}
+              className="flex flex-col gap-1.5 max-h-[calc(100vh-335px)] overflow-y-auto pr-1
+              [&::-webkit-scrollbar]:w-1.5
+              [&::-webkit-scrollbar-track]:rounded-full
+              [&::-webkit-scrollbar-track]:bg-muted/40
+              [&::-webkit-scrollbar-thumb]:rounded-full
+              [&::-webkit-scrollbar-thumb]:bg-purple-300
+              dark:[&::-webkit-scrollbar-thumb]:bg-purple-700"
+            >
+              {filteredProducts.length === 0 ? (
+                <div className="text-center text-muted-foreground py-16 text-sm">
+                  {searchTerm ||
+                    selectedCategory !== "All" ||
+                    selectedBrand !== "All"
+                    ? "No products match your filters."
+                    : "No products available."}
+                </div>
+              ) : (
+                filteredProducts.map((prod, idx) => {
+                  const isSelected = idx === selectedProductIndex;
+                  return (
+                    <button
+                      type="button"
+                      key={prod.id}
+                      onClick={() => {
+                        addToCart(prod);
+                        setSelectedProductIndex(-1);
+                        setShowSuggestions(false);
+                      }}
+                      title={`${prod.name} • ${formatCurrency(prod.price)} (Stock: ${prod.stock})`}
+                      className={`w-full text-left px-3.5 py-2.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-2 group ${
+                        isSelected
+                          ? "border-purple-600 bg-purple-50 ring-1 ring-purple-600 dark:bg-purple-950/40"
+                          : "border-border/70 bg-card hover:bg-purple-50/50 hover:border-purple-400 dark:hover:bg-purple-950/20"
+                      }`}
+                    >
+                      <span className="text-xs sm:text-sm font-semibold text-foreground group-hover:text-purple-600 transition-colors truncate">
                         {prod.name}
-                      </h3>
-                      {prod.brand && (
-                        <p className="text-[10px] text-muted-foreground truncate">
-                          {prod.brand}
-                          {prod.subBrand ? ` › ${prod.subBrand}` : ""}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between mt-auto pt-2 border-t border-dashed border-border/80">
-                      <span className="font-extrabold text-base text-purple-600">
-                        {formatCurrency(prod.price)}
                       </span>
-                      <Badge
-                        variant="outline"
-                        className="text-[9px] bg-slate-50 dark:bg-slate-900 border-slate-200"
-                      >
-                        {prod.category}
-                      </Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })
+                    </button>
+                  );
+                })
+              )}
+            </div>
           )}
-          </div>
         </div>
       </div>
     </div>
