@@ -3,30 +3,13 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-  TableFooter,
-} from "@/components/ui/table";
 import {
   FileSpreadsheet,
-  FileText,
+  Printer,
   Search,
   Users,
-  Building2,
-  TrendingUp,
-  Wallet,
-  RotateCcw,
-  CheckCircle2,
   AlertCircle,
-  ArrowUpDown,
-  UserCheck,
+  TrendingUp,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import * as XLSX from "xlsx";
@@ -38,13 +21,15 @@ import { User } from "@/actions/user-action";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type DatePreset =
-  | "all"
+  | ""
   | "today"
   | "yesterday"
-  | "thisWeek"
+  | "last3days"
+  | "last7days"
   | "thisMonth"
   | "lastMonth"
   | "thisYear"
+  | "lastYear"
   | "custom";
 
 interface Filters {
@@ -55,7 +40,6 @@ interface Filters {
   month: string;
   branchId: string;
   salesmanId: string;
-  search: string;
 }
 
 export interface SalesmanSummaryRow {
@@ -70,6 +54,7 @@ export interface SalesmanSummaryRow {
   totalCollection: number;
   pendingCollection: number;
   collectionRate: number;
+  isUnassigned: boolean;
 }
 
 interface SalesmanReportClientProps {
@@ -99,13 +84,14 @@ const MONTHS = [
 ];
 
 const DATE_PRESETS: { value: DatePreset; label: string }[] = [
-  { value: "all", label: "All Time" },
   { value: "today", label: "Today" },
   { value: "yesterday", label: "Yesterday" },
-  { value: "thisWeek", label: "This Week" },
+  { value: "last3days", label: "Last 3 Days" },
+  { value: "last7days", label: "Last 7 Days" },
   { value: "thisMonth", label: "This Month" },
   { value: "lastMonth", label: "Last Month" },
   { value: "thisYear", label: "This Year" },
+  { value: "lastYear", label: "Last Year" },
   { value: "custom", label: "Custom Range" },
 ];
 
@@ -122,12 +108,11 @@ const DEFAULT_FILTERS: Filters = {
   to: "",
   year: String(currentYear),
   month: String(new Date().getMonth() + 1).padStart(2, "0"),
-  branchId: "all",
-  salesmanId: "all",
-  search: "",
+  branchId: "",
+  salesmanId: "",
 };
 
-// ── Sub-component for Filter Inputs ───────────────────────────────────────────
+// ── Standard Filter Select & Date Input (Matching Theme) ─────────────────────
 
 function FilterSelect({
   label,
@@ -145,7 +130,7 @@ function FilterSelect({
   disabled?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-1 min-w-[140px] flex-1 sm:flex-initial">
+    <div className="flex flex-col gap-1">
       <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
         {label}
       </label>
@@ -153,9 +138,9 @@ function FilterSelect({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed w-full"
+        className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring min-w-[140px] disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        <option value="all">{placeholder}</option>
+        <option value="">{placeholder}</option>
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
@@ -176,7 +161,7 @@ function DateInput({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="flex flex-col gap-1 min-w-[130px]">
+    <div className="flex flex-col gap-1">
       <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
         {label}
       </label>
@@ -208,16 +193,13 @@ export function SalesmanReportClient({
   });
 
   const [appliedFilters, setAppliedFilters] = useState<Filters>(filters);
+  const [searchQuery, setSearchQuery] = useState("");
   const [rawSales, setRawSales] = useState<any[]>([]);
   const [rawReturns, setRawReturns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Sorting
-  const [sortField, setSortField] = useState<keyof SalesmanSummaryRow>("effectiveSales");
-  const [sortAsc, setSortAsc] = useState(false); // default highest sales first
-
-  // Distinct salesman options (from users prop, with fallback to distinct salesmen in loaded sales)
+  // Distinct salesman options (from users, with fallback to distinct salesmen in loaded sales)
   const salesmanOptions = useMemo(() => {
     const list = Array.isArray(users) ? users : [];
     if (list.length > 0) {
@@ -232,47 +214,136 @@ export function SalesmanReportClient({
     return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
   }, [users, rawSales]);
 
+  // Branch map for quick lookup
+  const branchMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const b of branches) {
+      if (b.id) m.set(b.id, b.name);
+    }
+    return m;
+  }, [branches]);
+
   // Date Preset Handler
-  const handleDatePresetChange = (preset: DatePreset) => {
-    const now = new Date();
-    let newFrom = "";
-    let newTo = "";
+  const handleDatePresetChange = (val: string) => {
+    const preset = val as DatePreset;
+    const today = new Date();
+    let from = "";
+    let to = "";
 
     if (preset === "today") {
-      newFrom = formatDateForInput(now);
-      newTo = formatDateForInput(now);
+      from = to = formatDateForInput(today);
     } else if (preset === "yesterday") {
       const y = new Date();
-      y.setDate(now.getDate() - 1);
-      newFrom = formatDateForInput(y);
-      newTo = formatDateForInput(y);
-    } else if (preset === "thisWeek") {
-      const day = now.getDay();
-      const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday
-      const monday = new Date(now.setDate(diff));
-      newFrom = formatDateForInput(monday);
-      newTo = formatDateForInput(new Date());
+      y.setDate(today.getDate() - 1);
+      from = to = formatDateForInput(y);
+    } else if (preset === "last3days") {
+      const d = new Date();
+      d.setDate(today.getDate() - 2);
+      from = formatDateForInput(d);
+      to = formatDateForInput(today);
+    } else if (preset === "last7days") {
+      const d = new Date();
+      d.setDate(today.getDate() - 6);
+      from = formatDateForInput(d);
+      to = formatDateForInput(today);
     } else if (preset === "thisMonth") {
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-      newFrom = formatDateForInput(firstDay);
-      newTo = formatDateForInput(now);
+      const first = new Date(today.getFullYear(), today.getMonth(), 1);
+      from = formatDateForInput(first);
+      to = formatDateForInput(today);
     } else if (preset === "lastMonth") {
-      const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
-      newFrom = formatDateForInput(firstDay);
-      newTo = formatDateForInput(lastDay);
+      const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const last = new Date(today.getFullYear(), today.getMonth(), 0);
+      from = formatDateForInput(first);
+      to = formatDateForInput(last);
     } else if (preset === "thisYear") {
-      const firstDay = new Date(now.getFullYear(), 0, 1);
-      newFrom = formatDateForInput(firstDay);
-      newTo = formatDateForInput(now);
+      from = `${today.getFullYear()}-01-01`;
+      to = formatDateForInput(today);
+    } else if (preset === "lastYear") {
+      const py = today.getFullYear() - 1;
+      from = `${py}-01-01`;
+      to = `${py}-12-31`;
     }
 
     setFilters((prev) => ({
       ...prev,
       datePreset: preset,
-      from: newFrom,
-      to: newTo,
+      from,
+      to,
+      year: "",
+      month: "",
     }));
+  };
+
+  const handleYearChange = (year: string) => {
+    setFilters((prev) => {
+      const y = Number(year);
+      let from = prev.from;
+      let to = prev.to;
+      if (year) {
+        if (prev.month) {
+          const m = Number(prev.month);
+          from = formatDateForInput(new Date(y, m - 1, 1));
+          to = formatDateForInput(new Date(y, m, 0));
+        } else {
+          from = `${year}-01-01`;
+          to = `${year}-12-31`;
+        }
+      }
+      return {
+        ...prev,
+        year,
+        from,
+        to,
+        datePreset: "",
+      };
+    });
+  };
+
+  const handleMonthChange = (month: string) => {
+    setFilters((prev) => {
+      const y = Number(prev.year || currentYear);
+      let from = prev.from;
+      let to = prev.to;
+      if (month) {
+        const m = Number(month);
+        from = formatDateForInput(new Date(y, m - 1, 1));
+        to = formatDateForInput(new Date(y, m, 0));
+      }
+      return {
+        ...prev,
+        month,
+        year: String(y),
+        from,
+        to,
+        datePreset: "",
+      };
+    });
+  };
+
+  // Build API Date boundaries
+  const buildDateRange = (f: Filters) => {
+    if (f.from && f.to) return { from: f.from, to: f.to };
+    if (f.from && !f.to) return { from: f.from, to: f.from };
+    if (!f.from && f.to) return { from: f.to, to: f.to };
+    if (f.month && f.year) {
+      const y = Number(f.year),
+        m = Number(f.month);
+      return {
+        from: formatDateForInput(new Date(y, m - 1, 1)),
+        to: formatDateForInput(new Date(y, m, 0)),
+      };
+    }
+    if (f.year) {
+      const y = Number(f.year);
+      return { from: `${y}-01-01`, to: `${y}-12-31` };
+    }
+    return { from: "", to: "" };
+  };
+
+  const toApiDateBoundary = (value: string, endOfDay = false) => {
+    if (!value) return undefined;
+    const time = endOfDay ? "23:59:59.999" : "00:00:00.000";
+    return new Date(`${value}T${time}`).toISOString();
   };
 
   // Fetch report data
@@ -280,22 +351,32 @@ export function SalesmanReportClient({
     setLoading(true);
     setError(null);
     try {
-      const params: any = {
-        limit: 2000,
-      };
+      const { from, to } = buildDateRange(f);
 
-      if (f.from) params.from = `${f.from}T00:00:00.000Z`;
-      if (f.to) params.to = `${f.to}T23:59:59.999Z`;
-      if (f.branchId !== "all") params.branchId = f.branchId;
-      if (f.salesmanId !== "all") params.salesmanId = f.salesmanId;
+      if (from && to && from > to) {
+        setError("From date cannot be later than To date.");
+        setLoading(false);
+        return;
+      }
+
+      const apiFrom = toApiDateBoundary(from, false);
+      const apiTo = toApiDateBoundary(to, true);
 
       const [salesRes, returnsRes] = await Promise.all([
-        getSalesReport(params),
+        getSalesReport({
+          from: apiFrom,
+          to: apiTo,
+          branchId: f.branchId || undefined,
+          salesmanId: f.salesmanId || undefined,
+          limit: 5000,
+          page: 1,
+        }),
         getSalesReturnList({
-          limit: 2000,
-          from: params.from,
-          to: params.to,
-          branchId: f.branchId !== "all" ? f.branchId : undefined,
+          page: 1,
+          limit: 1000,
+          branchId: f.branchId || undefined,
+          from: apiFrom,
+          to: apiTo,
         }).catch(() => null),
       ]);
 
@@ -305,10 +386,14 @@ export function SalesmanReportClient({
       }
 
       setRawSales(salesRes.sales ?? []);
-      const returns = (returnsRes as any)?.data?.returns ?? (Array.isArray(returnsRes) ? returnsRes : []);
+      const returns =
+        (returnsRes as any)?.data?.returns ??
+        (Array.isArray(returnsRes) ? returnsRes : []);
       setRawReturns(Array.isArray(returns) ? returns : []);
     } catch (err: any) {
-      setError(err?.message ?? "An unexpected error occurred while loading data");
+      setError(
+        err?.message ?? "An unexpected error occurred while loading data"
+      );
     } finally {
       setLoading(false);
     }
@@ -324,28 +409,19 @@ export function SalesmanReportClient({
 
   const handleClear = () => {
     const cleared: Filters = {
-      ...DEFAULT_FILTERS,
-      datePreset: "all",
+      datePreset: "",
       from: "",
       to: "",
-      branchId: "all",
-      salesmanId: "all",
-      search: "",
+      year: "",
+      month: "",
+      branchId: "",
+      salesmanId: "",
     };
     setFilters(cleared);
     setAppliedFilters(cleared);
   };
 
-  // Branch map for quick lookup
-  const branchMap = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const b of branches) {
-      if (b.id) m.set(b.id, b.name);
-    }
-    return m;
-  }, [branches]);
-
-  // Aggregate Salesman Performance Table Rows
+  // ── Compute Accurate Salesman Summary Table Rows ─────────────────────────────
   const summaryRows: SalesmanSummaryRow[] = useMemo(() => {
     // 1. Map returns to their associated saleId
     const returnsBySaleId = new Map<string, number>();
@@ -356,7 +432,6 @@ export function SalesmanReportClient({
       }
     }
 
-    // 2. Aggregate sales per salesman
     interface Accumulator {
       salesmanId: string;
       salesmanName: string;
@@ -365,78 +440,158 @@ export function SalesmanReportClient({
       grossSales: number;
       salesReturn: number;
       totalCollection: number;
+      pendingCollection: number;
+      isUnassigned: boolean;
     }
 
     const salesmanMap = new Map<string, Accumulator>();
+    const salesIdSet = new Set<string>();
 
     for (const sale of rawSales) {
+      if (
+        appliedFilters.branchId &&
+        sale.branchId !== appliedFilters.branchId &&
+        sale.branch?.id !== appliedFilters.branchId
+      ) {
+        continue;
+      }
+      if (
+        appliedFilters.salesmanId &&
+        sale.salesmanId !== appliedFilters.salesmanId &&
+        sale.salesman?.id !== appliedFilters.salesmanId
+      ) {
+        continue;
+      }
+
+      salesIdSet.add(sale.id);
+
       const sId = sale.salesman?.id || sale.salesmanId || "unassigned";
       const sName =
         sale.salesman?.name ||
-        (sId === "unassigned" ? "Direct / Counter (Unassigned)" : `Staff #${sId.slice(0, 6)}`);
+        (sId === "unassigned"
+          ? "Direct / Counter (No Salesman)"
+          : `Staff #${sId.slice(0, 6)}`);
 
       const bName =
         sale.branch?.name ||
         (sale.branchId ? branchMap.get(sale.branchId) : undefined) ||
         "Main Location";
 
-      const existing = salesmanMap.get(sId) || {
-        salesmanId: sId,
-        salesmanName: sName,
-        branchName: bName,
-        invoicesCount: 0,
-        grossSales: 0,
-        salesReturn: 0,
-        totalCollection: 0,
-      };
+      if (!salesmanMap.has(sId)) {
+        salesmanMap.set(sId, {
+          salesmanId: sId,
+          salesmanName: sName,
+          branchName: bName,
+          invoicesCount: 0,
+          grossSales: 0,
+          salesReturn: 0,
+          totalCollection: 0,
+          pendingCollection: 0,
+          isUnassigned: sId === "unassigned",
+        });
+      }
 
-      const gross = Number(sale.grandTotal || 0);
+      const existing = salesmanMap.get(sId)!;
 
-      // Returns on this sale
-      let retTotal = returnsBySaleId.get(sale.id) || 0;
-      if (retTotal === 0 && Array.isArray(sale.salesReturns)) {
+      // 1. Gross Sales
+      const gross = Number(sale.grandTotal ?? 0);
+
+      // 2. Returns on this sale
+      let retTotal = 0;
+      if (Array.isArray(sale.salesReturns) && sale.salesReturns.length > 0) {
         retTotal = sale.salesReturns.reduce(
           (acc: number, r: any) => acc + Number(r.grandTotal || 0),
           0
         );
+      } else if (returnsBySaleId.has(sale.id)) {
+        retTotal = returnsBySaleId.get(sale.id) || 0;
       }
 
-      // Payments collected
-      let collTotal = 0;
-      if (Array.isArray(sale.payments)) {
-        collTotal = sale.payments.reduce(
-          (acc: number, p: any) => acc + Number(p.amount || 0),
-          0
-        );
-      }
+      // 3. Collection on this sale
+      const paymentSum = Array.isArray(sale.payments)
+        ? sale.payments.reduce(
+            (acc: number, p: any) => acc + Number(p.amount || 0),
+            0
+          )
+        : 0;
+
+      const due = Number(sale.paymentDue ?? 0);
+      const paidFromDue = gross > due ? gross - due : 0;
+      const collected = paymentSum > 0 ? paymentSum : paidFromDue;
 
       existing.invoicesCount += 1;
       existing.grossSales += gross;
       existing.salesReturn += retTotal;
-      existing.totalCollection += collTotal;
-
-      salesmanMap.set(sId, existing);
+      existing.totalCollection += collected;
+      existing.pendingCollection += due;
     }
 
-    // 3. Filter by search input (if user types salesman name)
-    const searchQuery = appliedFilters.search.trim().toLowerCase();
+    // 2. Catch returns outside rawSales date boundaries
+    for (const ret of rawReturns) {
+      if (salesIdSet.has(ret.saleId)) continue;
 
+      const sId =
+        ret.sale?.salesman?.id || ret.sale?.salesmanId || "unassigned";
+      if (appliedFilters.salesmanId && sId !== appliedFilters.salesmanId)
+        continue;
+      if (
+        appliedFilters.branchId &&
+        ret.branchId !== appliedFilters.branchId &&
+        ret.sale?.branchId !== appliedFilters.branchId
+      )
+        continue;
+
+      const sName =
+        ret.sale?.salesman?.name ||
+        (sId === "unassigned"
+          ? "Direct / Counter (No Salesman)"
+          : `Staff #${sId.slice(0, 6)}`);
+      const bName =
+        ret.branch?.name ||
+        ret.sale?.branch?.name ||
+        (ret.branchId ? branchMap.get(ret.branchId) : undefined) ||
+        "Main Location";
+
+      if (!salesmanMap.has(sId)) {
+        salesmanMap.set(sId, {
+          salesmanId: sId,
+          salesmanName: sName,
+          branchName: bName,
+          invoicesCount: 0,
+          grossSales: 0,
+          salesReturn: 0,
+          totalCollection: 0,
+          pendingCollection: 0,
+          isUnassigned: sId === "unassigned",
+        });
+      }
+
+      const existing = salesmanMap.get(sId)!;
+      existing.salesReturn += Number(ret.grandTotal || 0);
+    }
+
+    // 3. Filter by search input
+    const q = searchQuery.trim().toLowerCase();
     const result: SalesmanSummaryRow[] = [];
     let sl = 1;
 
     for (const acc of salesmanMap.values()) {
       if (
-        searchQuery &&
-        !acc.salesmanName.toLowerCase().includes(searchQuery) &&
-        !acc.branchName.toLowerCase().includes(searchQuery)
+        q &&
+        !acc.salesmanName.toLowerCase().includes(q) &&
+        !acc.branchName.toLowerCase().includes(q)
       ) {
         continue;
       }
 
-      const effective = acc.grossSales - acc.salesReturn;
+      const effective = Math.max(0, acc.grossSales - acc.salesReturn);
       const pending = Math.max(0, effective - acc.totalCollection);
       const collectionRate =
-        effective > 0 ? Math.min(100, (acc.totalCollection / effective) * 100) : 100;
+        effective > 0
+          ? Math.min(100, (acc.totalCollection / effective) * 100)
+          : acc.grossSales > 0
+          ? 0
+          : 100;
 
       result.push({
         slNo: sl++,
@@ -450,26 +605,24 @@ export function SalesmanReportClient({
         totalCollection: acc.totalCollection,
         pendingCollection: pending,
         collectionRate,
+        isUnassigned: acc.isUnassigned,
       });
     }
 
-    // 4. Sort according to active sortField
-    result.sort((a, b) => {
-      let aVal = a[sortField];
-      let bVal = b[sortField];
-      if (typeof aVal === "string" && typeof bVal === "string") {
-        return sortAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-      }
-      return sortAsc ? Number(aVal) - Number(bVal) : Number(bVal) - Number(aVal);
+    // Default sort: highest effective sales first
+    result.sort((a, b) => b.effectiveSales - a.effectiveSales);
+
+    // Re-assign serial numbers after sorting
+    result.forEach((r, idx) => {
+      r.slNo = idx + 1;
     });
 
-    // Re-assign Sl.No after sorting
-    return result.map((r, idx) => ({ ...r, slNo: idx + 1 }));
-  }, [rawSales, rawReturns, branchMap, appliedFilters.search, sortField, sortAsc]);
+    return result;
+  }, [rawSales, rawReturns, appliedFilters, branchMap, searchQuery]);
 
-  // Totals for table footer and top KPI cards
+  // Overall Totals
   const totals = useMemo(() => {
-    return summaryRows.reduce(
+    const t = summaryRows.reduce(
       (acc, r) => ({
         invoicesCount: acc.invoicesCount + r.invoicesCount,
         grossSales: acc.grossSales + r.grossSales,
@@ -487,238 +640,118 @@ export function SalesmanReportClient({
         pendingCollection: 0,
       }
     );
+
+    const collectionRate =
+      t.effectiveSales > 0
+        ? Math.min(100, (t.totalCollection / t.effectiveSales) * 100)
+        : 100;
+
+    return { ...t, collectionRate };
   }, [summaryRows]);
 
-  const overallCollectionRate =
-    totals.effectiveSales > 0
-      ? Math.min(100, (totals.totalCollection / totals.effectiveSales) * 100)
-      : 100;
+  // Active Date Range Label
+  const dateRangeLabel = useMemo(() => {
+    const { from, to } = buildDateRange(appliedFilters);
+    if (!from && !to) return "All Time";
+    if (from && to && from === to) return from;
+    if (from && to) return `${from} to ${to}`;
+    return from || to || "All Time";
+  }, [appliedFilters]);
 
-  // Sorting toggle
-  const toggleSort = (field: keyof SalesmanSummaryRow) => {
-    if (sortField === field) {
-      setSortAsc(!sortAsc);
-    } else {
-      setSortField(field);
-      setSortAsc(false); // default desc for numbers
-    }
-  };
-
-  // Excel Export
+  // ── Excel Export ───────────────────────────────────────────────────────────
   const handleExportExcel = () => {
-    const branchLabel =
-      appliedFilters.branchId === "all"
-        ? "All Branches"
-        : branchMap.get(appliedFilters.branchId) || "Selected Branch";
+    if (summaryRows.length === 0) return;
 
-    const dateRangeLabel =
-      appliedFilters.from && appliedFilters.to
-        ? `${appliedFilters.from} to ${appliedFilters.to}`
-        : "All Time";
+    const dataRows = summaryRows.map((r) => ({
+      "Sl.No": r.slNo,
+      Salesman: r.salesmanName,
+      Branch: r.branchName,
+      Invoices: r.invoicesCount,
+      "Total Sales (Gross)": r.grossSales,
+      "Total Sales Return": r.salesReturn,
+      "Effective Sales": r.effectiveSales,
+      "Total Collection": r.totalCollection,
+      "Pending (Due)": r.pendingCollection,
+      "Collection %": `${r.collectionRate.toFixed(1)}%`,
+    }));
 
-    const generatedAt = new Date().toLocaleString("en-IN", {
-      dateStyle: "medium",
-      timeStyle: "short",
+    // Append totals row
+    dataRows.push({
+      "Sl.No": 0,
+      Salesman: "TOTAL",
+      Branch: "-",
+      Invoices: totals.invoicesCount,
+      "Total Sales (Gross)": totals.grossSales,
+      "Total Sales Return": totals.salesReturn,
+      "Effective Sales": totals.effectiveSales,
+      "Total Collection": totals.totalCollection,
+      "Pending (Due)": totals.pendingCollection,
+      "Collection %": `${totals.collectionRate.toFixed(1)}%`,
     });
 
-    const worksheetData = [
-      ["SHAA CALICUT ENTERPRISE"],
-      ["SALESMAN PERFORMANCE & COLLECTION REPORT"],
-      [`Location / Branch: ${branchLabel}`],
-      [`Date Range: ${dateRangeLabel}`],
-      [`Generated On: ${generatedAt}`],
-      [],
-      [
-        "Sl.No",
-        "Salesman Name",
-        "Branch Location",
-        "Invoices Billed",
-        "Total Sales (Gross)",
-        "Total Sales Return",
-        "Effective Sales (Net)",
-        "Total Collection",
-        "Pending Collection",
-        "Collection %",
-      ],
-      ...summaryRows.map((r) => [
-        r.slNo,
-        r.salesmanName,
-        r.branchName,
-        r.invoicesCount,
-        Number(r.grossSales.toFixed(2)),
-        Number(r.salesReturn.toFixed(2)),
-        Number(r.effectiveSales.toFixed(2)),
-        Number(r.totalCollection.toFixed(2)),
-        Number(r.pendingCollection.toFixed(2)),
-        `${r.collectionRate.toFixed(1)}%`,
-      ]),
-      [
-        "TOTAL",
-        "ALL SALESMEN",
-        "",
-        totals.invoicesCount,
-        Number(totals.grossSales.toFixed(2)),
-        Number(totals.salesReturn.toFixed(2)),
-        Number(totals.effectiveSales.toFixed(2)),
-        Number(totals.totalCollection.toFixed(2)),
-        Number(totals.pendingCollection.toFixed(2)),
-        `${overallCollectionRate.toFixed(1)}%`,
-      ],
-    ];
+    const worksheet = XLSX.utils.json_to_sheet(dataRows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Salesman Report");
 
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(worksheetData);
-
-    ws["!cols"] = [
-      { wch: 8 },
-      { wch: 30 },
-      { wch: 22 },
-      { wch: 16 },
-      { wch: 22 },
-      { wch: 20 },
-      { wch: 22 },
-      { wch: 20 },
-      { wch: 20 },
-      { wch: 14 },
-    ];
-
-    XLSX.utils.book_append_sheet(wb, ws, "Salesman Report");
-    XLSX.writeFile(
-      wb,
-      `Salesman_Report_${new Date().toISOString().split("T")[0]}.xlsx`
-    );
+    const todayStr = formatDateForInput(new Date());
+    XLSX.writeFile(workbook, `Salesman_Report_${todayStr}.xlsx`);
   };
 
-  // Print function
   const handlePrint = () => {
     window.print();
   };
 
   return (
-    <div className="space-y-5 p-4 md:p-6 max-w-[1600px] mx-auto print:p-0 print:space-y-3">
-      {/* ── Page Header ──────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4 print:border-none">
+    <div className="p-6 space-y-4 max-w-[1600px] mx-auto">
+      {/* ── Page Header ───────────────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
-            <Users className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">
-              Salesman Performance &amp; Collection Report
-            </h1>
-            <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300">
-              Management Only
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Real-time breakdown of salesman revenue, returns, effective net sales, and verified collections
+          <h1 className="text-2xl font-bold tracking-tight">Salesman Report</h1>
+          <p className="text-sm text-muted-foreground">
+            Sales performance, returns, and payment collection tracking by
+            salesman
           </p>
         </div>
-
-        <div className="flex items-center gap-2 print:hidden">
+        <div className="flex items-center gap-2">
           <Button
-            onClick={handleExportExcel}
             variant="outline"
             size="sm"
-            className="h-9 gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 font-medium"
+            onClick={handleExportExcel}
+            disabled={loading || summaryRows.length === 0}
+            className="gap-1.5 text-xs"
           >
             <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
             Export Excel
           </Button>
           <Button
-            onClick={handlePrint}
             variant="outline"
             size="sm"
-            className="h-9 gap-1.5 font-medium"
+            onClick={handlePrint}
+            disabled={loading || summaryRows.length === 0}
+            className="gap-1.5 text-xs"
           >
-            <FileText className="h-4 w-4" />
-            Print Report
+            <Printer className="h-4 w-4" />
+            Print
           </Button>
         </div>
       </div>
 
-      {/* ── Top KPI Metric Cards ──────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 print:grid-cols-4 print:gap-2">
-        <Card className="bg-card shadow-xs border-border">
-          <CardContent className="p-4 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-muted-foreground text-xs font-semibold uppercase tracking-wider">
-              <span>Total Sales (Gross)</span>
-              <TrendingUp className="h-4 w-4 text-purple-600" />
-            </div>
-            <div className="text-2xl font-bold text-foreground mt-2">
-              {formatCurrency(totals.grossSales)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Across {totals.invoicesCount} total billed orders
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card shadow-xs border-border">
-          <CardContent className="p-4 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-muted-foreground text-xs font-semibold uppercase tracking-wider">
-              <span>Sales Returns</span>
-              <RotateCcw className="h-4 w-4 text-rose-600" />
-            </div>
-            <div className="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-2">
-              {formatCurrency(totals.salesReturn)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Refunds and credit notes deducted
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card shadow-xs border-border">
-          <CardContent className="p-4 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-muted-foreground text-xs font-semibold uppercase tracking-wider">
-              <span>Effective Sales (Net)</span>
-              <Wallet className="h-4 w-4 text-indigo-600" />
-            </div>
-            <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-2">
-              {formatCurrency(totals.effectiveSales)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Realized business revenue
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card shadow-xs border-border">
-          <CardContent className="p-4 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-muted-foreground text-xs font-semibold uppercase tracking-wider">
-              <span>Total Collection</span>
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-            </div>
-            <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-2">
-              {formatCurrency(totals.totalCollection)}
-            </div>
-            <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-              <span>Rate: {overallCollectionRate.toFixed(1)}%</span>
-              {totals.pendingCollection > 0 && (
-                <span className="text-amber-600 font-semibold">
-                  Due: {formatCurrency(totals.pendingCollection)}
-                </span>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ── Filters Card — Exact Enterprise Design ────────────────────────────── */}
-      <Card className="print:hidden">
+      {/* ── Filters (Standard Enterprise Filter Design) ───────────────────────── */}
+      <Card>
         <CardContent className="pt-4 pb-4">
           <div className="flex flex-wrap gap-4 items-end">
             <FilterSelect
-              label="Date Preset"
+              label="Date Range"
               value={filters.datePreset}
-              onChange={(v) => handleDatePresetChange(v as DatePreset)}
+              onChange={handleDatePresetChange}
               options={DATE_PRESETS}
-              placeholder="All Time"
+              placeholder="Select Date Range"
             />
 
             <FilterSelect
               label="Year"
               value={filters.year}
-              onChange={(v) => setFilters((prev) => ({ ...prev, year: v }))}
+              onChange={handleYearChange}
               options={YEARS.map((y) => ({ value: y, label: y }))}
               placeholder="All Years"
             />
@@ -726,7 +759,7 @@ export function SalesmanReportClient({
             <FilterSelect
               label="Month"
               value={filters.month}
-              onChange={(v) => setFilters((prev) => ({ ...prev, month: v }))}
+              onChange={handleMonthChange}
               options={MONTHS}
               placeholder="All Months"
             />
@@ -735,7 +768,11 @@ export function SalesmanReportClient({
               label="From"
               value={filters.from}
               onChange={(v) =>
-                setFilters((prev) => ({ ...prev, from: v, datePreset: "custom" }))
+                setFilters((prev) => ({
+                  ...prev,
+                  from: v,
+                  datePreset: "custom",
+                }))
               }
             />
 
@@ -743,14 +780,20 @@ export function SalesmanReportClient({
               label="To"
               value={filters.to}
               onChange={(v) =>
-                setFilters((prev) => ({ ...prev, to: v, datePreset: "custom" }))
+                setFilters((prev) => ({
+                  ...prev,
+                  to: v,
+                  datePreset: "custom",
+                }))
               }
             />
 
             <FilterSelect
               label="Branch"
               value={filters.branchId}
-              onChange={(v) => setFilters((prev) => ({ ...prev, branchId: v }))}
+              onChange={(v) =>
+                setFilters((prev) => ({ ...prev, branchId: v }))
+              }
               options={branches.map((b) => ({ value: b.id, label: b.name }))}
               placeholder="All Branches"
             />
@@ -758,33 +801,18 @@ export function SalesmanReportClient({
             <FilterSelect
               label="Salesman"
               value={filters.salesmanId}
-              onChange={(v) => setFilters((prev) => ({ ...prev, salesmanId: v }))}
+              onChange={(v) =>
+                setFilters((prev) => ({ ...prev, salesmanId: v }))
+              }
               options={salesmanOptions}
               placeholder="All Salesmen"
             />
 
-            <div className="flex flex-col gap-1 min-w-[200px] flex-1">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Search Salesman
-              </label>
-              <div className="relative">
-                <Search className="text-muted-foreground absolute top-2.5 left-3 h-4 w-4" />
-                <Input
-                  placeholder="Filter by salesman name or branch…"
-                  value={filters.search}
-                  onChange={(e) =>
-                    setFilters((prev) => ({ ...prev, search: e.target.value }))
-                  }
-                  className="h-9 pl-9 text-sm bg-background"
-                />
-              </div>
-            </div>
-
             <div className="flex gap-2 items-end">
-              <Button onClick={handleApply} disabled={loading} size="sm" className="h-9 px-4">
+              <Button onClick={handleApply} disabled={loading} size="sm">
                 {loading ? "Loading…" : "Apply"}
               </Button>
-              <Button variant="outline" onClick={handleClear} size="sm" className="h-9 px-3 text-xs">
+              <Button variant="outline" onClick={handleClear} size="sm">
                 Clear
               </Button>
             </div>
@@ -792,243 +820,232 @@ export function SalesmanReportClient({
         </CardContent>
       </Card>
 
-      {/* ── Error Banner ─────────────────────────────────────────────────────── */}
-      {error && (
-        <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 rounded-xl flex items-center justify-between gap-2 text-sm text-red-700 dark:text-red-300">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => loadData(appliedFilters)}
-            className="h-7 text-xs border-red-300 hover:bg-red-100 dark:border-red-800"
-          >
-            Retry
-          </Button>
+      {/* ── Summary KPI Cards (Matching Theme) ─────────────────────────────────── */}
+      {summaryRows.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {[
+            {
+              label: "Total Sales",
+              value: formatCurrency(totals.grossSales),
+            },
+            {
+              label: "Total Sales Return",
+              value: formatCurrency(totals.salesReturn),
+            },
+            {
+              label: "Effective Sales",
+              value: formatCurrency(totals.effectiveSales),
+            },
+            {
+              label: "Total Collection",
+              value: formatCurrency(totals.totalCollection),
+            },
+            {
+              label: "Collection Rate",
+              value: `${totals.collectionRate.toFixed(1)}%`,
+            },
+          ].map((c) => (
+            <Card key={c.label}>
+              <CardContent className="pt-3 pb-3">
+                <p className="text-xs text-muted-foreground">{c.label}</p>
+                <p className="text-lg font-semibold mt-0.5">{c.value}</p>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       )}
 
-      {/* ── Main Data Table ──────────────────────────────────────────────────── */}
-      <Card className="border border-border shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader className="bg-muted/50 border-b">
-              <TableRow className="text-[11px] uppercase tracking-wider font-bold">
-                <TableHead className="w-16 text-center font-bold">Sl.No</TableHead>
-                <TableHead>
-                  <button
-                    type="button"
-                    onClick={() => toggleSort("salesmanName")}
-                    className="flex items-center gap-1.5 font-bold hover:text-foreground text-left"
-                  >
-                    <span>Salesman</span>
-                    <ArrowUpDown className="h-3 w-3" />
-                  </button>
-                </TableHead>
-                <TableHead>
-                  <button
-                    type="button"
-                    onClick={() => toggleSort("branchName")}
-                    className="flex items-center gap-1.5 font-bold hover:text-foreground text-left"
-                  >
-                    <span>Branch</span>
-                    <ArrowUpDown className="h-3 w-3" />
-                  </button>
-                </TableHead>
-                <TableHead className="text-center">
-                  <button
-                    type="button"
-                    onClick={() => toggleSort("invoicesCount")}
-                    className="inline-flex items-center gap-1.5 font-bold hover:text-foreground"
-                  >
-                    <span>Orders</span>
-                    <ArrowUpDown className="h-3 w-3" />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => toggleSort("grossSales")}
-                    className="inline-flex items-center gap-1.5 font-bold hover:text-foreground ml-auto"
-                  >
-                    <span>Total Sales (Gross)</span>
-                    <ArrowUpDown className="h-3 w-3" />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => toggleSort("salesReturn")}
-                    className="inline-flex items-center gap-1.5 font-bold hover:text-foreground ml-auto"
-                  >
-                    <span>Total Sales Return</span>
-                    <ArrowUpDown className="h-3 w-3" />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right bg-purple-50/50 dark:bg-purple-950/20">
-                  <button
-                    type="button"
-                    onClick={() => toggleSort("effectiveSales")}
-                    className="inline-flex items-center gap-1.5 font-bold text-purple-900 dark:text-purple-200 hover:text-purple-600 ml-auto"
-                  >
-                    <span>Effective Sales (Net)</span>
-                    <ArrowUpDown className="h-3 w-3" />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => toggleSort("totalCollection")}
-                    className="inline-flex items-center gap-1.5 font-bold hover:text-foreground ml-auto"
-                  >
-                    <span>Total Collection</span>
-                    <ArrowUpDown className="h-3 w-3" />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => toggleSort("pendingCollection")}
-                    className="inline-flex items-center gap-1.5 font-bold hover:text-foreground ml-auto"
-                  >
-                    <span>Pending (Due)</span>
-                    <ArrowUpDown className="h-3 w-3" />
-                  </button>
-                </TableHead>
-                <TableHead className="text-center font-bold">Collection %</TableHead>
-              </TableRow>
-            </TableHeader>
+      {/* ── Error Banner ─────────────────────────────────────────────────────── */}
+      {error && (
+        <Card className="border-destructive">
+          <CardContent className="py-4 text-destructive text-sm flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => loadData(appliedFilters)}
+              className="h-7 text-xs"
+            >
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={10} className="h-48 text-center text-muted-foreground">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <div className="h-6 w-6 animate-spin rounded-full border-2 border-purple-600 border-t-transparent" />
-                      <span className="text-sm font-medium">Aggregating Salesman Performance Data…</span>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : summaryRows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={10} className="h-48 text-center text-muted-foreground">
-                    <div className="flex flex-col items-center justify-center gap-1">
-                      <Users className="h-8 w-8 stroke-[1.5] text-muted-foreground/40 mb-1" />
-                      <p className="font-semibold text-sm">No Sales Records Found</p>
-                      <p className="text-xs">
-                        No transactions recorded for the selected date range and branch filters.
-                      </p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                summaryRows.map((row) => {
-                  const isUnassigned = row.salesmanId === "unassigned";
+      {/* ── Table Bar (Search & Date Range Header) ────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+        <div className="text-sm font-semibold text-foreground">
+          Salesman Breakdown ({summaryRows.length})
+        </div>
 
-                  return (
-                    <TableRow key={row.salesmanId} className="hover:bg-muted/30 transition-colors">
-                      <TableCell className="text-center font-medium text-xs text-muted-foreground">
-                        {row.slNo}
-                      </TableCell>
-                      <TableCell className="font-semibold text-sm">
-                        <div className="flex items-center gap-2">
-                          <span className={isUnassigned ? "text-muted-foreground italic" : "text-foreground"}>
-                            {row.salesmanName}
-                          </span>
-                          {isUnassigned && (
-                            <Badge variant="outline" className="text-[10px] py-0 px-1 bg-muted text-muted-foreground">
-                              Counter
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        <div className="flex items-center gap-1.5">
-                          <Building2 className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
-                          <span>{row.branchName}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center text-xs font-semibold">
-                        {row.invoicesCount}
-                      </TableCell>
-                      <TableCell className="text-right text-xs font-medium">
-                        {formatCurrency(row.grossSales)}
-                      </TableCell>
-                      <TableCell className="text-right text-xs font-medium text-rose-600 dark:text-rose-400">
-                        {row.salesReturn > 0 ? `-${formatCurrency(row.salesReturn)}` : "₹ 0.00"}
-                      </TableCell>
-                      <TableCell className="text-right text-xs font-extrabold text-purple-700 dark:text-purple-300 bg-purple-50/40 dark:bg-purple-950/20">
-                        {formatCurrency(row.effectiveSales)}
-                      </TableCell>
-                      <TableCell className="text-right text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                        {formatCurrency(row.totalCollection)}
-                      </TableCell>
-                      <TableCell className="text-right text-xs font-medium">
-                        {row.pendingCollection > 0 ? (
-                          <span className="text-amber-600 dark:text-amber-400 font-semibold">
-                            {formatCurrency(row.pendingCollection)}
+        <div className="flex items-center gap-3">
+          <div className="relative w-56">
+            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search salesman or branch..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full h-8 pl-8 pr-2 text-xs rounded-md border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Date Range:{" "}
+            <span className="font-semibold text-foreground">
+              {dateRangeLabel}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Main Data Table (Exact Theme Table Design) ───────────────────────── */}
+      <Card>
+        <CardContent className="p-0 overflow-x-auto">
+          {loading ? (
+            <div className="py-12 text-center text-muted-foreground text-sm">
+              Loading salesman report data…
+            </div>
+          ) : summaryRows.length === 0 ? (
+            <div className="py-12 text-center text-muted-foreground text-sm">
+              No sales records found for the selected filters.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/60 text-muted-foreground text-xs">
+                  <th className="px-3 py-2.5 text-left font-semibold">Sl.No</th>
+                  <th className="px-3 py-2.5 text-left font-semibold">
+                    Salesman
+                  </th>
+                  <th className="px-3 py-2.5 text-left font-semibold">
+                    Branch
+                  </th>
+                  <th className="px-3 py-2.5 text-center font-semibold">
+                    Invoices
+                  </th>
+                  <th className="px-3 py-2.5 text-right font-semibold">
+                    Total Sales
+                  </th>
+                  <th className="px-3 py-2.5 text-right font-semibold">
+                    Total Sales Return
+                  </th>
+                  <th className="px-3 py-2.5 text-right font-semibold">
+                    Effective Sales
+                  </th>
+                  <th className="px-3 py-2.5 text-right font-semibold">
+                    Total Collection
+                  </th>
+                  <th className="px-3 py-2.5 text-right font-semibold">
+                    Pending (Due)
+                  </th>
+                  <th className="px-3 py-2.5 text-center font-semibold">
+                    Collection %
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {summaryRows.map((row) => (
+                  <tr
+                    key={row.salesmanId}
+                    className="border-b hover:bg-muted/30 transition-colors"
+                  >
+                    <td className="px-3 py-2 text-muted-foreground text-xs">
+                      {row.slNo}
+                    </td>
+                    <td className="px-3 py-2 font-medium">
+                      <div className="flex items-center gap-1.5">
+                        <span>{row.salesmanName}</span>
+                        {row.isUnassigned ? (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300">
+                            Direct
                           </span>
                         ) : (
-                          <span className="text-muted-foreground">—</span>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-300">
+                            Staff
+                          </span>
                         )}
-                      </TableCell>
-                      <TableCell className="text-center text-xs">
-                        <Badge
-                          variant="outline"
-                          className={`text-[10px] font-bold ${
-                            row.collectionRate >= 95
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300"
-                              : row.collectionRate >= 70
-                              ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300"
-                              : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300"
-                          }`}
-                        >
-                          {row.collectionRate.toFixed(1)}%
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {row.branchName}
+                    </td>
+                    <td className="px-3 py-2 text-center font-mono text-xs">
+                      {row.invoicesCount}
+                    </td>
+                    <td className="px-3 py-2 text-right font-medium">
+                      {formatCurrency(row.grossSales)}
+                    </td>
+                    <td className="px-3 py-2 text-right text-rose-600 font-medium">
+                      {row.salesReturn > 0
+                        ? `-${formatCurrency(row.salesReturn)}`
+                        : "₹0.00"}
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold text-foreground">
+                      {formatCurrency(row.effectiveSales)}
+                    </td>
+                    <td className="px-3 py-2 text-right text-emerald-600 font-medium">
+                      {formatCurrency(row.totalCollection)}
+                    </td>
+                    <td className="px-3 py-2 text-right text-amber-600 font-medium">
+                      {row.pendingCollection > 0
+                        ? formatCurrency(row.pendingCollection)
+                        : "₹0.00"}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          row.collectionRate >= 95
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300"
+                            : row.collectionRate >= 70
+                            ? "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300"
+                            : "bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/30 dark:text-rose-300"
+                        }`}
+                      >
+                        {row.collectionRate.toFixed(1)}%
+                      </span>
+                    </td>
+                  </tr>
+                ))}
 
-            {/* Table Footer with Overall Totals */}
-            {summaryRows.length > 0 && (
-              <TableFooter className="bg-muted/70 border-t-2 font-bold text-xs">
-                <TableRow>
-                  <TableCell colSpan={3} className="font-extrabold uppercase tracking-wide">
-                    Total Summary ({summaryRows.length} Salesmen)
-                  </TableCell>
-                  <TableCell className="text-center font-extrabold">
+                {/* Totals row */}
+                <tr className="border-t-2 bg-muted/60 font-semibold text-sm">
+                  <td colSpan={3} className="px-3 py-2.5">
+                    Total
+                  </td>
+                  <td className="px-3 py-2.5 text-center font-mono">
                     {totals.invoicesCount}
-                  </TableCell>
-                  <TableCell className="text-right font-extrabold">
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-semibold">
                     {formatCurrency(totals.grossSales)}
-                  </TableCell>
-                  <TableCell className="text-right font-extrabold text-rose-600 dark:text-rose-400">
-                    {totals.salesReturn > 0 ? `-${formatCurrency(totals.salesReturn)}` : "₹ 0.00"}
-                  </TableCell>
-                  <TableCell className="text-right font-extrabold text-purple-700 dark:text-purple-300 bg-purple-100/40 dark:bg-purple-900/30">
+                  </td>
+                  <td className="px-3 py-2.5 text-right text-rose-600 font-semibold">
+                    {totals.salesReturn > 0
+                      ? `-${formatCurrency(totals.salesReturn)}`
+                      : "₹0.00"}
+                  </td>
+                  <td className="px-3 py-2.5 text-right text-foreground font-bold">
                     {formatCurrency(totals.effectiveSales)}
-                  </TableCell>
-                  <TableCell className="text-right font-extrabold text-emerald-600 dark:text-emerald-400">
+                  </td>
+                  <td className="px-3 py-2.5 text-right text-emerald-600 font-semibold">
                     {formatCurrency(totals.totalCollection)}
-                  </TableCell>
-                  <TableCell className="text-right font-extrabold text-amber-600 dark:text-amber-400">
-                    {totals.pendingCollection > 0 ? formatCurrency(totals.pendingCollection) : "₹ 0.00"}
-                  </TableCell>
-                  <TableCell className="text-center font-extrabold text-purple-700 dark:text-purple-300">
-                    {overallCollectionRate.toFixed(1)}%
-                  </TableCell>
-                </TableRow>
-              </TableFooter>
-            )}
-          </Table>
-        </div>
+                  </td>
+                  <td className="px-3 py-2.5 text-right text-amber-600 font-semibold">
+                    {totals.pendingCollection > 0
+                      ? formatCurrency(totals.pendingCollection)
+                      : "₹0.00"}
+                  </td>
+                  <td className="px-3 py-2.5 text-center font-semibold">
+                    {totals.collectionRate.toFixed(1)}%
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+        </CardContent>
       </Card>
     </div>
   );
 }
-
