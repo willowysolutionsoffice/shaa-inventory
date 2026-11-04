@@ -48,16 +48,16 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
   const isAdmin = userRole === "admin";
 
   const visibleNavMain = SIDEBAR_DATA.navMain
-    .filter((group) => isGroupVisible(group, userPermissions))
+    .filter((group) => isGroupVisible(group, userPermissions, userRole))
     .map((group) => {
-      const kids = visibleChildren(group, userPermissions);
+      const kids = visibleChildren(group, userPermissions, userRole);
       return { ...group, children: kids.length > 0 ? kids : undefined };
     });
 
   const visibleAdmin = SIDEBAR_DATA.admin
-    .filter((group) => isGroupVisible(group, userPermissions))
+    .filter((group) => isGroupVisible(group, userPermissions, userRole))
     .map((group) => {
-      const kids = visibleChildren(group, userPermissions);
+      const kids = visibleChildren(group, userPermissions, userRole);
       return { ...group, children: kids.length > 0 ? kids : undefined };
     });
 
