@@ -45,6 +45,8 @@ export interface NavChild {
   icon?: LucideIcon;
   /** Hidden unless user has this permission. */
   permission?: Permission;
+  /** Restricted exclusively to main management / admin */
+  adminOnly?: boolean;
   /** Open this item in a new browser tab. */
   newTab?: boolean;
 }
@@ -74,25 +76,33 @@ export interface NavGroup {
  */
 export function isGroupVisible(
   group: NavGroup,
-  userPermissions: Permission[]
+  userPermissions: Permission[],
+  userRole?: string
 ): boolean {
   if (group.permission && !userPermissions.includes(group.permission)) {
     return false;
   }
   if (!group.children || group.children.length === 0) return true;
-  return group.children.some(
-    (child) => !child.permission || userPermissions.includes(child.permission)
-  );
+  return group.children.some((child) => {
+    if (child.adminOnly && userRole !== "admin" && userRole !== "store_manager") {
+      return false;
+    }
+    return !child.permission || userPermissions.includes(child.permission);
+  });
 }
 
 /** Filter a group's children to only those the user has permission to see. */
 export function visibleChildren(
   group: NavGroup,
-  userPermissions: Permission[]
+  userPermissions: Permission[],
+  userRole?: string
 ): NavChild[] {
-  return (group.children ?? []).filter(
-    (child) => !child.permission || userPermissions.includes(child.permission)
-  );
+  return (group.children ?? []).filter((child) => {
+    if (child.adminOnly && userRole !== "admin" && userRole !== "store_manager") {
+      return false;
+    }
+    return !child.permission || userPermissions.includes(child.permission);
+  });
 }
 
 // ── Main nav ──────────────────────────────────────────────────────────────────
@@ -152,6 +162,14 @@ const navMain: NavGroup[] = [
         url: "/reports/sales-report",
         icon: FileSpreadsheet,
         permission: PERMISSIONS.MANAGE_SALES,
+        newTab: true,
+      },
+      {
+        title: "Salesman Report",
+        url: "/reports/salesman-report",
+        icon: Users,
+        permission: PERMISSIONS.MANAGE_SALES,
+        adminOnly: true,
         newTab: true,
       }
     ],
@@ -440,6 +458,14 @@ const admin: NavGroup[] = [
         url: "/reports/daily-listing",
         icon: FileSpreadsheet,
         permission: PERMISSIONS.VIEW_REPORTS,
+        newTab: true,
+      },
+      {
+        title: "Salesman Report",
+        url: "/reports/salesman-report",
+        icon: Users,
+        permission: PERMISSIONS.VIEW_REPORTS,
+        adminOnly: true,
         newTab: true,
       },
     ],
