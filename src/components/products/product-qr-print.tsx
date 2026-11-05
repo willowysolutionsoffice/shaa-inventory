@@ -77,6 +77,7 @@ export function ProductQrPrint({
     }
 
     const safeSku = escapeHtml(sku);
+    const safeDisplaySku = escapeHtml(displaySku);
     const safeProductName = escapeHtml(productName);
     const safePrice = escapeHtml(String(formattedPrice));
 
@@ -89,10 +90,7 @@ export function ProductQrPrint({
 
     for (let p = 0; p < totalPages; p++) {
       let pageLabelsHtml = "";
-      const labelsOnThisPage = Math.min(
-        LABELS_PER_PAGE,
-        printQty - p * LABELS_PER_PAGE
-      );
+      const labelsOnThisPage = Math.min(LABELS_PER_PAGE, printQty - p * LABELS_PER_PAGE);
 
       for (let i = 0; i < labelsOnThisPage; i++) {
         const idIndex = labelCount++;
@@ -110,6 +108,7 @@ export function ProductQrPrint({
               </div>
 
               <div class="price">&#x20B9; : ${safePrice}</div>
+              <div class="sku-bottom">${safeDisplaySku}</div>
             </div>
           </div>
         `;
@@ -307,6 +306,16 @@ export function ProductQrPrint({
               line-height: 1;
               width: 100%;
             }
+
+            .sku-bottom {
+              font-size: 4.8pt;
+              font-weight: 700;
+              color: #000000;
+              text-align: center;
+              line-height: 1;
+              width: 100%;
+              letter-spacing: 0.2px;
+            }
           </style>
         </head>
 
@@ -473,6 +482,20 @@ export function ProductQrPrint({
                 }}
               >
                 ₹ : {formattedPrice}
+              </span>
+
+              <span
+                style={{
+                  fontSize: 7,
+                  fontWeight: 700,
+                  color: "#000",
+                  lineHeight: 1,
+                  width: "100%",
+                  textAlign: "center",
+                  letterSpacing: 0.2,
+                }}
+              >
+                {displaySku}
               </span>
             </div>
           </div>
