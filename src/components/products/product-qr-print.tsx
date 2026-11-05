@@ -24,7 +24,8 @@ export function ProductQrPrint({
   productName,
   price,
 }: ProductQrPrintProps) {
-  const [printQty, setPrintQty] = useState<number>(8);
+  // Default to 2 labels (1 sheet / 1 physical feed on 2-up roll)
+  const [printQty, setPrintQty] = useState<number>(2);
   const svgRef = useRef<SVGSVGElement>(null);
 
   const formattedPrice =
@@ -81,20 +82,24 @@ export function ProductQrPrint({
     const safeProductName = escapeHtml(productName);
     const safePrice = escapeHtml(String(formattedPrice));
 
-    // Group labels into pages of exactly 8 (2 columns x 4 rows)
-    const LABELS_PER_PAGE = 8;
-    const totalPages = Math.ceil(printQty / LABELS_PER_PAGE);
+    // Dynamic 2-up sheet allocation matching thermal stock (75mm x 28mm)
+    // 1-2 Qty = 1 sheet, 3-4 Qty = 2 sheets, 5-6 Qty = 3 sheets
+    const LABELS_PER_SHEET = 2;
+    const totalSheets = Math.ceil(printQty / LABELS_PER_SHEET);
 
     let pagesHtml = "";
     let labelCount = 0;
 
-    for (let p = 0; p < totalPages; p++) {
-      let pageLabelsHtml = "";
-      const labelsOnThisPage = Math.min(LABELS_PER_PAGE, printQty - p * LABELS_PER_PAGE);
+    for (let s = 0; s < totalSheets; s++) {
+      let sheetLabelsHtml = "";
+      const labelsOnThisSheet = Math.min(
+        LABELS_PER_SHEET,
+        printQty - s * LABELS_PER_SHEET
+      );
 
-      for (let i = 0; i < labelsOnThisPage; i++) {
+      for (let i = 0; i < labelsOnThisSheet; i++) {
         const idIndex = labelCount++;
-        pageLabelsHtml += `
+        sheetLabelsHtml += `
           <div class="label">
             <div class="label-content">
               <div class="brand-top">SHAASHOPY</div>
@@ -114,12 +119,12 @@ export function ProductQrPrint({
         `;
       }
 
-      // If page is partially filled, append empty label placeholders to keep exact 2x4 grid alignment
-      for (let empty = labelsOnThisPage; empty < LABELS_PER_PAGE; empty++) {
-        pageLabelsHtml += `<div class="label label-empty"></div>`;
+      // If quantity is odd, keep the right label empty to maintain column alignment
+      for (let empty = labelsOnThisSheet; empty < LABELS_PER_SHEET; empty++) {
+        sheetLabelsHtml += `<div class="label label-empty"></div>`;
       }
 
-      pagesHtml += `<div class="page">${pageLabelsHtml}</div>`;
+      pagesHtml += `<div class="sheet">${sheetLabelsHtml}</div>`;
     }
 
     printWindow.document.write(`
@@ -131,9 +136,9 @@ export function ProductQrPrint({
           <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
 
           <style>
-            /* ── Page & Margin Setup ── */
+            /* ── Page Setup Matching Stock: 75mm x 28mm ── */
             @page {
-              size: 76mm 100mm;
+              size: 75mm 28mm;
               margin: 0mm;
             }
 
@@ -147,7 +152,7 @@ export function ProductQrPrint({
 
             html,
             body {
-              width: 76mm;
+              width: 75mm;
               margin: 0;
               padding: 0;
               background: #ffffff;
@@ -158,8 +163,8 @@ export function ProductQrPrint({
             @media print {
               html,
               body {
-                width: 76mm !important;
-                height: 100mm !important;
+                width: 75mm !important;
+                height: 28mm !important;
                 margin: 0 !important;
                 padding: 0 !important;
                 background: #ffffff !important;
@@ -167,14 +172,14 @@ export function ProductQrPrint({
                 print-color-adjust: exact !important;
               }
 
-              .page {
-                width: 76mm !important;
-                height: 100mm !important;
+              .sheet {
+                width: 75mm !important;
+                height: 28mm !important;
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
               }
 
-              .page:not(:last-child) {
+              .sheet:not(:last-child) {
                 page-break-after: always !important;
                 break-after: page !important;
               }
@@ -185,15 +190,15 @@ export function ProductQrPrint({
               }
             }
 
-            /* ── 76mm x 100mm Page Grid: 2 Columns x 4 Rows ── */
-            .page {
-              width: 76mm;
-              height: 100mm;
-              max-width: 76mm;
-              max-height: 100mm;
+            /* ── 75mm x 28mm Single Row Grid: 2 Columns ── */
+            .sheet {
+              width: 75mm;
+              height: 28mm;
+              max-width: 75mm;
+              max-height: 28mm;
               display: grid;
-              grid-template-columns: 38mm 38mm;
-              grid-template-rows: repeat(4, 25mm);
+              grid-template-columns: 37.5mm 37.5mm;
+              grid-template-rows: 28mm;
               margin: 0;
               padding: 0;
               overflow: hidden;
@@ -201,17 +206,17 @@ export function ProductQrPrint({
               break-inside: avoid;
             }
 
-            .page:not(:last-child) {
+            .sheet:not(:last-child) {
               page-break-after: always;
               break-after: page;
             }
 
-            /* ── 38mm x 25mm Individual Label ── */
+            /* ── Individual Label: 37.5mm x 28mm ── */
             .label {
-              width: 38mm;
-              height: 25mm;
-              max-width: 38mm;
-              max-height: 25mm;
+              width: 37.5mm;
+              height: 28mm;
+              max-width: 37.5mm;
+              max-height: 28mm;
               display: flex;
               align-items: center;
               justify-content: center;
@@ -353,6 +358,8 @@ export function ProductQrPrint({
     printWindow.document.close();
   };
 
+  const calculatedSheets = Math.ceil(printQty / 2);
+
   return (
     <Card className="border border-border shadow-sm">
       <CardHeader className="pb-3">
@@ -362,17 +369,17 @@ export function ProductQrPrint({
         </CardTitle>
 
         <CardDescription className="text-xs">
-          Shaashopy label — 2×4 grid (8 labels/page), 38×25mm each on 76×100mm sheet
+          Shaashopy label — 2 labels per sheet (75×28mm stock)
         </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Preview — 5× scale: 38mm → 190px, 25mm → 125px */}
+        {/* Preview: 37.5mm x 28mm scaled 5x (188px x 140px) */}
         <div className="flex justify-center p-4 border border-dashed border-border/80 bg-muted/10 rounded-xl">
           <div
             style={{
-              width: 190,
-              height: 125,
+              width: 188,
+              height: 140,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -501,21 +508,20 @@ export function ProductQrPrint({
           </div>
         </div>
 
-        {/* ── Required On-Screen Instruction Notice ── */}
+        {/* ── On-Screen Instruction Notice ── */}
         <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200 flex items-start gap-2">
           <Info className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
           <div className="space-y-0.5">
-            <p className="font-semibold text-xs">Print Dialog Configuration:</p>
+            <p className="font-semibold text-xs">Thermal Printer (TSC TTP-244 Pro) Configuration:</p>
             <p className="text-[11px] leading-relaxed">
-              Select paper size: <strong>76 x 100 mm</strong>. Set scale to{" "}
-              <strong>100%</strong>. Turn off <strong>Fit to page</strong>.
+              Paper size / Stock: <strong>75 x 28 mm</strong> (2 labels/sheet). Scale: <strong>100%</strong>. Margins: <strong>None</strong>.
             </p>
           </div>
         </div>
 
         <div className="space-y-2">
           <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
-            Print Qty (8 Labels per 76×100mm Sheet)
+            Print Quantity (2 Labels per Sheet)
           </label>
 
           <div className="flex gap-2">
@@ -533,7 +539,7 @@ export function ProductQrPrint({
               className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold h-9 gap-1"
             >
               <Printer className="h-4 w-4" />
-              Print {printQty > 1 ? `${printQty} Labels` : "Label"}
+              Print {printQty} {printQty > 1 ? "Labels" : "Label"} ({calculatedSheets} {calculatedSheets > 1 ? "Sheets" : "Sheet"})
             </Button>
           </div>
         </div>
