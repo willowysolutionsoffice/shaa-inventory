@@ -10,7 +10,7 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Printer, Barcode, Info } from "lucide-react";
+import { Printer, Barcode } from "lucide-react";
 import { toast } from "sonner";
 
 interface ProductQrPrintProps {
@@ -24,7 +24,7 @@ export function ProductQrPrint({
   productName,
   price,
 }: ProductQrPrintProps) {
-  const [printQty, setPrintQty] = useState<number>(8);
+  const [printQty, setPrintQty] = useState<number>(1);
   const svgRef = useRef<SVGSVGElement>(null);
 
   const formattedPrice =
@@ -40,14 +40,10 @@ export function ProductQrPrint({
 
       JsBarcode(svgRef.current, sku, {
         format: "CODE128",
-        width: 2,
-        height: 28,
+        width: 1,
+        height: 26,
         displayValue: false,
         margin: 0,
-        marginLeft: 8,
-        marginRight: 8,
-        marginTop: 2,
-        marginBottom: 2,
         background: "#ffffff",
         lineColor: "#000000",
       });
@@ -77,142 +73,72 @@ export function ProductQrPrint({
     }
 
     const safeSku = escapeHtml(sku);
+    const safeDisplaySku = escapeHtml(displaySku);
     const safeProductName = escapeHtml(productName);
     const safePrice = escapeHtml(String(formattedPrice));
 
-    // Group labels into pages of exactly 8 (2 columns x 4 rows)
-    const LABELS_PER_PAGE = 8;
-    const totalPages = Math.ceil(printQty / LABELS_PER_PAGE);
+    let labelHtml = "";
 
-    let pagesHtml = "";
-    let labelCount = 0;
+    for (let i = 0; i < printQty; i++) {
+      labelHtml += `
+        <div class="label">
+          <div class="label-content">
+            <div class="brand-top">SHAASHOPY</div>
+            <div class="product-name">${safeProductName}</div>
 
-    for (let p = 0; p < totalPages; p++) {
-      let pageLabelsHtml = "";
-      const labelsOnThisPage = Math.min(
-        LABELS_PER_PAGE,
-        printQty - p * LABELS_PER_PAGE
-      );
-
-      for (let i = 0; i < labelsOnThisPage; i++) {
-        const idIndex = labelCount++;
-        pageLabelsHtml += `
-          <div class="label">
-            <div class="label-content">
-              <div class="brand-top">SHAASHOPY</div>
-              <div class="product-name">${safeProductName}</div>
-
-              <div class="barcode-row">
-                <div class="barcode-wrapper">
-                  <svg class="barcode" id="bc-${idIndex}"></svg>
-                </div>
-                <div class="fabstory-vertical">FABSTORY</div>
-              </div>
-
-              <div class="price">&#x20B9; : ${safePrice}</div>
+            <div class="barcode-row">
+              <svg class="barcode" id="bc-${i}"></svg>
+              <div class="fabstory-vertical">FABSTORY</div>
             </div>
+
+            <div class="price">&#x20B9; : ${safePrice}</div>
+            <div class="sku-bottom">${safeDisplaySku}</div>
           </div>
-        `;
-      }
-
-      // If page is partially filled, append empty label placeholders to keep exact 2x4 grid alignment
-      for (let empty = labelsOnThisPage; empty < LABELS_PER_PAGE; empty++) {
-        pageLabelsHtml += `<div class="label label-empty"></div>`;
-      }
-
-      pagesHtml += `<div class="page">${pageLabelsHtml}</div>`;
+        </div>
+      `;
     }
 
     printWindow.document.write(`
-      <!DOCTYPE html>
       <html>
         <head>
-          <meta charset="utf-8" />
           <title>Print Labels - ${safeSku}</title>
+
           <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
 
           <style>
-            /* ── Page & Margin Setup ── */
             @page {
-              size: 76mm 100mm;
-              margin: 0mm;
+              size: 76mm 100mm portrait;
+              margin: 0;
             }
 
             * {
               box-sizing: border-box;
               margin: 0;
               padding: 0;
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
             }
 
             html,
             body {
               width: 76mm;
-              margin: 0;
-              padding: 0;
+              min-height: 100mm;
               background: #ffffff;
-              font-family: Arial, Helvetica, sans-serif;
-            }
-
-            /* ── Print Media Optimization ── */
-            @media print {
-              html,
-              body {
-                width: 76mm !important;
-                height: 100mm !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                background: #ffffff !important;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
-
-              .page {
-                width: 76mm !important;
-                height: 100mm !important;
-                page-break-inside: avoid !important;
-                break-inside: avoid !important;
-              }
-
-              .page:not(:last-child) {
-                page-break-after: always !important;
-                break-after: page !important;
-              }
-
-              .label {
-                page-break-inside: avoid !important;
-                break-inside: avoid !important;
-              }
-            }
-
-            /* ── 76mm x 100mm Page Grid: 2 Columns x 4 Rows ── */
-            .page {
-              width: 76mm;
-              height: 100mm;
-              max-width: 76mm;
-              max-height: 100mm;
-              display: grid;
-              grid-template-columns: 38mm 38mm;
-              grid-template-rows: repeat(4, 25mm);
               margin: 0;
               padding: 0;
+            }
+
+            body {
+              display: grid;
+              grid-template-columns: repeat(2, 38mm);
+              grid-auto-rows: 25mm;
+              gap: 0;
               overflow: hidden;
-              page-break-inside: avoid;
-              break-inside: avoid;
             }
 
-            .page:not(:last-child) {
-              page-break-after: always;
-              break-after: page;
-            }
-
-            /* ── 38mm x 25mm Individual Label ── */
             .label {
               width: 38mm;
               height: 25mm;
-              max-width: 38mm;
-              max-height: 25mm;
               display: flex;
               align-items: center;
               justify-content: center;
@@ -220,24 +146,27 @@ export function ProductQrPrint({
               background: #ffffff;
               page-break-inside: avoid;
               break-inside: avoid;
-              padding: 0.8mm 1.2mm;
-            }
-
-            .label-empty {
-              visibility: hidden;
             }
 
             .label-content {
-              width: 100%;
-              height: 100%;
+              width: 35mm;
+              height: 23mm;
               display: flex;
               flex-direction: column;
               align-items: center;
-              justify-content: space-between;
+              justify-content: center;
               overflow: hidden;
+
+              /*
+                Main alignment fix:
+                Increase to 1.8mm or 2mm if still left.
+                Reduce to 1mm if it becomes too right.
+              */
+              transform: translateX(1.5mm);
             }
 
             .brand-top {
+              font-family: Arial, Helvetica, sans-serif;
               font-size: 6.5pt;
               font-weight: 900;
               color: #000000;
@@ -248,15 +177,17 @@ export function ProductQrPrint({
             }
 
             .product-name {
-              font-size: 5.5pt;
+              font-family: Arial, Helvetica, sans-serif;
+              font-size: 5.6pt;
               font-weight: 900;
               color: #000000;
               text-align: center;
-              line-height: 1.1;
+              line-height: 1;
               width: 100%;
               overflow: hidden;
               white-space: nowrap;
               text-overflow: ellipsis;
+              margin-top: 0.2mm;
             }
 
             .barcode-row {
@@ -265,67 +196,67 @@ export function ProductQrPrint({
               align-items: center;
               justify-content: center;
               width: 100%;
-              gap: 1mm;
-              margin: 0.2mm 0;
-            }
-
-            .barcode-wrapper {
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              background: #ffffff;
-              flex: 1;
-              min-width: 0;
-              overflow: hidden;
+              margin-top: 0.7mm;
+              margin-bottom: 0.7mm;
             }
 
             svg.barcode {
               display: block;
-              width: 100%;
-              max-width: 32mm;
+              width: 28mm;
               height: 8.5mm;
+              flex-shrink: 0;
             }
 
             .fabstory-vertical {
-              font-size: 4.8pt;
+              font-family: Arial, Helvetica, sans-serif;
+              font-size: 5pt;
               font-weight: 900;
               color: #000000;
               writing-mode: vertical-rl;
               white-space: nowrap;
               line-height: 1;
               flex-shrink: 0;
-              width: 2.8mm;
+              width: 3.5mm;
               letter-spacing: 0.2px;
               text-align: center;
             }
 
             .price {
-              font-size: 7.5pt;
+              font-family: Arial, Helvetica, sans-serif;
+              font-size: 7.3pt;
               font-weight: 900;
               color: #000000;
               text-align: center;
               line-height: 1;
               width: 100%;
             }
+
+            .sku-bottom {
+              font-family: Arial, Helvetica, sans-serif;
+              font-size: 4.6pt;
+              font-weight: 700;
+              color: #000000;
+              text-align: center;
+              line-height: 1;
+              width: 100%;
+              letter-spacing: 0.2px;
+              margin-top: 0.7mm;
+            }
           </style>
         </head>
 
         <body>
-          ${pagesHtml}
+          ${labelHtml}
 
           <script>
             window.onload = function () {
               document.querySelectorAll("svg.barcode").forEach(function (el) {
                 JsBarcode(el, ${JSON.stringify(sku)}, {
                   format: "CODE128",
-                  width: 2,
-                  height: 28,
+                  width: 1,
+                  height: 26,
                   displayValue: false,
                   margin: 0,
-                  marginLeft: 8,
-                  marginRight: 8,
-                  marginTop: 2,
-                  marginBottom: 2,
                   background: "#ffffff",
                   lineColor: "#000000",
                 });
@@ -353,7 +284,7 @@ export function ProductQrPrint({
         </CardTitle>
 
         <CardDescription className="text-xs">
-          Shaashopy label — 2×4 grid (8 labels/page), 38×25mm each on 76×100mm sheet
+          Shaashopy label — 2×4 grid, 38×25mm each
         </CardDescription>
       </CardHeader>
 
@@ -367,22 +298,22 @@ export function ProductQrPrint({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              background: "#ffffff",
+              background: "#fff",
               overflow: "hidden",
               fontFamily: "Arial, Helvetica, sans-serif",
               border: "1px solid #ddd",
-              padding: "4px 6px",
             }}
           >
             <div
               style={{
-                width: "100%",
-                height: "100%",
+                width: 175,
+                height: 115,
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                justifyContent: "space-between",
+                justifyContent: "center",
                 overflow: "hidden",
+                transform: "translateX(7px)",
               }}
             >
               <span
@@ -410,6 +341,7 @@ export function ProductQrPrint({
                   overflow: "hidden",
                   whiteSpace: "nowrap",
                   textOverflow: "ellipsis",
+                  marginTop: 1,
                 }}
               >
                 {productName}
@@ -422,29 +354,19 @@ export function ProductQrPrint({
                   alignItems: "center",
                   justifyContent: "center",
                   width: "100%",
-                  gap: 4,
-                  margin: "1px 0",
+                  marginTop: 4,
+                  marginBottom: 4,
                 }}
               >
-                <div
+                <svg
+                  ref={svgRef}
                   style={{
-                    flex: 1,
-                    display: "flex",
-                    justifyContent: "center",
-                    background: "#ffffff",
-                    overflow: "hidden",
+                    width: 140,
+                    height: 43,
+                    display: "block",
+                    flexShrink: 0,
                   }}
-                >
-                  <svg
-                    ref={svgRef}
-                    style={{
-                      width: "100%",
-                      maxWidth: 160,
-                      height: 42,
-                      display: "block",
-                    }}
-                  />
-                </div>
+                />
 
                 <div
                   style={{
@@ -474,25 +396,28 @@ export function ProductQrPrint({
               >
                 ₹ : {formattedPrice}
               </span>
-            </div>
-          </div>
-        </div>
 
-        {/* ── Required On-Screen Instruction Notice ── */}
-        <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200 flex items-start gap-2">
-          <Info className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
-          <div className="space-y-0.5">
-            <p className="font-semibold text-xs">Print Dialog Configuration:</p>
-            <p className="text-[11px] leading-relaxed">
-              Select paper size: <strong>76 x 100 mm</strong>. Set scale to{" "}
-              <strong>100%</strong>. Turn off <strong>Fit to page</strong>.
-            </p>
+              <span
+                style={{
+                  fontSize: 7,
+                  fontWeight: 700,
+                  color: "#000",
+                  lineHeight: 1,
+                  width: "100%",
+                  textAlign: "center",
+                  letterSpacing: 0.2,
+                  marginTop: 4,
+                }}
+              >
+                {displaySku}
+              </span>
+            </div>
           </div>
         </div>
 
         <div className="space-y-2">
           <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
-            Print Qty (8 Labels per 76×100mm Sheet)
+            Print Qty
           </label>
 
           <div className="flex gap-2">
