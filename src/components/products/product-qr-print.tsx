@@ -24,7 +24,7 @@ export function ProductQrPrint({
   productName,
   price,
 }: ProductQrPrintProps) {
-  // Default to 2 labels (1 sheet / 1 physical feed on 2-up roll)
+  // Default to 2 labels (1 row / 1 sheet on 2-up roll)
   const [printQty, setPrintQty] = useState<number>(2);
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -78,12 +78,11 @@ export function ProductQrPrint({
     }
 
     const safeSku = escapeHtml(sku);
-    const safeDisplaySku = escapeHtml(displaySku);
     const safeProductName = escapeHtml(productName);
     const safePrice = escapeHtml(String(formattedPrice));
 
-    // Dynamic 2-up sheet allocation matching thermal stock (75mm x 28mm)
-    // 1-2 Qty = 1 sheet, 3-4 Qty = 2 sheets, 5-6 Qty = 3 sheets
+    // 2-Up Roll format: 2 labels per row / sheet (38mm x 25mm each on a 76mm x 25mm feed)
+    // 1-2 Qty = 1 sheet, 3-4 Qty = 2 sheets, 5-6 Qty = 3 sheets, etc.
     const LABELS_PER_SHEET = 2;
     const totalSheets = Math.ceil(printQty / LABELS_PER_SHEET);
 
@@ -113,13 +112,12 @@ export function ProductQrPrint({
               </div>
 
               <div class="price">&#x20B9; : ${safePrice}</div>
-              <div class="sku-bottom">${safeDisplaySku}</div>
             </div>
           </div>
         `;
       }
 
-      // If quantity is odd, keep the right label empty to maintain column alignment
+      // If quantity is odd, keep right column blank to prevent shifting
       for (let empty = labelsOnThisSheet; empty < LABELS_PER_SHEET; empty++) {
         sheetLabelsHtml += `<div class="label label-empty"></div>`;
       }
@@ -136,9 +134,9 @@ export function ProductQrPrint({
           <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
 
           <style>
-            /* ── Page Setup Matching Stock: 75mm x 28mm ── */
+            /* ── Page & Margin Setup for 2-Up Roll (76mm x 25mm per row) ── */
             @page {
-              size: 75mm 28mm;
+              size: 76mm 25mm;
               margin: 0mm;
             }
 
@@ -152,7 +150,7 @@ export function ProductQrPrint({
 
             html,
             body {
-              width: 75mm;
+              width: 76mm;
               margin: 0;
               padding: 0;
               background: #ffffff;
@@ -163,8 +161,7 @@ export function ProductQrPrint({
             @media print {
               html,
               body {
-                width: 75mm !important;
-                height: 28mm !important;
+                width: 76mm !important;
                 margin: 0 !important;
                 padding: 0 !important;
                 background: #ffffff !important;
@@ -173,8 +170,8 @@ export function ProductQrPrint({
               }
 
               .sheet {
-                width: 75mm !important;
-                height: 28mm !important;
+                width: 76mm !important;
+                height: 25mm !important;
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
               }
@@ -190,15 +187,15 @@ export function ProductQrPrint({
               }
             }
 
-            /* ── 75mm x 28mm Single Row Grid: 2 Columns ── */
+            /* ── 76mm x 25mm Single Row Grid (2 Columns of 38mm) ── */
             .sheet {
-              width: 75mm;
-              height: 28mm;
-              max-width: 75mm;
-              max-height: 28mm;
+              width: 76mm;
+              height: 25mm;
+              max-width: 76mm;
+              max-height: 25mm;
               display: grid;
-              grid-template-columns: 37.5mm 37.5mm;
-              grid-template-rows: 28mm;
+              grid-template-columns: 38mm 38mm;
+              grid-template-rows: 25mm;
               margin: 0;
               padding: 0;
               overflow: hidden;
@@ -211,12 +208,12 @@ export function ProductQrPrint({
               break-after: page;
             }
 
-            /* ── Individual Label: 37.5mm x 28mm ── */
+            /* ── 38mm x 25mm Individual Label ── */
             .label {
-              width: 37.5mm;
-              height: 28mm;
-              max-width: 37.5mm;
-              max-height: 28mm;
+              width: 38mm;
+              height: 25mm;
+              max-width: 38mm;
+              max-height: 25mm;
               display: flex;
               align-items: center;
               justify-content: center;
@@ -311,16 +308,6 @@ export function ProductQrPrint({
               line-height: 1;
               width: 100%;
             }
-
-            .sku-bottom {
-              font-size: 4.8pt;
-              font-weight: 700;
-              color: #000000;
-              text-align: center;
-              line-height: 1;
-              width: 100%;
-              letter-spacing: 0.2px;
-            }
           </style>
         </head>
 
@@ -369,17 +356,17 @@ export function ProductQrPrint({
         </CardTitle>
 
         <CardDescription className="text-xs">
-          Shaashopy label — 2 labels per sheet (75×28mm stock)
+          Shaashopy label — 2-up thermal roll (38×25mm per label, 76×25mm per row)
         </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Preview: 37.5mm x 28mm scaled 5x (188px x 140px) */}
+        {/* Preview — 5× scale: 38mm → 190px, 25mm → 125px */}
         <div className="flex justify-center p-4 border border-dashed border-border/80 bg-muted/10 rounded-xl">
           <div
             style={{
-              width: 188,
-              height: 140,
+              width: 190,
+              height: 125,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -490,20 +477,6 @@ export function ProductQrPrint({
               >
                 ₹ : {formattedPrice}
               </span>
-
-              <span
-                style={{
-                  fontSize: 7,
-                  fontWeight: 700,
-                  color: "#000",
-                  lineHeight: 1,
-                  width: "100%",
-                  textAlign: "center",
-                  letterSpacing: 0.2,
-                }}
-              >
-                {displaySku}
-              </span>
             </div>
           </div>
         </div>
@@ -514,14 +487,14 @@ export function ProductQrPrint({
           <div className="space-y-0.5">
             <p className="font-semibold text-xs">Thermal Printer (TSC TTP-244 Pro) Configuration:</p>
             <p className="text-[11px] leading-relaxed">
-              Paper size / Stock: <strong>75 x 28 mm</strong> (2 labels/sheet). Scale: <strong>100%</strong>. Margins: <strong>None</strong>.
+              Paper size: <strong>76 x 25 mm</strong> (2 labels/row). Scale: <strong>100%</strong>. Margins: <strong>None</strong>.
             </p>
           </div>
         </div>
 
         <div className="space-y-2">
           <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
-            Print Quantity (2 Labels per Sheet)
+            Print Quantity (2 Labels per Row / Sheet)
           </label>
 
           <div className="flex gap-2">
