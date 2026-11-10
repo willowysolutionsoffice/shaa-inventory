@@ -1755,156 +1755,122 @@ export default function PosBillingPage({
       </div>
       */}
 
-      {/* ── Top Barcode Scanner & Modern Invoice Date ── */}
-      <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center w-full">
-        <div className="relative flex-1">
-          <form
-            onSubmit={handleBarcodeSubmit}
-            className={`flex gap-2 p-2 rounded-xl items-center shadow-sm border transition-colors ${
+      {/* ── Top Barcode Scanner ── */}
+      <div className="relative w-full">
+        <form
+          onSubmit={handleBarcodeSubmit}
+          className={`flex gap-2 p-2 rounded-xl items-center shadow-sm border transition-colors ${
+            barcodeNotFound
+              ? "bg-red-50/60 border-red-200 dark:bg-red-950/20 dark:border-red-900/40"
+              : "bg-purple-50/50 border-purple-100 dark:bg-purple-950/10 dark:border-purple-900/40"
+          }`}
+        >
+          <span className="text-xs sm:text-sm font-semibold text-purple-800 dark:text-purple-300 hidden sm:inline shrink-0 pl-1">
+            Barcode Scanner:
+          </span>
+          <Input
+            ref={barcodeInputRef}
+            autoFocus
+            placeholder="Scan / type SKU and hit Enter…"
+            value={barcodeInput}
+            onClick={() => setShowSuggestions(true)}
+            onFocus={() => setShowSuggestions(true)}
+            onChange={(e) => {
+              setBarcodeInput(e.target.value);
+              setShowSuggestions(true);
+              setBarcodeNotFound(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setShowSuggestions(false);
+                return;
+              }
+              if (e.key === "ArrowDown" && filteredProducts.length > 0) {
+                e.preventDefault();
+                setShowSuggestions(true);
+                setSelectedProductIndex(0);
+                return;
+              }
+            }}
+            className={`h-9 text-xs sm:text-sm bg-card shadow-sm ${
               barcodeNotFound
-                ? "bg-red-50/60 border-red-200 dark:bg-red-950/20 dark:border-red-900/40"
-                : "bg-purple-50/50 border-purple-100 dark:bg-purple-950/10 dark:border-purple-900/40"
+                ? "border-red-300 focus-visible:ring-red-400"
+                : "border-purple-200 dark:border-purple-800 focus-visible:ring-purple-500"
+            }`}
+          />
+          <Button
+            type="submit"
+            size="sm"
+            className={`h-9 px-4 text-xs font-semibold text-white shrink-0 transition-colors shadow-sm ${
+              barcodeNotFound
+                ? "bg-red-500 hover:bg-red-600"
+                : "bg-purple-600 hover:bg-purple-700"
             }`}
           >
-            <span className="text-xs sm:text-sm font-semibold text-purple-800 dark:text-purple-300 hidden sm:inline shrink-0 pl-1">
-              Barcode Scanner:
-            </span>
-            <Input
-              ref={barcodeInputRef}
-              autoFocus
-              placeholder="Scan / type SKU and hit Enter…"
-              value={barcodeInput}
-              onClick={() => setShowSuggestions(true)}
-              onFocus={() => setShowSuggestions(true)}
-              onChange={(e) => {
-                setBarcodeInput(e.target.value);
-                setShowSuggestions(true);
-                setBarcodeNotFound(false);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  setShowSuggestions(false);
-                  return;
-                }
-                if (e.key === "ArrowDown" && filteredProducts.length > 0) {
-                  e.preventDefault();
-                  setShowSuggestions(true);
-                  setSelectedProductIndex(0);
-                  return;
-                }
-              }}
-              className={`h-9 text-xs sm:text-sm bg-card shadow-sm ${
-                barcodeNotFound
-                  ? "border-red-300 focus-visible:ring-red-400"
-                  : "border-purple-200 dark:border-purple-800 focus-visible:ring-purple-500"
-              }`}
-            />
-            <Button
-              type="submit"
-              size="sm"
-              className={`h-9 px-4 text-xs font-semibold text-white shrink-0 transition-colors shadow-sm ${
-                barcodeNotFound
-                  ? "bg-red-500 hover:bg-red-600"
-                  : "bg-purple-600 hover:bg-purple-700"
-              }`}
-            >
-              Scan
-            </Button>
-          </form>
+            Scan
+          </Button>
+        </form>
 
-          {/* Product suggestions dropdown */}
-          {showSuggestions && (
-            <div
-              ref={suggestionsContainerRef}
-              className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl
-              [&::-webkit-scrollbar]:w-1.5
-              [&::-webkit-scrollbar-track]:rounded-full
-              [&::-webkit-scrollbar-track]:bg-muted/40
-              [&::-webkit-scrollbar-thumb]:rounded-full
-              [&::-webkit-scrollbar-thumb]:bg-purple-300
-              dark:[&::-webkit-scrollbar-thumb]:bg-purple-700"
-            >
-              {filteredProducts.length === 0 ? (
-                <div className="text-center text-muted-foreground py-6 text-sm">
-                  {barcodeInput || searchTerm
-                    ? "No products match your search."
-                    : "No products available."}
-                </div>
-              ) : (
-                <div className="flex flex-col gap-1">
-                  {filteredProducts.map((prod, idx) => {
-                    const isSelected = idx === selectedProductIndex;
-                    return (
-                      <button
-                        type="button"
-                        key={prod.id}
-                        onClick={() => {
-                          setBarcodeInput(prod.sku || prod.name);
-                          setSelectedProductIndex(-1);
-                          setShowSuggestions(false);
-                          focusBarcodeInput();
-                        }}
-                        title={`${prod.name} • ${formatCurrency(prod.price)} (Stock: ${prod.stock})`}
-                        className={`w-full text-left px-3.5 py-2.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-2 group ${
-                          isSelected
-                            ? "border-purple-600 bg-purple-50 ring-1 ring-purple-600 dark:bg-purple-950/40"
-                            : "border-border/70 bg-card hover:bg-purple-50/50 hover:border-purple-400 dark:hover:bg-purple-950/20"
-                        }`}
-                      >
-                        <span className="text-xs sm:text-sm font-semibold text-foreground group-hover:text-purple-600 transition-colors truncate">
-                          {prod.name}
-                        </span>
-                        <div className="flex items-center gap-3 shrink-0 text-xs">
-                          <span className="font-mono text-muted-foreground text-[11px]">
-                            {prod.sku}
-                          </span>
-                          <span className="font-semibold text-purple-700 dark:text-purple-400">
-                            {formatCurrency(prod.price)}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground">
-                            Stock: {prod.stock}
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* ── Modern Invoice Date Pill (Matching Reference Design) ── */}
-        <div className="relative shrink-0">
-          <label
-            title="Click to change invoice date"
-            className="flex items-center gap-2.5 h-[42px] px-3.5 rounded-xl border border-purple-200 dark:border-purple-800 bg-card hover:bg-purple-50/60 dark:hover:bg-purple-950/20 cursor-pointer shadow-sm transition-all group"
+        {/* Product suggestions dropdown */}
+        {showSuggestions && (
+          <div
+            ref={suggestionsContainerRef}
+            className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl
+            [&::-webkit-scrollbar]:w-1.5
+            [&::-webkit-scrollbar-track]:rounded-full
+            [&::-webkit-scrollbar-track]:bg-muted/40
+            [&::-webkit-scrollbar-thumb]:rounded-full
+            [&::-webkit-scrollbar-thumb]:bg-purple-300
+            dark:[&::-webkit-scrollbar-thumb]:bg-purple-700"
           >
-            <CalendarDays className="h-4 w-4 text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform" />
-            <div className="flex flex-col">
-              <span className="text-[9px] uppercase font-bold tracking-wider text-muted-foreground leading-none">
-                Invoice Date
-              </span>
-              <span className="text-xs font-bold text-foreground mt-0.5">
-                {new Date(invoiceDate + "T00:00:00").toLocaleDateString("en-IN", {
-                  weekday: "short",
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
+            {filteredProducts.length === 0 ? (
+              <div className="text-center text-muted-foreground py-6 text-sm">
+                {barcodeInput || searchTerm
+                  ? "No products match your search."
+                  : "No products available."}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {filteredProducts.map((prod, idx) => {
+                  const isSelected = idx === selectedProductIndex;
+                  return (
+                    <button
+                      type="button"
+                      key={prod.id}
+                      onClick={() => {
+                        setBarcodeInput(prod.sku || prod.name);
+                        setSelectedProductIndex(-1);
+                        setShowSuggestions(false);
+                        focusBarcodeInput();
+                      }}
+                      title={`${prod.name} • ${formatCurrency(prod.price)} (Stock: ${prod.stock})`}
+                      className={`w-full text-left px-3.5 py-2.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-2 group ${
+                        isSelected
+                          ? "border-purple-600 bg-purple-50 ring-1 ring-purple-600 dark:bg-purple-950/40"
+                          : "border-border/70 bg-card hover:bg-purple-50/50 hover:border-purple-400 dark:hover:bg-purple-950/20"
+                      }`}
+                    >
+                      <span className="text-xs sm:text-sm font-semibold text-foreground group-hover:text-purple-600 transition-colors truncate">
+                        {prod.name}
+                      </span>
+                      <div className="flex items-center gap-3 shrink-0 text-xs">
+                        <span className="font-mono text-muted-foreground text-[11px]">
+                          {prod.sku}
+                        </span>
+                        <span className="font-semibold text-purple-700 dark:text-purple-400">
+                          {formatCurrency(prod.price)}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">
+                          Stock: {prod.stock}
+                        </span>
+                      </div>
+                    </button>
+                  );
                 })}
-              </span>
-            </div>
-            <input
-              type="date"
-              ref={invoiceDateRef}
-              value={invoiceDate}
-              max={getLocalDateInputValue()}
-              onChange={(e) => setInvoiceDate(e.target.value)}
-              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-              aria-label="Invoice date"
-            />
-          </label>
-        </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Active Cart & Checkout (Full Size Left to Right) ──────────────── */}
