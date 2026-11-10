@@ -93,15 +93,75 @@ async function setupQZSecurity() {
   });
 }
 
-export async function printHtmlWithQZ(invoiceHtml: string) {
+/**
+ * Fallback browser printing via a temporary hidden iframe.
+ * Preserves 80mm roll width styling and prints automatically.
+ */
+export function printHtmlViaBrowser(invoiceHtml: string) {
+  try {
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "none";
+    iframe.style.zIndex = "-9999";
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      const win = window.open("", "_blank", "width=420,height=600");
+      if (win) {
+        win.document.open();
+        win.document.write(invoiceHtml);
+        win.document.close();
+        win.focus();
+        setTimeout(() => {
+          win.print();
+          win.close();
+        }, 350);
+      }
+      return;
+    }
+
+    doc.open();
+    doc.write(invoiceHtml);
+    doc.close();
+
+    setTimeout(() => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (e) {
+        console.warn("Iframe print error, falling back to window.print", e);
+        window.print();
+      }
+      setTimeout(() => {
+        try {
+          document.body.removeChild(iframe);
+        } catch {}
+      }, 3000);
+    }, 350);
+  } catch (err) {
+    console.error("Browser print fallback failed:", err);
+    window.print();
+  }
+}
+
+export async function printHtmlWithQZ(
+  invoiceHtml: string,
+  fallbackToBrowser = true
+) {
   try {
     await setupQZSecurity();
 
     if (!qz.websocket.isActive()) {
-      await qz.websocket.connect({ retries: 2, delay: 1 });
+      await qz.websocket.connect({ retries: 1, delay: 0.5 });
     }
 
-    const printer = localStorage.getItem("pos_printer_name") || "Microsoft Print to PDF";
+    const printer =
+      localStorage.getItem("pos_printer_name") || "Microsoft Print to PDF";
 
     const config = qz.configs.create(printer, {
       margins: 0,
@@ -121,9 +181,16 @@ export async function printHtmlWithQZ(invoiceHtml: string) {
     ]);
 
     toast.success("Invoice sent to printer.");
-  } catch (err) {
-    console.error("[QZ print error]", err);
-    toast.error("QZ printing failed.");
+  } catch (err: any) {
+    console.warn("[QZ print error]", err?.message || err);
+
+    if (fallbackToBrowser) {
+      toast.info("QZ Tray not detected. Opening standard print window...");
+      printHtmlViaBrowser(invoiceHtml);
+      return;
+    }
+
+    toast.error("QZ printing failed. Please ensure QZ Tray is running.");
     throw err;
   }
 }
@@ -161,7 +228,7 @@ export function buildThermalReceiptHtml(data: ThermalPrintData): string {
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@500;700;800&display=swap" rel="stylesheet">
   <style>
-    @page { size: 80mm auto; margin: 0; }
+    @page { size: auto; margin: 0; }
     * {
       box-sizing: border-box;
       margin: 0;
@@ -169,15 +236,47 @@ export function buildThermalReceiptHtml(data: ThermalPrintData): string {
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
-    body {
+    html, body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+      padding: 0;
+      background: #ffffff;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .thermal-sheet-wrapper {
+      width: 76mm;
+      max-width: 100%;
+      margin: 0 auto;
+      padding: 10px 8px;
       font-family: 'Roboto Mono', 'Courier New', Courier, monospace;
       font-size: 11px;
       font-weight: 800;
       line-height: 1.55;
       color: #000000;
       background: #ffffff;
-      width: 80mm;
-      padding: 14px 12px;
+      box-sizing: border-box;
+    }
+    @media print {
+      html, body {
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: flex-start !important;
+        background: #ffffff !important;
+      }
+      .thermal-sheet-wrapper {
+        width: 76mm !important;
+        max-width: 100% !important;
+        margin: 0 auto !important;
+        padding: 8px 6px !important;
+      }
     }
     div, span, p {
       font-family: 'Roboto Mono', 'Courier New', Courier, monospace;
@@ -192,6 +291,7 @@ export function buildThermalReceiptHtml(data: ThermalPrintData): string {
     .heavy { font-weight: 900 !important; }
   </style>
 </head><body>
+      <div class="thermal-sheet-wrapper">
       <div style="text-align:center;margin-bottom:10px;">
         <div style="font-weight:900;font-size:17px;letter-spacing:1.5px;text-transform:uppercase;">SHAASHOPY</div>
         <div style="font-size:10px;margin-top:1px;">2ND FLOOR, HILITE MALL</div>
@@ -251,6 +351,7 @@ export function buildThermalReceiptHtml(data: ThermalPrintData): string {
         <div style="font-size:10px;margin-bottom:2px;">* We are under composition taxpayer, We are not collecting tax from customer</div>
       </div>
       <div style="text-align:center;margin-top:10px;font-weight:700;font-size:11px;letter-spacing:0.5px;">THANK YOU VISIT AGAIN ;</div>
+      </div>
     </body></html>`;
 }
 

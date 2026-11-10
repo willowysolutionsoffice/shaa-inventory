@@ -746,7 +746,7 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@500;700;800&display=swap" rel="stylesheet">
   <style>
-    @page { size: 80mm auto; margin: 0; }
+    @page { size: auto; margin: 0; }
     * {
       box-sizing: border-box;
       margin: 0;
@@ -754,15 +754,47 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
-    body {
+    html, body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+      padding: 0;
+      background: #ffffff;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .thermal-sheet-wrapper {
+      width: 76mm;
+      max-width: 100%;
+      margin: 0 auto;
+      padding: 10px 8px;
       font-family: 'Roboto Mono', 'Courier New', Courier, monospace;
       font-size: 11px;
       font-weight: 800;
       line-height: 1.55;
       color: #000000;
       background: #ffffff;
-      width: 80mm;
-      padding: 14px 12px;
+      box-sizing: border-box;
+    }
+    @media print {
+      html, body {
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: flex-start !important;
+        background: #ffffff !important;
+      }
+      .thermal-sheet-wrapper {
+        width: 76mm !important;
+        max-width: 100% !important;
+        margin: 0 auto !important;
+        padding: 8px 6px !important;
+      }
     }
     div, span, p {
       font-family: 'Roboto Mono', 'Courier New', Courier, monospace;
@@ -778,6 +810,7 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
   </style>
 </head>
         <body>
+          <div class="thermal-sheet-wrapper">
           <div style="text-align:center;margin-bottom:10px;">
             <div style="font-weight:900;font-size:17px;letter-spacing:1.5px;text-transform:uppercase;color:#000;">SHAASHOPY</div>
             <div style="font-size:10px;margin-top:1px;color:#000;">2ND FLOOR, HILITE MALL</div>
@@ -840,6 +873,7 @@ export function POSInvoiceSystem({ invoice }: POSInvoiceSystemProps) {
             <div style="font-size:10px;margin-bottom:2px;color:#000;">* We are under composition taxpayer, We are not collecting tax from customer</div>
           </div>
           <div style="text-align:center;margin-top:10px;font-weight:700;font-size:11px;letter-spacing:0.5px;color:#000;">THANK YOU VISIT AGAIN ;</div>
+          </div>
         </body>
       </html>
     `;

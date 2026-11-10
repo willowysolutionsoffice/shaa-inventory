@@ -9,6 +9,7 @@ import React, {
   useRef,
 } from "react";
 import qz from "qz-tray";
+import { printHtmlViaBrowser } from "@/lib/thermal-print";
 import {
   Search,
   Trash2,
@@ -329,7 +330,7 @@ function printThermalReceipt(params: PrintReceiptParams) {
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@500;700;800&display=swap" rel="stylesheet">
 <style>
-  @page { size: 80mm auto; margin: 0; }
+  @page { size: auto; margin: 0; }
   * {
     box-sizing: border-box;
     margin: 0;
@@ -337,15 +338,47 @@ function printThermalReceipt(params: PrintReceiptParams) {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  body {
+  html, body {
+    width: 100%;
+    min-height: 100%;
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .thermal-sheet-wrapper {
+    width: 76mm;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 10px 8px;
     font-family: 'Roboto Mono', 'Courier New', Courier, monospace;
     font-size: 11px;
     font-weight: 800;
     line-height: 1.55;
     color: #000000;
     background: #ffffff;
-    width: 80mm;
-    padding: 14px 12px;
+    box-sizing: border-box;
+  }
+  @media print {
+    html, body {
+      width: 100% !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      display: flex !important;
+      justify-content: center !important;
+      align-items: flex-start !important;
+      background: #ffffff !important;
+    }
+    .thermal-sheet-wrapper {
+      width: 76mm !important;
+      max-width: 100% !important;
+      margin: 0 auto !important;
+      padding: 8px 6px !important;
+    }
   }
   div, span, p {
     font-family: 'Roboto Mono', 'Courier New', Courier, monospace;
@@ -361,6 +394,7 @@ function printThermalReceipt(params: PrintReceiptParams) {
 </style>
       </head>
       <body>
+        <div class="thermal-sheet-wrapper">
         <div style="text-align:center;margin-bottom:10px;">
           <div class="heavy" style="font-size:17px;letter-spacing:1.5px;text-transform:uppercase;">SHAASHOPY</div>
           <div style="font-size:10px;margin-top:1px;">1ST FLOOR, HILTE COUNTRY SIDE, CHEMMAD</div>
@@ -487,7 +521,7 @@ async function printWithQZ(invoiceHtml: string) {
     await setupQZSecurity();
 
     if (!qz.websocket.isActive()) {
-      await qz.websocket.connect();
+      await qz.websocket.connect({ retries: 1, delay: 0.5 });
     }
 
     let printer = localStorage.getItem("pos_printer_name");
@@ -497,7 +531,7 @@ async function printWithQZ(invoiceHtml: string) {
     }
 
     if (!printer || printer.toLowerCase().includes("pdf")) {
-      toast.error("Please select a thermal printer, not Microsoft Print to PDF.");
+      printHtmlViaBrowser(invoiceHtml);
       return;
     }
 
@@ -520,8 +554,9 @@ async function printWithQZ(invoiceHtml: string) {
 
     toast.success(`Invoice sent to ${printer}.`);
   } catch (err) {
-    console.error("[QZ print error]", err);
-    toast.error("QZ printing failed.");
+    console.warn("[QZ print fallback]", err);
+    toast.info("QZ Tray not detected. Opening standard print window...");
+    printHtmlViaBrowser(invoiceHtml);
   }
 }
 export default function PosBillingPage({
@@ -882,7 +917,7 @@ export default function PosBillingPage({
   );
 
   const filteredProducts = useMemo(() => {
-    const q = searchTerm.toLowerCase();
+    const q = (barcodeInput || searchTerm).trim().toLowerCase();
     return products.filter((p) => {
       if (p.stock <= 0) return false;
       const matchesSearch =
@@ -899,7 +934,7 @@ export default function PosBillingPage({
         matchesSearch && matchesCategory && matchesBrand && matchesSubBrand
       );
     });
-  }, [products, searchTerm, selectedCategory, selectedBrand, selectedSubBrand]);
+  }, [products, searchTerm, barcodeInput, selectedCategory, selectedBrand, selectedSubBrand]);
 
   // ── Pricing ────────────────────────────────────────────────────────────────
   // Layering: per-item discount → cart-level coupon % → cart-level manual %
@@ -1105,6 +1140,15 @@ export default function PosBillingPage({
   // ── Barcode ────────────────────────────────────────────────────────────────
   const handleBarcodeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (selectedProductIndex >= 0 && filteredProducts[selectedProductIndex]) {
+      addToCart(filteredProducts[selectedProductIndex]);
+      setBarcodeInput("");
+      setBarcodeNotFound(false);
+      setShowSuggestions(false);
+      setSelectedProductIndex(-1);
+      focusBarcodeInput();
+      return;
+    }
     const isShift = (e.nativeEvent as KeyboardEvent)?.shiftKey;
     const q = barcodeInput.trim().toLowerCase();
 
@@ -1112,7 +1156,7 @@ export default function PosBillingPage({
       if (isShift) {
         checkoutButtonRef.current?.focus();
       } else {
-        searchInputRef.current?.focus();
+        customerSelectRef.current?.focus();
       }
       return;
     }
@@ -1126,6 +1170,8 @@ export default function PosBillingPage({
       addToCart(found);
       setBarcodeInput("");
       setBarcodeNotFound(false);
+      setShowSuggestions(false);
+      setSelectedProductIndex(-1);
     } else {
       setBarcodeNotFound(true);
       toast.error(`No product found for "${barcodeInput.trim()}"`);
@@ -1579,7 +1625,7 @@ export default function PosBillingPage({
         </div>
       </div>
 
-      {/* Search, product filters and invoice date */}
+      {/* ── Search, product filters and invoice date (Hidden per user request - commented out) ──
       <div className="grid grid-cols-1 items-end gap-3 rounded-xl border border-border bg-card p-3 shadow-sm sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[minmax(240px,1.45fr)_minmax(130px,0.65fr)_minmax(170px,0.85fr)_minmax(170px,0.85fr)_minmax(170px,0.85fr)_auto]">
         <div className="relative min-w-0" ref={searchContainerRef}>
           <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -1707,11 +1753,129 @@ export default function PosBillingPage({
           Terminal Active • {branchName}
         </Badge>
       </div>
+      */}
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-        {/* ── Right – Cart & Checkout ─────────────────────────────────────── */}
-        <div className="order-2 flex min-h-0 flex-col gap-3 xl:col-span-7">
-          <Card className="flex h-[calc(100vh-225px)] min-h-[680px] max-h-[860px] flex-col overflow-hidden border-border bg-card shadow-md">
+      {/* ── Top Barcode Scanner & Search ── */}
+      <div className="relative w-full">
+        <form
+          onSubmit={handleBarcodeSubmit}
+          className={`flex gap-2 p-2.5 rounded-xl items-center shadow-sm border transition-colors ${
+            barcodeNotFound
+              ? "bg-red-50/60 border-red-200 dark:bg-red-950/20 dark:border-red-900/40"
+              : "bg-purple-50/50 border-purple-100 dark:bg-purple-950/10 dark:border-purple-900/40"
+          }`}
+        >
+          <span className="text-xs sm:text-sm font-semibold text-purple-800 dark:text-purple-300 hidden sm:inline shrink-0 pl-1">
+            Barcode Scanner:
+          </span>
+          <Input
+            ref={barcodeInputRef}
+            autoFocus
+            placeholder="Scan / type SKU and hit Enter…"
+            value={barcodeInput}
+            onClick={() => setShowSuggestions(true)}
+            onFocus={() => setShowSuggestions(true)}
+            onChange={(e) => {
+              setBarcodeInput(e.target.value);
+              setShowSuggestions(true);
+              setBarcodeNotFound(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setShowSuggestions(false);
+                return;
+              }
+              if (e.key === "ArrowDown" && filteredProducts.length > 0) {
+                e.preventDefault();
+                setShowSuggestions(true);
+                setSelectedProductIndex(0);
+                return;
+              }
+            }}
+            className={`h-9 text-xs sm:text-sm bg-card shadow-sm ${
+              barcodeNotFound
+                ? "border-red-300 focus-visible:ring-red-400"
+                : "border-purple-200 dark:border-purple-800 focus-visible:ring-purple-500"
+            }`}
+          />
+          <Button
+            type="submit"
+            size="sm"
+            className={`h-9 px-4 text-xs font-semibold text-white shrink-0 transition-colors shadow-sm ${
+              barcodeNotFound
+                ? "bg-red-500 hover:bg-red-600"
+                : "bg-purple-600 hover:bg-purple-700"
+            }`}
+          >
+            Scan
+          </Button>
+        </form>
+
+        {/* Product suggestions dropdown */}
+        {showSuggestions && (
+          <div
+            ref={suggestionsContainerRef}
+            className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl
+            [&::-webkit-scrollbar]:w-1.5
+            [&::-webkit-scrollbar-track]:rounded-full
+            [&::-webkit-scrollbar-track]:bg-muted/40
+            [&::-webkit-scrollbar-thumb]:rounded-full
+            [&::-webkit-scrollbar-thumb]:bg-purple-300
+            dark:[&::-webkit-scrollbar-thumb]:bg-purple-700"
+          >
+            {filteredProducts.length === 0 ? (
+              <div className="text-center text-muted-foreground py-6 text-sm">
+                {barcodeInput || searchTerm
+                  ? "No products match your search."
+                  : "No products available."}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {filteredProducts.map((prod, idx) => {
+                  const isSelected = idx === selectedProductIndex;
+                  return (
+                    <button
+                      type="button"
+                      key={prod.id}
+                      onClick={() => {
+                        addToCart(prod);
+                        setSelectedProductIndex(-1);
+                        setShowSuggestions(false);
+                        setBarcodeInput("");
+                      }}
+                      title={`${prod.name} • ${formatCurrency(prod.price)} (Stock: ${prod.stock})`}
+                      className={`w-full text-left px-3.5 py-2.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-2 group ${
+                        isSelected
+                          ? "border-purple-600 bg-purple-50 ring-1 ring-purple-600 dark:bg-purple-950/40"
+                          : "border-border/70 bg-card hover:bg-purple-50/50 hover:border-purple-400 dark:hover:bg-purple-950/20"
+                      }`}
+                    >
+                      <span className="text-xs sm:text-sm font-semibold text-foreground group-hover:text-purple-600 transition-colors truncate">
+                        {prod.name}
+                      </span>
+                      <div className="flex items-center gap-3 shrink-0 text-xs">
+                        <span className="font-mono text-muted-foreground text-[11px]">
+                          {prod.sku}
+                        </span>
+                        <span className="font-semibold text-purple-700 dark:text-purple-400">
+                          {formatCurrency(prod.price)}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">
+                          Stock: {prod.stock}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Active Cart & Checkout (Full Size Left to Right) ──────────────── */}
+      <div className="flex min-h-0 w-full flex-col gap-3">
+        <Card className="flex h-[calc(100vh-225px)] min-h-[680px] max-h-[860px] w-full flex-col overflow-hidden border-border bg-card shadow-md">
             {/* Cart header */}
             <CardHeader className="px-4 py-2.5 border-b border-border shrink-0">
               <div className="flex items-center justify-between gap-3">
@@ -1992,356 +2156,367 @@ export default function PosBillingPage({
             </CardContent>
 
             {/* ── Totals + Payment + Checkout ── */}
-            <div className="shrink-0 border-t border-border bg-muted/20 p-3 space-y-1.5 rounded-b-xl">
-              {/* Coupon */}
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Tag className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input
-                    ref={couponInputRef}
-                    placeholder="Coupon code…"
-                    value={couponCode}
-                    onChange={(e) => setCouponCode(e.target.value)}
-                    onKeyDown={(e) =>
-                      handleStepNavigation(e, 8, () => {
-                        if (couponCode.trim()) applyCoupon();
-                      })
-                    }
-                    disabled={couponDiscountPercent > 0}
-                    className="pl-7 h-8 text-xs bg-card disabled:opacity-60"
-                  />
-                </div>
-                {couponDiscountPercent > 0 ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 px-2.5 text-xs text-red-500 border-red-200 hover:bg-red-50"
-                    onClick={() => {
-                      setCouponDiscountPercent(0);
-                      setCouponCode("");
-                      setAppliedCoupon("");
-                    }}
-                  >
-                    Remove
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 px-2.5 text-xs"
-                    onClick={applyCoupon}
-                  >
-                    Apply
-                  </Button>
-                )}
-              </div>
-
-              {/* Manual discount */}
-              <div className="flex gap-2 items-center">
-                <div className="relative flex-1">
-                  <Percent className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input
-                    ref={manualDiscountPercentRef}
-                    type="number"
-                    min={0}
-                    max={100}
-                    step="0.01"
-                    placeholder="Instant discount %"
-                    value={manualDiscountPercent}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setManualDiscountPercent(
-                        v === "" ? "" : Math.min(Math.max(Number(v), 0), 100),
-                      );
-                    }}
-                    onKeyDown={(e) => handleStepNavigation(e, 9)}
-                    className="pl-7 h-8 text-xs bg-card"
-                  />
-                </div>
-                <div className="relative flex-1">
-                  <IndianRupee className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input
-                    ref={manualDiscountAmountRef}
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    placeholder="Instant discount ₹"
-                    value={manualDiscountAmount}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setManualDiscountAmount(
-                        v === "" ? "" : Math.max(Number(v), 0),
-                      );
-                    }}
-                    onKeyDown={(e) => handleStepNavigation(e, 10)}
-                    className="pl-7 h-8 text-xs bg-card"
-                  />
-                </div>
-                {(manualPct > 0 || manualAmt > 0) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setManualDiscountPercent("");
-                      setManualDiscountAmount("");
-                    }}
-                    className="text-[10px] text-muted-foreground hover:text-destructive underline whitespace-nowrap"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-
-              {/* Price breakdown */}
-              <div className="space-y-1 text-[11px] text-muted-foreground">
-                <div className="flex justify-between">
-                  <span>Cart Total:</span>
-                  <span className="font-semibold text-foreground">
-                    {formatCurrency(subtotal)}
-                  </span>
-                </div>
-                {itemDiscountTotal > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span className="flex items-center gap-1">
-                      <Percent className="h-3 w-3" /> Item Discounts:
-                    </span>
-                    <span className="font-semibold">
-                      −{formatCurrency(itemDiscountTotal)}
-                    </span>
-                  </div>
-                )}
-                {couponDiscountPercent > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span className="flex items-center gap-1">
-                      <Sparkles className="h-3 w-3" /> Coupon ({appliedCoupon} –{" "}
-                      {couponDiscountPercent}%):
-                    </span>
-                    <span className="font-semibold">
-                      −{formatCurrency(couponDiscountAmount)}
-                    </span>
-                  </div>
-                )}
-                {manualPct > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span className="flex items-center gap-1">
-                      <Percent className="h-3 w-3" /> Instant Discount (
-                      {manualPct}%):
-                    </span>
-                    <span className="font-semibold">
-                      −{formatCurrency(manualDiscountAmount)}
-                    </span>
-                  </div>
-                )}
-                {totalDiscountAmount > 0 && (
-                  <div className="flex justify-between text-green-700 font-medium border-t border-dashed border-green-200 pt-1">
-                    <span>Total Savings:</span>
-                    <span>−{formatCurrency(totalDiscountAmount)}</span>
-                  </div>
-                )}
-                <Separator className="my-1 bg-border" />
-                <div className="flex justify-between text-sm font-extrabold text-purple-700 dark:text-purple-400">
-                  <span>Total Payable:</span>
-                  <span>{formatCurrency(grandTotal)}</span>
-                </div>
-              </div>
-
-              {/* ── Payment Section ── */}
-              <div className="space-y-1.5">
-                {/* Header + Split toggle */}
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Payment
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const nextSplitMode = !splitMode;
-                      setSplitMode(nextSplitMode);
-                      setPayments(
-                        nextSplitMode
-                          ? DEFAULT_SPLIT_PAYMENTS
-                          : DEFAULT_SINGLE_PAYMENT,
-                      );
-                    }}
-                    className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-all ${splitMode
-                      ? "bg-purple-600 text-white border-purple-600"
-                      : "bg-card text-purple-600 border-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/20"
-                      }`}
-                  >
-                    {splitMode ? "✓ Split ON" : "Split Payment"}
-                  </button>
-                </div>
-
-                {/* ── Single payment mode ── */}
-                {!splitMode && (
-                  <div className="space-y-1.5">
-                    {/* Method picker */}
-                    <div className="grid grid-cols-3 gap-2">
-                      {(["cash", "card", "upi"] as const).map((method) => (
-                        <button
-                          key={method}
-                          type="button"
-                          onClick={() => setPayments([{ method, amount: "" }])}
-                          className={`flex flex-col items-center p-1.5 border rounded-lg gap-1 text-[11px] font-bold transition-all ${payments[0].method === method
-                            ? "border-purple-600 bg-purple-50 text-purple-700 dark:bg-purple-950/20"
-                            : "border-border bg-card text-muted-foreground hover:bg-muted"
-                            }`}
-                        >
-                          {method === "cash" && (
-                            <IndianRupee className="h-4 w-4" />
-                          )}
-                          {method === "card" && (
-                            <CreditCard className="h-4 w-4" />
-                          )}
-                          {method === "upi" && <Wallet className="h-4 w-4" />}
-                          <span>
-                            {method === "cash"
-                              ? "Cash"
-                              : method === "card"
-                                ? "Card"
-                                : "UPI"}
-                          </span>
-                        </button>
-                      ))}
+            <div className="shrink-0 border-t border-border bg-muted/20 p-3 rounded-b-xl">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {/* Left column: Discounts & Price Breakdown */}
+                <div className="space-y-2">
+                  {/* Coupon */}
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Tag className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                      <Input
+                        ref={couponInputRef}
+                        placeholder="Coupon code…"
+                        value={couponCode}
+                        onChange={(e) => setCouponCode(e.target.value)}
+                        onKeyDown={(e) =>
+                          handleStepNavigation(e, 8, () => {
+                            if (couponCode.trim()) applyCoupon();
+                          })
+                        }
+                        disabled={couponDiscountPercent > 0}
+                        className="pl-7 h-8 text-xs bg-card disabled:opacity-60"
+                      />
                     </div>
-                  </div>
-                )}
-
-                {/* ── Split payment mode ── */}
-                {splitMode && (
-                  <div className="space-y-1.5">
-                    {payments.map((entry, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <Select
-                          value={
-                            entry.method ||
-                            (idx === 0 ? "upi" : idx === 1 ? "cash" : "card")
-                          }
-                          onValueChange={(method) => {
-                            const next = [...payments];
-                            next[idx] = {
-                              ...next[idx],
-                              method: method as "cash" | "card" | "upi",
-                            };
-                            setPayments(next);
-                          }}
-                        >
-                          <SelectTrigger className="h-8 w-[120px] shrink-0 border-border bg-card text-xs">
-                            {" "}
-                            <SelectValue placeholder="Method" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="upi">UPI</SelectItem>
-                            <SelectItem value="cash">Cash</SelectItem>
-                            <SelectItem value="card">Card</SelectItem>
-                          </SelectContent>
-                        </Select>
-
-                        <div className="relative flex-1">
-                          {" "}
-                          <IndianRupee className="absolute left-2 top-2.5 h-3 w-3 text-muted-foreground" />
-                          <Input
-                            type="number"
-                            min={0}
-                            placeholder={idx === 1 ? "Cash amount" : "Amount"}
-                            value={entry.amount}
-                            onChange={(e) =>
-                              updateSplitAmount(idx, e.target.value)
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                checkoutButtonRef.current?.focus();
-                              }
-                            }}
-                            className="pl-6 h-8 w-full text-xs bg-card"
-                          />
-                        </div>
-                      </div>
-                    ))}
-
-                    {hasUnselectedSplitMethod && (
-                      <p className="text-[11px] text-amber-600 bg-amber-50 dark:bg-amber-950/20 rounded px-2 py-1">
-                        Select a payment method for the remaining amount.
-                      </p>
+                    {couponDiscountPercent > 0 ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-2.5 text-xs text-red-500 border-red-200 hover:bg-red-50"
+                        onClick={() => {
+                          setCouponDiscountPercent(0);
+                          setCouponCode("");
+                          setAppliedCoupon("");
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-2.5 text-xs"
+                        onClick={applyCoupon}
+                      >
+                        Apply
+                      </Button>
                     )}
+                  </div>
 
-                    {/* Split summary */}
-                    <div className="rounded-md border border-border bg-muted/20 px-2.5 py-1.5 space-y-0.5 text-[11px]">
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>Total entered:</span>
-                        <span
-                          className={`font-bold ${totalPaid >= grandTotal ? "text-emerald-600" : "text-amber-600"}`}
-                        >
-                          {formatCurrency(totalPaid)}
+                  {/* Manual discount */}
+                  <div className="flex gap-2 items-center">
+                    <div className="relative flex-1">
+                      <Percent className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                      <Input
+                        ref={manualDiscountPercentRef}
+                        type="number"
+                        min={0}
+                        max={100}
+                        step="0.01"
+                        placeholder="Instant discount %"
+                        value={manualDiscountPercent}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setManualDiscountPercent(
+                            v === "" ? "" : Math.min(Math.max(Number(v), 0), 100),
+                          );
+                        }}
+                        onKeyDown={(e) => handleStepNavigation(e, 9)}
+                        className="pl-7 h-8 text-xs bg-card"
+                      />
+                    </div>
+                    <div className="relative flex-1">
+                      <IndianRupee className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                      <Input
+                        ref={manualDiscountAmountRef}
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder="Instant discount ₹"
+                        value={manualDiscountAmount}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setManualDiscountAmount(
+                            v === "" ? "" : Math.max(Number(v), 0),
+                          );
+                        }}
+                        onKeyDown={(e) => handleStepNavigation(e, 10)}
+                        className="pl-7 h-8 text-xs bg-card"
+                      />
+                    </div>
+                    {(manualPct > 0 || manualAmt > 0) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setManualDiscountPercent("");
+                          setManualDiscountAmount("");
+                        }}
+                        className="text-[10px] text-muted-foreground hover:text-destructive underline whitespace-nowrap"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Price breakdown */}
+                  <div className="space-y-1 rounded-lg border border-border/60 bg-card p-2.5 text-[11px] text-muted-foreground">
+                    <div className="flex justify-between">
+                      <span>Cart Total:</span>
+                      <span className="font-semibold text-foreground">
+                        {formatCurrency(subtotal)}
+                      </span>
+                    </div>
+                    {itemDiscountTotal > 0 && (
+                      <div className="flex justify-between text-green-600">
+                        <span className="flex items-center gap-1">
+                          <Percent className="h-3 w-3" /> Item Discounts:
+                        </span>
+                        <span className="font-semibold">
+                          −{formatCurrency(itemDiscountTotal)}
                         </span>
                       </div>
-                      {paymentShortfall > 0.009 && (
-                        <div className="flex justify-between text-red-500 font-semibold">
-                          <span>Still needed:</span>
-                          <span>{formatCurrency(paymentShortfall)}</span>
-                        </div>
-                      )}
-                      {cashChange > 0 && (
-                        <div className="flex justify-between text-emerald-600 font-bold">
-                          <span>Change to return:</span>
-                          <span>{formatCurrency(cashChange)}</span>
-                        </div>
-                      )}
-                      {totalPaid >= grandTotal &&
-                        paymentShortfall <= 0.009 &&
-                        !hasUnselectedSplitMethod && (
-                          <div className="flex items-center gap-1 text-emerald-600 font-semibold">
-                            <span>✓</span> Payment complete
-                          </div>
-                        )}
+                    )}
+                    {couponDiscountPercent > 0 && (
+                      <div className="flex justify-between text-green-600">
+                        <span className="flex items-center gap-1">
+                          <Sparkles className="h-3 w-3" /> Coupon ({appliedCoupon} –{" "}
+                          {couponDiscountPercent}%):
+                        </span>
+                        <span className="font-semibold">
+                          −{formatCurrency(couponDiscountAmount)}
+                        </span>
+                      </div>
+                    )}
+                    {manualPct > 0 && (
+                      <div className="flex justify-between text-green-600">
+                        <span className="flex items-center gap-1">
+                          <Percent className="h-3 w-3" /> Instant Discount (
+                          {manualPct}%):
+                        </span>
+                        <span className="font-semibold">
+                          −{formatCurrency(manualDiscountAmount)}
+                        </span>
+                      </div>
+                    )}
+                    {totalDiscountAmount > 0 && (
+                      <div className="flex justify-between text-green-700 font-medium border-t border-dashed border-green-200 pt-1">
+                        <span>Total Savings:</span>
+                        <span>−{formatCurrency(totalDiscountAmount)}</span>
+                      </div>
+                    )}
+                    <Separator className="my-1 bg-border" />
+                    <div className="flex justify-between text-sm font-extrabold text-purple-700 dark:text-purple-400">
+                      <span>Total Payable:</span>
+                      <span>{formatCurrency(grandTotal)}</span>
                     </div>
                   </div>
-                )}
-              </div>
+                </div>
 
-              {/* Hold + Checkout */}
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1 gap-1 h-9 hover:bg-yellow-50 hover:text-yellow-800 dark:hover:bg-yellow-950/20"
-                  onClick={holdBill}
-                  disabled={isCheckingOut}
-                >
-                  <PauseCircle className="h-4 w-4" /> Hold
-                </Button>
-                <Button
-                  ref={checkoutButtonRef}
-                  className="flex-[2] bg-purple-600 hover:bg-purple-700 text-white gap-1 h-9 shadow-md shadow-purple-600/20 font-bold disabled:opacity-60"
-                  onClick={checkout}
-                  onKeyDown={(e) => handleStepNavigation(e, 11, checkout)}
-                  disabled={
-                    isCheckingOut ||
-                    cart.length === 0 ||
-                    (selectedCustomer === WALK_IN_SENTINEL &&
-                      !walkInCustomerId) ||
-                    hasUnselectedSplitMethod
-                  }
-                >
-                  {isCheckingOut ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" /> Saving &
-                      Printing…
-                    </>
-                  ) : (
-                    <>
-                      <Receipt className="h-4 w-4" /> Checkout & Print
-                    </>
-                  )}
-                </Button>
-              </div>
+                {/* Right column: Payment & Actions */}
+                <div className="flex flex-col justify-between space-y-2">
+                  {/* ── Payment Section ── */}
+                  <div className="space-y-1.5">
+                    {/* Header + Split toggle */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        Payment
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextSplitMode = !splitMode;
+                          setSplitMode(nextSplitMode);
+                          setPayments(
+                            nextSplitMode
+                              ? DEFAULT_SPLIT_PAYMENTS
+                              : DEFAULT_SINGLE_PAYMENT,
+                          );
+                        }}
+                        className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-all ${splitMode
+                          ? "bg-purple-600 text-white border-purple-600"
+                          : "bg-card text-purple-600 border-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/20"
+                          }`}
+                      >
+                        {splitMode ? "✓ Split ON" : "Split Payment"}
+                      </button>
+                    </div>
 
-              <Button
-                variant="ghost"
-                className="w-full h-7 text-xs text-muted-foreground gap-1"
-                onClick={resetCart}
-              >
-                <Trash2 className="h-3.5 w-3.5" /> Clear Cart
-              </Button>
+                    {/* ── Single payment mode ── */}
+                    {!splitMode && (
+                      <div className="space-y-1.5">
+                        {/* Method picker */}
+                        <div className="grid grid-cols-3 gap-2">
+                          {(["cash", "card", "upi"] as const).map((method) => (
+                            <button
+                              key={method}
+                              type="button"
+                              onClick={() => setPayments([{ method, amount: "" }])}
+                              className={`flex flex-col items-center p-1.5 border rounded-lg gap-1 text-[11px] font-bold transition-all ${payments[0].method === method
+                                ? "border-purple-600 bg-purple-50 text-purple-700 dark:bg-purple-950/20"
+                                : "border-border bg-card text-muted-foreground hover:bg-muted"
+                                }`}
+                            >
+                              {method === "cash" && (
+                                <IndianRupee className="h-4 w-4" />
+                              )}
+                              {method === "card" && (
+                                <CreditCard className="h-4 w-4" />
+                              )}
+                              {method === "upi" && <Wallet className="h-4 w-4" />}
+                              <span>
+                                {method === "cash"
+                                  ? "Cash"
+                                  : method === "card"
+                                    ? "Card"
+                                    : "UPI"}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── Split payment mode ── */}
+                    {splitMode && (
+                      <div className="space-y-1.5">
+                        {payments.map((entry, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            <Select
+                              value={
+                                entry.method ||
+                                (idx === 0 ? "upi" : idx === 1 ? "cash" : "card")
+                              }
+                              onValueChange={(method) => {
+                                const next = [...payments];
+                                next[idx] = {
+                                  ...next[idx],
+                                  method: method as "cash" | "card" | "upi",
+                                };
+                                setPayments(next);
+                              }}
+                            >
+                              <SelectTrigger className="h-8 w-[120px] shrink-0 border-border bg-card text-xs">
+                                {" "}
+                                <SelectValue placeholder="Method" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="upi">UPI</SelectItem>
+                                <SelectItem value="cash">Cash</SelectItem>
+                                <SelectItem value="card">Card</SelectItem>
+                              </SelectContent>
+                            </Select>
+
+                            <div className="relative flex-1">
+                              {" "}
+                              <IndianRupee className="absolute left-2 top-2.5 h-3 w-3 text-muted-foreground" />
+                              <Input
+                                type="number"
+                                min={0}
+                                placeholder={idx === 1 ? "Cash amount" : "Amount"}
+                                value={entry.amount}
+                                onChange={(e) =>
+                                  updateSplitAmount(idx, e.target.value)
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    checkoutButtonRef.current?.focus();
+                                  }
+                                }}
+                                className="pl-6 h-8 w-full text-xs bg-card"
+                              />
+                            </div>
+                          </div>
+                        ))}
+
+                        {hasUnselectedSplitMethod && (
+                          <p className="text-[11px] text-amber-600 bg-amber-50 dark:bg-amber-950/20 rounded px-2 py-1">
+                            Select a payment method for the remaining amount.
+                          </p>
+                        )}
+
+                        {/* Split summary */}
+                        <div className="rounded-md border border-border bg-muted/20 px-2.5 py-1.5 space-y-0.5 text-[11px]">
+                          <div className="flex justify-between text-muted-foreground">
+                            <span>Total entered:</span>
+                            <span
+                              className={`font-bold ${totalPaid >= grandTotal ? "text-emerald-600" : "text-amber-600"}`}
+                            >
+                              {formatCurrency(totalPaid)}
+                            </span>
+                          </div>
+                          {paymentShortfall > 0.009 && (
+                            <div className="flex justify-between text-red-500 font-semibold">
+                              <span>Still needed:</span>
+                              <span>{formatCurrency(paymentShortfall)}</span>
+                            </div>
+                          )}
+                          {cashChange > 0 && (
+                            <div className="flex justify-between text-emerald-600 font-bold">
+                              <span>Change to return:</span>
+                              <span>{formatCurrency(cashChange)}</span>
+                            </div>
+                          )}
+                          {totalPaid >= grandTotal &&
+                            paymentShortfall <= 0.009 &&
+                            !hasUnselectedSplitMethod && (
+                              <div className="flex items-center gap-1 text-emerald-600 font-semibold">
+                                <span>✓</span> Payment complete
+                              </div>
+                            )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="space-y-1.5 pt-1">
+                    {/* Hold + Checkout */}
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        className="flex-1 gap-1 h-9 hover:bg-yellow-50 hover:text-yellow-800 dark:hover:bg-yellow-950/20"
+                        onClick={holdBill}
+                        disabled={isCheckingOut}
+                      >
+                        <PauseCircle className="h-4 w-4" /> Hold
+                      </Button>
+                      <Button
+                        ref={checkoutButtonRef}
+                        className="flex-[2] bg-purple-600 hover:bg-purple-700 text-white gap-1 h-9 shadow-md shadow-purple-600/20 font-bold disabled:opacity-60"
+                        onClick={checkout}
+                        onKeyDown={(e) => handleStepNavigation(e, 11, checkout)}
+                        disabled={
+                          isCheckingOut ||
+                          cart.length === 0 ||
+                          (selectedCustomer === WALK_IN_SENTINEL &&
+                            !walkInCustomerId) ||
+                          hasUnselectedSplitMethod
+                        }
+                      >
+                        {isCheckingOut ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" /> Saving &
+                            Printing…
+                          </>
+                        ) : (
+                          <>
+                            <Receipt className="h-4 w-4" /> Checkout & Print
+                          </>
+                        )}
+                      </Button>
+                    </div>
+
+                    <Button
+                      variant="ghost"
+                      className="w-full h-7 text-xs text-muted-foreground gap-1"
+                      onClick={resetCart}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Clear Cart
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </div>
           </Card>
 
@@ -2374,9 +2549,8 @@ export default function PosBillingPage({
           )}
         </div>
 
-        {/* ── Left – Products ──────────────────────────────────────────────── */}
+        {/* ── Left – Products (Moved to top barcode scanner & commented out) ──
         <div className="order-1 flex flex-col gap-4 xl:col-span-5">
-          {/* Barcode */}
           <form
             onSubmit={handleBarcodeSubmit}
             className={`flex gap-2 p-3 rounded-xl items-center shadow-sm border transition-colors ${barcodeNotFound
@@ -2415,7 +2589,6 @@ export default function PosBillingPage({
             </Button>
           </form>
 
-          {/* Product list — compact line by line showing only name (only shown when placeholder clicked, otherwise hidden completely) */}
           {showSuggestions && (
             <div
               ref={suggestionsContainerRef}
@@ -2464,7 +2637,7 @@ export default function PosBillingPage({
             </div>
           )}
         </div>
+        ── */}
       </div>
-    </div>
   );
 }
