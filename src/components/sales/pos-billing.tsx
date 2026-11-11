@@ -1755,11 +1755,11 @@ export default function PosBillingPage({
       </div>
       */}
 
-      {/* ── Top Barcode Scanner ── */}
+      {/* ── Top Barcode Scanner & Search ── */}
       <div className="relative w-full">
         <form
           onSubmit={handleBarcodeSubmit}
-          className={`flex gap-2 p-2 rounded-xl items-center shadow-sm border transition-colors ${
+          className={`flex gap-2 p-2.5 rounded-xl items-center shadow-sm border transition-colors ${
             barcodeNotFound
               ? "bg-red-50/60 border-red-200 dark:bg-red-950/20 dark:border-red-900/40"
               : "bg-purple-50/50 border-purple-100 dark:bg-purple-950/10 dark:border-purple-900/40"
@@ -1838,10 +1838,10 @@ export default function PosBillingPage({
                       type="button"
                       key={prod.id}
                       onClick={() => {
-                        setBarcodeInput(prod.sku || prod.name);
+                        addToCart(prod);
                         setSelectedProductIndex(-1);
                         setShowSuggestions(false);
-                        focusBarcodeInput();
+                        setBarcodeInput("");
                       }}
                       title={`${prod.name} • ${formatCurrency(prod.price)} (Stock: ${prod.stock})`}
                       className={`w-full text-left px-3.5 py-2.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-2 group ${
