@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ProductSearchPicker } from "@/components/sales/product-search-picker";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -18,7 +19,6 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Search,
   Plus,
   Trash2,
   Calendar as CalendarIcon,
@@ -566,51 +566,15 @@ export function InvoiceEditDialog({
               </div>
 
               {/* Product Search Bar */}
-              <div className="relative">
-                <div className="relative">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search product by name or SKU to add to invoice..."
-                    value={productSearch}
-                    onChange={(e) => setProductSearch(e.target.value)}
-                    className="pl-9 h-9 text-xs"
-                  />
-                  {isSearchingProduct && (
-                    <Loader2 className="absolute right-3 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
-                  )}
-                </div>
-
-                {/* Search Results Dropdown */}
-                {productResults.length > 0 && (
-                  <div className="absolute z-20 left-0 right-0 mt-1 bg-popover border rounded-lg shadow-lg max-h-56 overflow-y-auto divide-y">
-                    {productResults.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => handleAddProduct(p)}
-                        className="w-full text-left px-3 py-2 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
-                      >
-                        <div>
-                          <p className="font-semibold text-foreground">
-                            {p.product_name || p.productName}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground">
-                            SKU: {p.sku || "N/A"} • Stock: {p.stock ?? 0}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-purple-600">
-                            {formatCurrency(p.sellingPrice || p.purchasePrice || 0)}
-                          </p>
-                          <span className="text-[10px] text-muted-foreground flex items-center gap-0.5 justify-end">
-                            <Plus className="h-3 w-3" /> Add item
-                          </span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <ProductSearchPicker
+                value={productSearch}
+                onValueChange={setProductSearch}
+                products={productResults}
+                loading={isSearchingProduct}
+                placeholder="Search product by name or SKU to add to invoice..."
+                onSelect={handleAddProduct}
+                inputClassName="h-9 text-xs"
+              />
 
               {/* Items Table */}
               <div className="border rounded-xl overflow-hidden bg-card shadow-xs">

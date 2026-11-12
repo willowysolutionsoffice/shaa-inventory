@@ -11,7 +11,6 @@ import React, {
 import qz from "qz-tray";
 import { printHtmlViaBrowser } from "@/lib/thermal-print";
 import {
-  Search,
   Trash2,
   Plus,
   Minus,
@@ -65,6 +64,7 @@ import {
 import { getProductDropdown } from "@/actions/product-actions";
 import { CustomerFormDialog } from "@/components/customers/customer-form";
 import { LiveDateTime } from "@/components/dashboard/live-date-time";
+import { ProductSearchPicker } from "@/components/sales/product-search-picker";
 import { Store } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -734,27 +734,6 @@ export default function PosBillingPage({
   const [barcodeNotFound, setBarcodeNotFound] = useState(false);
   const [barcodeInput, setBarcodeInput] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(WALK_IN_SENTINEL);
-  const [selectedProductIndex, setSelectedProductIndex] = useState<number>(-1);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const searchContainerRef = useRef<HTMLDivElement>(null);
-  const suggestionsContainerRef = useRef<HTMLDivElement>(null);
-
-  // Close suggestions when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      const target = event.target as Node;
-      if (
-        searchContainerRef.current?.contains(target) ||
-        suggestionsContainerRef.current?.contains(target) ||
-        barcodeInputRef.current?.contains(target)
-      ) {
-        return;
-      }
-      setShowSuggestions(false);
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [couponDiscountPercent, setCouponDiscountPercent] = useState(0);
   const [manualDiscountPercent, setManualDiscountPercent] = useState<
@@ -937,7 +916,12 @@ export default function PosBillingPage({
       return (
         matchesSearch && matchesCategory && matchesBrand && matchesSubBrand
       );
-    });
+    }).sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      }),
+    );
   }, [products, searchTerm, barcodeInput, selectedCategory, selectedBrand, selectedSubBrand]);
 
   // ── Pricing ────────────────────────────────────────────────────────────────
@@ -1144,16 +1128,6 @@ export default function PosBillingPage({
   // ── Barcode ────────────────────────────────────────────────────────────────
   const handleBarcodeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedProductIndex >= 0 && filteredProducts[selectedProductIndex]) {
-      addToCart(filteredProducts[selectedProductIndex]);
-      setSearchTerm("");
-      setBarcodeInput("");
-      setBarcodeNotFound(false);
-      setShowSuggestions(false);
-      setSelectedProductIndex(-1);
-      focusBarcodeInput();
-      return;
-    }
     const isShift = (e.nativeEvent as KeyboardEvent)?.shiftKey;
     const q = barcodeInput.trim().toLowerCase();
 
@@ -1175,8 +1149,6 @@ export default function PosBillingPage({
       addToCart(found);
       setBarcodeInput("");
       setBarcodeNotFound(false);
-      setShowSuggestions(false);
-      setSelectedProductIndex(-1);
     } else {
       setBarcodeNotFound(true);
       toast.error(`No product found for "${barcodeInput.trim()}"`);
@@ -1360,51 +1332,6 @@ export default function PosBillingPage({
       })(),
     });
   };
-
-  // ── Global Hotkeys & Product Grid Key Navigation ────────────────────────────
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.closest('[role="dialog"]')) return;
-
-      if (selectedProductIndex >= 0 && filteredProducts.length > 0) {
-        if (e.key === "ArrowDown") {
-          e.preventDefault();
-          setSelectedProductIndex((prev) =>
-            Math.min(filteredProducts.length - 1, prev + 1),
-          );
-          return;
-        } else if (e.key === "ArrowUp") {
-          e.preventDefault();
-          setSelectedProductIndex((prev) => Math.max(0, prev - 1));
-          return;
-        } else if (e.key === "ArrowRight") {
-          e.preventDefault();
-          setSelectedProductIndex((prev) =>
-            Math.min(filteredProducts.length - 1, prev + 1),
-          );
-          return;
-        } else if (e.key === "ArrowLeft") {
-          e.preventDefault();
-          setSelectedProductIndex((prev) => Math.max(0, prev - 1));
-          return;
-        } else if (e.key === "Enter") {
-          e.preventDefault();
-          const targetProd = filteredProducts[selectedProductIndex];
-          if (targetProd) {
-            addToCart(targetProd);
-            setSearchTerm("");
-            setBarcodeInput("");
-            setShowSuggestions(false);
-          }
-          setSelectedProductIndex(-1);
-          return;
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleGlobalKeyDown);
-    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [selectedProductIndex, filteredProducts]);
 
   // ── Loading ────────────────────────────────────────────────────────────────
   if (loadingData) {
@@ -1738,63 +1665,23 @@ export default function PosBillingPage({
       <div className="relative w-full">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-12 items-center">
           {/* Search by SKU or name */}
-          <div
-            ref={searchContainerRef}
-            className="md:col-span-6 flex items-center gap-2 rounded-xl border border-border bg-card p-2 shadow-sm"
-          >
-            <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                ref={searchInputRef}
-                placeholder="Search by SKU or name…"
-                value={searchTerm}
-                onClick={() => setShowSuggestions(true)}
-                onFocus={() => setShowSuggestions(true)}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setShowSuggestions(true);
-                  setBarcodeNotFound(false);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    setShowSuggestions(false);
-                    setSelectedProductIndex(-1);
-                    return;
-                  }
-                  if (e.key === "ArrowDown" && filteredProducts.length > 0) {
-                    if (selectedProductIndex < 0) {
-                      e.preventDefault();
-                      setShowSuggestions(true);
-                      setSelectedProductIndex(0);
-                    }
-                    return;
-                  }
-                  if (e.key === "ArrowUp" && filteredProducts.length > 0 && showSuggestions) {
-                    return;
-                  }
-                  if (e.key === "Enter" && selectedProductIndex >= 0 && filteredProducts[selectedProductIndex]) {
-                    e.preventDefault();
-                    return;
-                  }
-                  handleStepNavigation(e, 1);
-                }}
-                className="h-9 w-full border-border bg-background pl-9 pr-8 text-xs sm:text-sm shadow-xs"
-              />
-              {searchTerm && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchTerm("");
-                    setSelectedProductIndex(-1);
-                    searchInputRef.current?.focus();
-                  }}
-                  aria-label="Clear search"
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-sm leading-none text-muted-foreground hover:text-foreground"
-                >
-                  ×
-                </button>
-              )}
-            </div>
+          <div className="md:col-span-6 rounded-xl border border-border bg-card p-2 shadow-sm">
+            <ProductSearchPicker
+              inputRef={searchInputRef}
+              value={searchTerm}
+              onValueChange={(value) => {
+                setSearchTerm(value);
+                setBarcodeNotFound(false);
+              }}
+              products={filteredProducts}
+              onSelect={(product) => {
+                addToCart(product);
+                setSearchTerm("");
+                setBarcodeInput("");
+              }}
+              placeholder="Search by SKU or name…"
+              inputClassName="h-9 w-full border-border bg-background text-xs shadow-xs sm:text-sm"
+            />
           </div>
 
           {/* Barcode Scanner */}
@@ -1814,27 +1701,9 @@ export default function PosBillingPage({
               autoFocus
               placeholder="Scan / type SKU and hit Enter…"
               value={barcodeInput}
-              onClick={() => setShowSuggestions(true)}
-              onFocus={() => setShowSuggestions(true)}
               onChange={(e) => {
                 setBarcodeInput(e.target.value);
-                setShowSuggestions(true);
                 setBarcodeNotFound(false);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  setShowSuggestions(false);
-                  setSelectedProductIndex(-1);
-                  return;
-                }
-                if (e.key === "ArrowDown" && filteredProducts.length > 0) {
-                  if (selectedProductIndex < 0) {
-                    e.preventDefault();
-                    setShowSuggestions(true);
-                    setSelectedProductIndex(0);
-                  }
-                  return;
-                }
               }}
               className={`h-9 text-xs sm:text-sm bg-card shadow-xs ${
                 barcodeNotFound
@@ -1856,67 +1725,6 @@ export default function PosBillingPage({
           </form>
         </div>
 
-        {/* Product suggestions dropdown */}
-        {showSuggestions && (
-          <div
-            ref={suggestionsContainerRef}
-            className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl
-            [&::-webkit-scrollbar]:w-1.5
-            [&::-webkit-scrollbar-track]:rounded-full
-            [&::-webkit-scrollbar-track]:bg-muted/40
-            [&::-webkit-scrollbar-thumb]:rounded-full
-            [&::-webkit-scrollbar-thumb]:bg-purple-300
-            dark:[&::-webkit-scrollbar-thumb]:bg-purple-700"
-          >
-            {filteredProducts.length === 0 ? (
-              <div className="text-center text-muted-foreground py-6 text-sm">
-                {barcodeInput || searchTerm
-                  ? "No products match your search."
-                  : "No products available."}
-              </div>
-            ) : (
-              <div className="flex flex-col gap-1">
-                {filteredProducts.map((prod, idx) => {
-                  const isSelected = idx === selectedProductIndex;
-                  return (
-                    <button
-                      type="button"
-                      key={prod.id}
-                      onClick={() => {
-                        addToCart(prod);
-                        setSelectedProductIndex(-1);
-                        setShowSuggestions(false);
-                        setSearchTerm("");
-                        setBarcodeInput("");
-                      }}
-                      title={`${prod.name} • ${formatCurrency(prod.price)} (Stock: ${prod.stock})`}
-                      className={`w-full text-left px-3.5 py-2.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-2 group ${
-                        isSelected
-                          ? "border-purple-600 bg-purple-50 ring-1 ring-purple-600 dark:bg-purple-950/40"
-                          : "border-border/70 bg-card hover:bg-purple-50/50 hover:border-purple-400 dark:hover:bg-purple-950/20"
-                      }`}
-                    >
-                      <span className="text-xs sm:text-sm font-semibold text-foreground group-hover:text-purple-600 transition-colors truncate">
-                        {prod.name}
-                      </span>
-                      <div className="flex items-center gap-3 shrink-0 text-xs">
-                        <span className="font-mono text-muted-foreground text-[11px]">
-                          {prod.sku}
-                        </span>
-                        <span className="font-semibold text-purple-700 dark:text-purple-400">
-                          {formatCurrency(prod.price)}
-                        </span>
-                        <span className="text-[11px] text-muted-foreground">
-                          Stock: {prod.stock}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* ── Active Cart & Checkout (Full Size Left to Right) ──────────────── */}
