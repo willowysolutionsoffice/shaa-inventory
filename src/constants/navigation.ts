@@ -32,6 +32,7 @@ import {
   TriangleAlert,
   ClipboardCheck,
   FileText,
+  Barcode,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { type Permission, PERMISSIONS } from "./permissions";
@@ -509,6 +510,12 @@ const admin: NavGroup[] = [
         url: "/admin/settings/system",
         icon: Settings,
         permission: PERMISSIONS.MANAGE_ROLES,
+      },
+      {
+        title: "Barcode & Printing",
+        url: "/admin/settings/barcodes",
+        icon: Barcode,
+        permission: PERMISSIONS.MANAGE_PRODUCTS,
       },
     ],
   },
