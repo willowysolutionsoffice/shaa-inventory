@@ -26,7 +26,8 @@ function forwardHeaders(req: NextRequest): Record<string, string> {
 
 async function proxy(req: NextRequest, path: string[]) {
   const search = req.nextUrl.search;
-  const url = `${BACKEND_URL}/${path.join("/")}${search}`;
+  const encodedPath = path.map((segment) => encodeURIComponent(segment)).join("/");
+  const url = `${BACKEND_URL.replace(/\/+$/, "")}/${encodedPath}${search}`;
 
   const init: RequestInit = {
     method: req.method,
@@ -34,26 +35,21 @@ async function proxy(req: NextRequest, path: string[]) {
     cache: "no-store",
   };
 
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    const body = await req.text();
-    if (body) init.body = body;
+  if (req.method !== "GET") {
+    const body = await req.arrayBuffer();
+    if (body.byteLength > 0) init.body = body;
   }
 
   try {
     const res = await fetch(url, init);
-    const text = await res.text();
+    const responseHeaders = new Headers();
+    const contentType = res.headers.get("content-type");
+    if (contentType) responseHeaders.set("content-type", contentType);
 
-    let data: unknown;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = {
-        success: false,
-        message: "Backend returned a non-JSON response",
-      };
-    }
-
-    return NextResponse.json(data, { status: res.status });
+    return new Response(res.body, {
+      status: res.status,
+      headers: responseHeaders,
+    });
   } catch {
     return NextResponse.json(
       { success: false, message: "Failed to reach backend" },
