@@ -1,4 +1,3 @@
-// src/app/api/barcode-sticker-settings/route.ts
 import { NextResponse } from "next/server";
 
 const BACKEND_URL =
@@ -23,17 +22,34 @@ export async function GET(req: Request) {
     });
 
     const text = await res.text();
-    let data: unknown;
+    let data: unknown = null;
     try {
-      data = text ? JSON.parse(text) : null;
+      if (text) data = JSON.parse(text);
     } catch {
-      data = {
-        success: false,
-        message: "Backend returned a non-JSON response",
-      };
+      return NextResponse.json(
+        { success: false, message: "Backend returned an invalid JSON response" },
+        { status: res.status },
+      );
     }
 
-    return NextResponse.json(data, { status: res.status });
+    if (res.status === 204 || res.status === 304) {
+      return new Response(null, {
+        status: res.status,
+        headers: {
+          "Content-Type": res.headers.get("content-type") ?? "application/json",
+        },
+      });
+    }
+
+    const contentType = res.headers.get("content-type");
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: {
+        "Content-Type": contentType?.includes("json")
+          ? contentType
+          : "application/json; charset=utf-8",
+      },
+    });
   } catch {
     return NextResponse.json(
       { success: false, message: "Failed to reach backend" },
