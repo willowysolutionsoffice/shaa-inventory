@@ -101,7 +101,7 @@ export function ProductQrPrint({
   }, [sku]);
 
   useEffect(() => {
-    api.get<BarcodeStickerSetting[]>("/barcode-sticker-settings")
+    api.get<BarcodeStickerSetting[]>("/api/barcode-sticker-settings")
       .then((list) => {
         setSettings(list);
         const initial =

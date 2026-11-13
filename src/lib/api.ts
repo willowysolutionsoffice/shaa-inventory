@@ -36,7 +36,11 @@ async function rawRequest(path: string, options: RequestOptions): Promise<Respon
   const isServer = typeof window === 'undefined';
   const extraHeaders = isServer ? await serverCookieHeader() : {};
 
-  return fetch(`${BASE_URL}${path}`, {
+  // Same-origin Next.js proxy routes (e.g. /api/barcode-sticker-settings)
+  // must not be prefixed with the backend base URL.
+  const url = path.startsWith('/api/') ? path : `${BASE_URL}${path}`;
+
+  return fetch(url, {
     ...options,
     credentials: 'include',
     headers: {
