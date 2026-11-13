@@ -10,8 +10,53 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Printer, Barcode } from "lucide-react";
 import { toast } from "sonner";
+import { api } from "@/lib/api";
+
+type BarcodeStickerSetting = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  labelWidthMm: number;
+  labelHeightMm: number;
+  columns: number;
+  barcodeHeightMm: number;
+  showBrand: boolean;
+  showPrice: boolean;
+  showSku: boolean;
+  continuousFeed: boolean;
+  topMarginIn: number;
+  leftMarginIn: number;
+  stickerWidthIn: number;
+  stickerHeightIn: number;
+  paperWidthIn: number;
+  paperHeightIn: number;
+  rowGapIn: number;
+  columnGapIn: number;
+  stickersPerSheet: number;
+};
+
+const FALLBACK_SETTING: BarcodeStickerSetting = {
+  id: "fallback",
+  name: "Fallback",
+  isDefault: false,
+  labelWidthMm: 38, labelHeightMm: 25, columns: 2, barcodeHeightMm: 9,
+  showBrand: true, showPrice: true, showSku: true,
+  continuousFeed: true,
+  topMarginIn: 0.1, leftMarginIn: 0.1,
+  stickerWidthIn: 1.38, stickerHeightIn: 0.98,
+  paperWidthIn: 3.35, paperHeightIn: 2.2,
+  rowGapIn: 0.12, columnGapIn: 0.12,
+  stickersPerSheet: 1,
+};
 
 interface ProductQrPrintProps {
   sku: string;
@@ -25,6 +70,11 @@ export function ProductQrPrint({
   price,
 }: ProductQrPrintProps) {
   const [printQty, setPrintQty] = useState<number>(1);
+  const [settings, setSettings] = useState<BarcodeStickerSetting[]>([
+    FALLBACK_SETTING,
+  ]);
+  const [selectedId, setSelectedId] = useState<string>(FALLBACK_SETTING.id);
+  const [setting, setSetting] = useState<BarcodeStickerSetting>(FALLBACK_SETTING);
   const svgRef = useRef<SVGSVGElement>(null);
 
   const formattedPrice =
@@ -49,6 +99,28 @@ export function ProductQrPrint({
       });
     });
   }, [sku]);
+
+  useEffect(() => {
+    api.get<BarcodeStickerSetting[]>("/barcode-sticker-settings")
+      .then((list) => {
+        setSettings(list);
+        const initial =
+          list.find((s) => s.isDefault) ?? list[0] ?? FALLBACK_SETTING;
+        setSetting(initial);
+        setSelectedId(initial.id);
+      })
+      .catch(() => {
+        setSettings([FALLBACK_SETTING]);
+        setSetting(FALLBACK_SETTING);
+        setSelectedId(FALLBACK_SETTING.id);
+      });
+  }, []);
+
+  const handleSelect = (id: string) => {
+    setSelectedId(id);
+    const found = settings.find((s) => s.id === id);
+    if (found) setSetting(found);
+  };
 
   const escapeHtml = (value: string) => {
     return String(value)
@@ -77,13 +149,28 @@ export function ProductQrPrint({
     const safeProductName = escapeHtml(productName);
     const safePrice = escapeHtml(String(formattedPrice));
 
-    let labelHtml = "";
+    const MM = 25.4;
+    // Fully setting-driven: page/label geometry comes only from the setting
+    const stickerWidthMm = Number(setting.stickerWidthIn) * MM;
+    const stickerHeightMm = Number(setting.stickerHeightIn) * MM;
+    const paperWidthMm = Number(setting.paperWidthIn) * MM;
+    const paperHeightMm = Number(setting.paperHeightIn) * MM;
+    const topMarginMm = Number(setting.topMarginIn) * MM;
+    const leftMarginMm = Number(setting.leftMarginIn) * MM;
+    const rowGapMm = Number(setting.rowGapIn) * MM;
+    const colGapMm = Number(setting.columnGapIn) * MM;
+    const perSheet = Math.max(1, Number(setting.stickersPerSheet) || 1);
+    const pageSize = setting.continuousFeed
+      ? `${paperWidthMm}mm auto`
+      : `${paperWidthMm}mm ${paperHeightMm}mm`;
+
+    const labels: string[] = [];
 
     for (let i = 0; i < printQty; i++) {
-      labelHtml += `
+      labels.push(`
         <div class="label">
           <div class="label-content">
-            <div class="brand-top">SHAASHOPY</div>
+            ${setting.showBrand ? '<div class="brand-top">SHAASHOPY</div>' : ''}
             <div class="product-name">${safeProductName}</div>
 
             <div class="barcode-row">
@@ -91,11 +178,24 @@ export function ProductQrPrint({
               <div class="fabstory-vertical">FABSTORY</div>
             </div>
 
-            <div class="price">&#x20B9; : ${safePrice}</div>
-            <div class="sku-bottom">${safeDisplaySku}</div>
+            ${setting.showPrice ? `<div class="price">&#x20B9; : ${safePrice}</div>` : ''}
+            ${setting.showSku ? `<div class="sku-bottom">${safeDisplaySku}</div>` : ''}
           </div>
         </div>
-      `;
+      `);
+    }
+
+    let bodyHtml: string;
+    if (setting.continuousFeed) {
+      bodyHtml = `<div class="sheet continuous">${labels.join("")}</div>`;
+    } else {
+      const pages: string[] = [];
+      for (let i = 0; i < labels.length; i += perSheet) {
+        pages.push(
+          `<div class="sheet">${labels.slice(i, i + perSheet).join("")}</div>`,
+        );
+      }
+      bodyHtml = pages.join("");
     }
 
     printWindow.document.write(`
@@ -107,8 +207,8 @@ export function ProductQrPrint({
 
           <style>
             @page {
-              size: 76mm 100mm portrait;
-              margin: 0;
+              size: ${pageSize};
+              margin: ${topMarginMm}mm ${leftMarginMm}mm;
             }
 
             * {
@@ -121,24 +221,33 @@ export function ProductQrPrint({
 
             html,
             body {
-              width: 76mm;
-              min-height: 100mm;
+              width: ${paperWidthMm}mm;
               background: #ffffff;
               margin: 0;
               padding: 0;
             }
 
             body {
-              display: grid;
-              grid-template-columns: repeat(2, 38mm);
-              grid-auto-rows: 25mm;
-              gap: 0;
+              display: block;
               overflow: hidden;
             }
 
+            .sheet {
+              display: grid;
+              grid-template-columns: repeat(${setting.columns}, ${stickerWidthMm}mm);
+              grid-auto-rows: ${stickerHeightMm}mm;
+              gap: ${rowGapMm}mm ${colGapMm}mm;
+              break-after: page;
+            }
+
+            .sheet:last-child,
+            .sheet.continuous {
+              break-after: auto;
+            }
+
             .label {
-              width: 38mm;
-              height: 25mm;
+              width: ${stickerWidthMm}mm;
+              height: ${stickerHeightMm}mm;
               display: flex;
               align-items: center;
               justify-content: center;
@@ -149,8 +258,8 @@ export function ProductQrPrint({
             }
 
             .label-content {
-              width: 35mm;
-              height: 23mm;
+              width: calc(${stickerWidthMm}mm - 3mm);
+              height: calc(${stickerHeightMm}mm - 2mm);
               display: flex;
               flex-direction: column;
               align-items: center;
@@ -203,7 +312,7 @@ export function ProductQrPrint({
             svg.barcode {
               display: block;
               width: 28mm;
-              height: 8.5mm;
+              height: ${setting.barcodeHeightMm}mm;
               flex-shrink: 0;
             }
 
@@ -246,7 +355,7 @@ export function ProductQrPrint({
         </head>
 
         <body>
-          ${labelHtml}
+          ${bodyHtml}
 
           <script>
             window.onload = function () {
@@ -284,12 +393,31 @@ export function ProductQrPrint({
         </CardTitle>
 
         <CardDescription className="text-xs">
-          Shaashopy label — 2×4 grid, 38×25mm each
+          {setting.name} · {setting.columns} columns · {setting.labelWidthMm} ×{" "}
+          {setting.labelHeightMm}mm ·{" "}
+          {setting.continuousFeed ? "Continuous roll" : "Sheet"}
         </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Preview — 5× scale: 38mm → 190px, 25mm → 125px */}
+        <div className="space-y-2">
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
+            Sticker setting
+          </label>
+          <Select value={selectedId} onValueChange={handleSelect}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select setting" />
+            </SelectTrigger>
+            <SelectContent>
+              {settings.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                  {s.isDefault ? " (Default)" : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="flex justify-center p-4 border border-dashed border-border/80 bg-muted/10 rounded-xl">
           <div
             style={{
@@ -316,7 +444,7 @@ export function ProductQrPrint({
                 transform: "translateX(7px)",
               }}
             >
-              <span
+              {setting.showBrand && <span
                 style={{
                   fontSize: 11,
                   fontWeight: 900,
@@ -328,7 +456,7 @@ export function ProductQrPrint({
                 }}
               >
                 SHAASHOPY
-              </span>
+              </span>}
 
               <span
                 style={{
@@ -384,7 +512,7 @@ export function ProductQrPrint({
                 </div>
               </div>
 
-              <span
+              {setting.showPrice && <span
                 style={{
                   fontSize: 12,
                   fontWeight: 900,
@@ -395,9 +523,9 @@ export function ProductQrPrint({
                 }}
               >
                 ₹ : {formattedPrice}
-              </span>
+              </span>}
 
-              <span
+              {setting.showSku && <span
                 style={{
                   fontSize: 7,
                   fontWeight: 700,
@@ -410,7 +538,7 @@ export function ProductQrPrint({
                 }}
               >
                 {displaySku}
-              </span>
+              </span>}
             </div>
           </div>
         </div>
