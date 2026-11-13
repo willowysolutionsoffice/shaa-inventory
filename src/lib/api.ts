@@ -1,4 +1,8 @@
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+const BASE_URL =
+  process.env.BACKEND_URL ??
+  process.env.API_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  'http://localhost:4000';
 
 type RequestOptions = Omit<RequestInit, 'body'> & {
   body?: Record<string, unknown>;
@@ -18,12 +22,15 @@ async function serverCookieHeader(): Promise<Record<string, string>> {
 // ── Refresh guard (client-side only — server uses short-lived RSC calls) ──────
 let _refreshing: Promise<boolean> | null = null;
 
-async function tryRefresh(): Promise<boolean> {
+export async function refreshSession(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+
   // Deduplicate concurrent refresh attempts
   if (_refreshing) return _refreshing;
-  _refreshing = fetch(`${BASE_URL}/auth/refresh`, {
+  _refreshing = fetch('/api/backend/auth/refresh', {
     method: 'POST',
-    credentials: 'include',
+    credentials: 'same-origin',
+    cache: 'no-store',
   })
     .then((r) => r.ok)
     .catch(() => false)
@@ -35,10 +42,13 @@ async function tryRefresh(): Promise<boolean> {
 async function rawRequest(path: string, options: RequestOptions): Promise<Response> {
   const isServer = typeof window === 'undefined';
   const extraHeaders = isServer ? await serverCookieHeader() : {};
+  const backendPath = path.startsWith('/') ? path : `/${path}`;
 
-  // Same-origin Next.js proxy routes (e.g. /api/barcode-sticker-settings)
-  // must not be prefixed with the backend base URL.
-  const url = path.startsWith('/api/') ? path : `${BASE_URL}${path}`;
+  const url = path.startsWith('/api/')
+    ? path
+    : isServer
+      ? `${BASE_URL}${backendPath}`
+      : `/api/backend${backendPath}`;
 
   return fetch(url, {
     ...options,
@@ -62,7 +72,7 @@ export async function apiRequest<T>(
 
   // On 401, attempt a silent token refresh then retry once
   if (res.status === 401 && typeof window !== 'undefined') {
-    const refreshed = await tryRefresh();
+    const refreshed = await refreshSession();
     if (refreshed) {
       const retry = await rawRequest(path, options);
       if (!retry.ok) {

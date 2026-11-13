@@ -45,6 +45,9 @@ async function proxy(req: NextRequest, path: string[]) {
     const responseHeaders = new Headers();
     const contentType = res.headers.get("content-type");
     if (contentType) responseHeaders.set("content-type", contentType);
+    for (const cookie of res.headers.getSetCookie?.() ?? []) {
+      responseHeaders.append("set-cookie", cookie);
+    }
 
     return new Response(res.body, {
       status: res.status,

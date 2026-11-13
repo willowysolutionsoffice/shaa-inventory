@@ -6,7 +6,11 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 
-const API = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+const API =
+  process.env.BACKEND_URL ??
+  process.env.API_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  'http://localhost:4000';
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 

@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const API =
+  process.env.BACKEND_URL ??
   process.env.API_URL ??
   process.env.NEXT_PUBLIC_API_URL ??
   "http://localhost:4000";
@@ -94,7 +95,7 @@ export default async function proxy(req: NextRequest) {
       return redirectToLogin(req);
     }
 
-    const response = NextResponse.next();
+    const refreshedCookies = new Map<string, { value: string; maxAge?: number }>();
     const setCookies = refreshResponse.headers.getSetCookie?.() ?? [];
 
     for (const cookie of setCookies) {
@@ -105,21 +106,40 @@ export default async function proxy(req: NextRequest) {
 
       const name = nameValue.slice(0, equalsIndex).trim();
       const value = nameValue.slice(equalsIndex + 1).trim();
-
       const maxAgeDirective = directives.find((directive) =>
         directive.trim().toLowerCase().startsWith("max-age=")
       );
-
       const parsedMaxAge = maxAgeDirective
         ? Number.parseInt(maxAgeDirective.split("=")[1], 10)
         : undefined;
+      refreshedCookies.set(name, {
+        value,
+        ...(Number.isFinite(parsedMaxAge) ? { maxAge: parsedMaxAge } : {}),
+      });
+    }
 
+    const requestHeaders = new Headers(req.headers);
+    if (refreshedCookies.size > 0) {
+      const requestCookies = new Map(
+        req.cookies.getAll().map(({ name, value }) => [name, value]),
+      );
+      for (const [name, { value }] of refreshedCookies) {
+        requestCookies.set(name, value);
+      }
+      requestHeaders.set(
+        "cookie",
+        Array.from(requestCookies, ([name, value]) => `${name}=${value}`).join("; "),
+      );
+    }
+
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
+    for (const [name, { value, maxAge }] of refreshedCookies) {
       response.cookies.set(name, value, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         path: "/",
-        ...(Number.isFinite(parsedMaxAge) ? { maxAge: parsedMaxAge } : {}),
+        ...(maxAge !== undefined ? { maxAge } : {}),
       });
     }
 
